@@ -102,3 +102,16 @@ opt-level = 0
 
 [profile.bench]
 debug = true
+
+# PGO (Profile-Guided Optimization) profiles
+[profile.release-pgo]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.bench-pgo]
+inherits = "bench"
+lto = "fat"
+codegen-units = 1

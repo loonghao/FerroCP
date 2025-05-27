@@ -34,27 +34,49 @@ jobs:
             python-version: '3.9'
           - os: windows-latest
             python-version: '3.9'
-    
+
     steps:
     - uses: actions/checkout@v4
       with:
         submodules: recursive
-    
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
-    
+
     - name: Install uv
-      uses: astral-sh/setup-uv@v4
+      uses: astral-sh/setup-uv@v5
       with:
-        version: "latest"
-    
+        enable-cache: true
+
     - name: Set up Rust
       uses: dtolnay/rust-toolchain@stable
       with:
         components: rustfmt, clippy
-    
+
+    - name: Install system tools
+      shell: bash
+      run: |
+        case "${{ runner.os }}" in
+          Linux)
+            # Install hyperfine on Ubuntu
+            wget https://github.com/sharkdp/hyperfine/releases/download/v1.18.0/hyperfine_1.18.0_amd64.deb
+            sudo dpkg -i hyperfine_1.18.0_amd64.deb
+            ;;
+          macOS)
+            # Install hyperfine on macOS
+            brew install hyperfine
+            ;;
+          Windows)
+            # Install hyperfine on Windows
+            choco install hyperfine
+            ;;
+        esac
+
+        # Verify installation
+        hyperfine --version
+
     - name: Cache Rust dependencies
       uses: actions/cache@v4
       with:
@@ -65,50 +87,46 @@ jobs:
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: |
           ${{ runner.os }}-cargo-
-    
+
     - name: Install dependencies
       run: |
-        uv pip install --system -e ".[dev,test,benchmark]"
-    
+        uv sync --group testing
+
     - name: Build project
       run: |
-        uvx nox -s build_wheels
-    
-    - name: Install built wheel
-      shell: bash
+        uv run maturin develop --release
+
+    - name: Verify installation
       run: |
-        wheel_file=$(find wheelhouse -name "*.whl" | head -1)
-        if [ -n "$wheel_file" ]; then
-          uv pip install --system "$wheel_file" --force-reinstall
-        else
-          echo "No wheel file found, using editable install"
-          uv pip install --system -e .
-        fi
-    
+        uv run python -c "import py_eacopy; print(f'py_eacopy imported successfully')"
+
     - name: Generate test data
       run: |
-        python benchmarks/data/generate_test_data.py --output-dir benchmarks/data/test_files
-    
+        uv run python benchmarks/data/generate_test_data.py --output-dir benchmarks/data/test_files
+
     - name: Run quick benchmarks
       if: github.event_name == 'pull_request' || inputs.benchmark_type == 'quick'
       run: |
-        uvx nox -s benchmark -- -k "small_file or medium_file" --benchmark-json=benchmarks/results/benchmark-quick-${{ matrix.os }}-py${{ matrix.python-version }}.json
-    
+        mkdir -p benchmarks/results
+        uv run pytest benchmarks/ --benchmark-only --benchmark-sort=mean -k "small_file or medium_file" --benchmark-json=benchmarks/results/benchmark-quick-${{ matrix.os }}-py${{ matrix.python-version }}.json
+
     - name: Run full benchmarks
       if: github.event_name == 'push' || github.event_name == 'schedule' || inputs.benchmark_type == 'all'
       run: |
-        uvx nox -s benchmark -- --benchmark-json=benchmarks/results/benchmark-full-${{ matrix.os }}-py${{ matrix.python-version }}.json
-    
+        mkdir -p benchmarks/results
+        uv run pytest benchmarks/ --benchmark-only --benchmark-sort=mean --benchmark-json=benchmarks/results/benchmark-full-${{ matrix.os }}-py${{ matrix.python-version }}.json
+
     - name: Run comparison benchmarks
       if: inputs.benchmark_type == 'comparison' || inputs.benchmark_type == 'all'
       run: |
-        uvx nox -s benchmark_compare -- --benchmark-json=benchmarks/results/benchmark-compare-${{ matrix.os }}-py${{ matrix.python-version }}.json
-    
+        mkdir -p benchmarks/results
+        uv run pytest benchmarks/test_comparison.py --benchmark-only --benchmark-sort=mean --benchmark-json=benchmarks/results/benchmark-compare-${{ matrix.os }}-py${{ matrix.python-version }}.json
+
     - name: Run Rust benchmarks
       if: inputs.benchmark_type == 'rust' || inputs.benchmark_type == 'all'
       run: |
         cargo bench --bench copy_benchmarks
-    
+
     - name: Upload benchmark results
       uses: actions/upload-artifact@v4
       with:
@@ -117,7 +135,7 @@ jobs:
           benchmarks/results/*.json
           target/criterion/
         retention-days: 30
-    
+
     - name: Performance regression check
       if: github.event_name == 'pull_request'
       run: |
@@ -130,24 +148,24 @@ jobs:
     needs: benchmark
     runs-on: ubuntu-latest
     if: always()
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Download all benchmark results
       uses: actions/download-artifact@v4
       with:
         path: benchmark-artifacts
-    
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
-    
+
     - name: Install analysis dependencies
       run: |
         pip install pytest-benchmark pandas matplotlib seaborn
-    
+
     - name: Analyze benchmark results
       run: |
         python -c "
@@ -155,7 +173,7 @@ jobs:
         import os
         import pandas as pd
         from pathlib import Path
-        
+
         results = []
         for root, dirs, files in os.walk('benchmark-artifacts'):
             for file in files:
@@ -171,18 +189,18 @@ jobs:
                                 'max': benchmark['stats']['max'],
                                 'file': file
                             })
-        
+
         if results:
             df = pd.DataFrame(results)
             print('Benchmark Summary:')
             print(df.groupby('name')['mean'].agg(['mean', 'std', 'min', 'max']))
-            
+
             # Save summary
             df.to_csv('benchmark-summary.csv', index=False)
         else:
             print('No benchmark results found')
         "
-    
+
     - name: Upload benchmark summary
       uses: actions/upload-artifact@v4
       with:
@@ -194,7 +212,7 @@ jobs:
     needs: benchmark
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
-    
+
     steps:
     - name: Comment PR with performance results
       uses: actions/github-script@v7
@@ -202,21 +220,21 @@ jobs:
         script: |
           const comment = `
           ## 🚀 Performance Benchmark Results
-          
+
           Benchmarks have been run for this PR. Here's a summary:
-          
+
           - ✅ Quick benchmarks completed
           - 📊 Detailed results available in artifacts
           - 🔍 Check for any performance regressions
-          
+
           **Next Steps:**
           1. Download benchmark artifacts to view detailed results
           2. Compare with baseline performance
           3. Investigate any significant performance changes
-          
+
           *Benchmarks run on: Ubuntu, Windows, macOS with Python 3.9, 3.11, 3.12*
           `;
-          
+
           github.rest.issues.createComment({
             issue_number: context.issue.number,
             owner: context.repo.owner,

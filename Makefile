@@ -1,52 +1,63 @@
 # Makefile for py-eacopy development and benchmarking
 
-.PHONY: help install test benchmark profile clean docs
+.PHONY: help install test benchmark profile clean docs build
 
 # Default target
 help:
 	@echo "Available targets:"
 	@echo "  install          - Install development dependencies"
 	@echo "  test             - Run unit tests"
+	@echo "  lint             - Run code quality checks"
 	@echo "  benchmark        - Run all performance benchmarks"
 	@echo "  benchmark-quick  - Run quick benchmarks (small files only)"
 	@echo "  benchmark-compare - Run comparison benchmarks vs standard tools"
 	@echo "  profile          - Run performance profiling"
+	@echo "  build            - Build project with maturin"
+	@echo "  build-pgo        - Build with Profile-Guided Optimization"
+	@echo "  build-wheels     - Build wheels for distribution"
 	@echo "  flamegraph       - Generate flamegraph (Rust benchmarks)"
 	@echo "  docs             - Build documentation"
 	@echo "  clean            - Clean build artifacts"
-	@echo "  build            - Build wheels"
 
 # Install development dependencies
 install:
-	uv pip install -e ".[dev,test,benchmark,docs]"
+	uv sync --group all
 
 # Run unit tests
 test:
-	uvx nox -s pytest
+	uv run nox -s test
+
+# Run linting
+lint:
+	uv run nox -s lint
+
+# Fix linting issues
+lint-fix:
+	uv run nox -s lint_fix
 
 # Run all benchmarks
 benchmark:
-	uvx nox -s benchmark
+	uv run nox -s benchmark
 
 # Run quick benchmarks (for development)
 benchmark-quick:
-	uvx nox -s benchmark -- -k "small_file or medium_file" --benchmark-disable-gc
+	uv run nox -s benchmark -- -k "small_file or medium_file" --benchmark-disable-gc
 
 # Run comparison benchmarks
 benchmark-compare:
-	uvx nox -s benchmark_compare
+	uv run nox -s benchmark_compare
 
 # Run CodSpeed benchmarks locally
 codspeed:
-	uvx nox -s codspeed
+	uv run nox -s codspeed
 
 # Run all CodSpeed benchmarks
 codspeed-all:
-	uvx nox -s codspeed_all
+	uv run nox -s codspeed_all
 
 # Run performance profiling
 profile:
-	python scripts/profile.py --test-type file_copy --profiler all
+	uv run nox -s profile
 
 # Generate flamegraph (requires flamegraph tool)
 flamegraph:
@@ -56,21 +67,33 @@ flamegraph:
 bench-rust:
 	cargo bench
 
+# Build project with maturin
+build:
+	uv run nox -s build
+
+# Build with Profile-Guided Optimization
+build-pgo:
+	uv run nox -s build_pgo
+
+# Build wheels for distribution
+build-wheels:
+	uv run nox -s build_wheels
+
+# Verify build works correctly
+verify-build:
+	uv run nox -s verify_build
+
 # Generate test data
 generate-test-data:
-	python benchmarks/data/generate_test_data.py --output-dir benchmarks/data/test_files --directories
+	uv run python benchmarks/data/generate_test_data.py --output-dir benchmarks/data/test_files --directories
 
 # Build documentation
 docs:
-	uvx nox -s docs
+	uv run nox -s docs
 
 # Serve documentation with live reload
 docs-serve:
-	uvx nox -s docs_serve
-
-# Build wheels
-build:
-	uvx nox -s build_wheels
+	uv run nox -s docs_serve
 
 # Clean build artifacts
 clean:
@@ -88,19 +111,11 @@ clean:
 # Performance regression testing
 benchmark-regression:
 	@echo "Running baseline benchmark..."
-	uvx nox -s benchmark -- --benchmark-save=baseline
+	uv run nox -s benchmark -- --benchmark-save=baseline
 	@echo "Run 'make benchmark-compare-baseline' after making changes"
 
 benchmark-compare-baseline:
-	uvx nox -s benchmark -- --benchmark-compare=baseline
-
-# Memory profiling
-profile-memory:
-	python scripts/profile.py --test-type file_copy --profiler memory
-
-# CPU profiling with py-spy
-profile-cpu:
-	python scripts/profile.py --test-type file_copy --profiler py-spy
+	uv run nox -s benchmark -- --benchmark-compare=baseline
 
 # Comprehensive performance analysis
 analyze-performance: generate-test-data benchmark profile
@@ -109,4 +124,14 @@ analyze-performance: generate-test-data benchmark profile
 
 # CI-style benchmark (faster, less comprehensive)
 benchmark-ci:
-	uvx nox -s benchmark -- --benchmark-disable-gc --benchmark-min-rounds=3
+	uv run nox -s benchmark -- --benchmark-disable-gc --benchmark-min-rounds=3
+
+# Development workflow shortcuts
+dev-setup: install build
+	@echo "Development environment ready!"
+
+dev-test: lint test
+	@echo "Code quality and tests passed!"
+
+dev-benchmark: build benchmark-quick
+	@echo "Quick performance check complete!"

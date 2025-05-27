@@ -28,14 +28,25 @@ Python bindings for EACopy, a high-performance file copy tool developed by Elect
 
 ## Installation
 
+### From PyPI
+
 ```bash
 pip install py-eacopy
 ```
 
-Or with Poetry:
+### From Source
 
 ```bash
-poetry add py-eacopy
+# Clone the repository
+git clone https://github.com/loonghao/py-eacopy.git
+cd py-eacopy
+
+# Install using uv (recommended)
+uv sync
+uv run maturin develop --release
+
+# Or using pip
+pip install -e .
 ```
 
 ## Usage
@@ -62,74 +73,119 @@ eacopy.config.compression_level = 5  # Use compression level 5 for network trans
 
 ## Development
 
+### Prerequisites
+
+- **Python 3.9+**
+- **Rust toolchain** (install from [rustup.rs](https://rustup.rs/))
+- **uv** (recommended, install from [uv docs](https://docs.astral.sh/uv/))
+
 ### Setup
 
 ```bash
-# Clone the repository with submodules
+# Clone the repository
 git clone https://github.com/loonghao/py-eacopy.git
 cd py-eacopy
-git submodule update --init --recursive
 
-# Install dependencies with Poetry
-poetry install
+# Install dependencies using uv (recommended)
+uv sync --group all
+
+# Or install specific dependency groups
+uv sync --group testing  # For testing
+uv sync --group linting  # For code quality
+uv sync --group docs     # For documentation
 ```
 
 ### Building from Source
 
-This project uses scikit-build-core to build the C++ extensions:
+This project uses **maturin** to build Rust extensions:
 
 ```bash
-# Install build dependencies
-pip install scikit-build-core pybind11 cmake
+# Development build (fast, for testing)
+uv run maturin develop
 
-# Build the package
-python -m pip install -e .
+# Release build (optimized)
+uv run maturin develop --release
+
+# Build wheel packages
+uv run maturin build --release
 ```
 
 ### Testing
 
 ```bash
-# Run tests with nox
-nox -s pytest
+# Run tests
+uv run nox -s test
+
+# Run tests for specific Python version
+uv run nox -s test-3.11
 
 # Run linting
-nox -s lint
+uv run nox -s lint
 
-# Fix linting issues
-nox -s lint_fix
+# Fix linting issues automatically
+uv run nox -s lint_fix
 ```
 
 ### Documentation
 
 ```bash
 # Build documentation
-nox -s docs
+uv run nox -s docs
 
 # Serve documentation with live reloading
-nox -s docs-serve
+uv run nox -s docs_serve
 ```
 
 ## Performance Benchmarks
 
 py-eacopy includes comprehensive performance benchmarks and continuous performance monitoring:
 
+### Prerequisites for Benchmarking
+
+Install **hyperfine** (command-line benchmarking tool):
+
+```bash
+# Ubuntu/Debian
+sudo apt install hyperfine
+
+# macOS
+brew install hyperfine
+
+# Windows (using Chocolatey)
+choco install hyperfine
+
+# Or download from: https://github.com/sharkdp/hyperfine/releases
+```
+
 ### Local Benchmarking
 
 ```bash
 # Install benchmark dependencies
-pip install -e ".[benchmark]"
+uv sync --group testing
 
 # Run all benchmarks
-uvx nox -s benchmark
-
-# Run quick benchmarks (for development)
-make benchmark-quick
+uv run nox -s benchmark
 
 # Run comparison benchmarks vs standard tools
-uvx nox -s benchmark_compare
+uv run nox -s benchmark_compare
 
 # Generate performance profiles
-python scripts/profile.py --test-type file_copy --profiler all
+uv run nox -s profile
+```
+
+### Profile-Guided Optimization (PGO) Builds
+
+For maximum performance, use PGO-optimized builds:
+
+```bash
+# Build with PGO optimization (takes longer but ~10-15% faster)
+uv run nox -s build_pgo
+
+# Regular optimized build
+uv run nox -s build
+
+# Verify build works correctly
+uv run nox -s verify_build
 ```
 
 ### Continuous Performance Monitoring with CodSpeed
@@ -138,10 +194,10 @@ This project uses [CodSpeed](https://codspeed.io/) for continuous performance mo
 
 ```bash
 # Run CodSpeed benchmarks locally
-make codspeed
+uv run nox -s codspeed
 
 # Run all CodSpeed benchmarks
-make codspeed-all
+uv run nox -s codspeed_all
 ```
 
 CodSpeed automatically:
@@ -149,6 +205,7 @@ CodSpeed automatically:
 - 📊 Provides detailed performance analysis and visualizations
 - 📈 Tracks performance trends over time
 - ✅ Integrates seamlessly with our GitHub Actions CI
+- 🚀 Uses PGO-optimized builds for accurate performance measurement
 
 ### Benchmark Results
 
@@ -157,13 +214,27 @@ Current performance targets:
 - **Large files (> 10MB)**: > 500 MB/s
 - **vs shutil**: 2-5x faster for large files
 - **vs robocopy**: Competitive performance (within 20%)
+- **PGO builds**: Additional 10-15% performance improvement
 
 See [benchmarks/README.md](benchmarks/README.md) for detailed benchmarking documentation.
 
 ## Dependencies
 
-- [EACopy](https://github.com/electronicarts/EACopy) - High-performance file copy tool by Electronic Arts
-- [pybind11](https://github.com/pybind/pybind11) - C++11 Python bindings
+### Core Dependencies
+- [Rust](https://www.rust-lang.org/) - Systems programming language for high-performance extensions
+- [PyO3](https://pyo3.rs/) - Rust bindings for Python
+- [maturin](https://github.com/PyO3/maturin) - Build tool for Rust-based Python extensions
+
+### Development Dependencies
+- [uv](https://docs.astral.sh/uv/) - Fast Python package manager
+- [nox](https://nox.thea.codes/) - Flexible test automation
+- [ruff](https://github.com/astral-sh/ruff) - Fast Python linter and formatter
+- [pytest](https://pytest.org/) - Testing framework
+- [CodSpeed](https://codspeed.io/) - Continuous performance monitoring
+
+### Benchmarking Tools
+- [hyperfine](https://github.com/sharkdp/hyperfine) - Command-line benchmarking tool
+- [pytest-benchmark](https://pytest-benchmark.readthedocs.io/) - Python benchmarking plugin
 
 ## License
 

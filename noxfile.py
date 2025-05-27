@@ -1,229 +1,378 @@
-# Import built-in modules
-import os
-import platform
-import sys
+"""Nox configuration for py-eacopy development tasks.
 
-# Import third-party modules
+This file defines development tasks using nox sessions that work with
+the new dependency-groups format and uv package manager.
+"""
+
+import os
+from pathlib import Path
+
 import nox
 
+# Configure nox to use uv for faster dependency resolution
+nox.options.default_venv_backend = "uv"
 
-@nox.session
+# Python versions to test against
+PYTHON_VERSIONS = ["3.9", "3.10", "3.11", "3.12"]
+DEFAULT_PYTHON = "3.11"
+
+
+def install_with_groups(session, *groups):
+    """Install dependencies using uv with dependency groups."""
+    if groups:
+        for group in groups:
+            session.run("uv", "sync", "--group", group, external=True)
+    else:
+        session.run("uv", "sync", external=True)
+
+
+@nox.session(python=DEFAULT_PYTHON)
 def lint(session):
-    """Run linting checks."""
-    session.install("ruff", "mypy", "isort")
-    session.run("mypy", "--install-types", "--non-interactive")
+    """Run linting checks using ruff and mypy."""
+    install_with_groups(session, "linting")
+
+    session.log("Running ruff checks...")
     session.run("ruff", "check", ".")
+
+    session.log("Running ruff format check...")
     session.run("ruff", "format", "--check", ".")
-    session.run("isort", "--check-only", ".")
-    session.run("mypy", "src/eacopy", "--strict")
+
+    session.log("Running mypy type checking...")
+    session.run("mypy", "--install-types", "--non-interactive")
+    session.run("mypy", "python/py_eacopy", "--strict")
 
 
-@nox.session
+@nox.session(python=DEFAULT_PYTHON)
 def lint_fix(session):
-    """Fix linting issues."""
-    session.install("ruff", "mypy", "isort")
+    """Fix linting issues automatically."""
+    install_with_groups(session, "linting")
+
+    session.log("Fixing ruff issues...")
     session.run("ruff", "check", "--fix", ".")
+
+    session.log("Formatting code with ruff...")
     session.run("ruff", "format", ".")
+
+    session.log("Fixing import order with isort...")
     session.run("isort", ".")
 
 
-@nox.session
-def pytest(session):
-    """Run tests."""
-    session.install("pytest", "pytest-cov")
-    session.install("-e", ".")
-    session.run("pytest", "tests/", "--cov=py_eacopy", "--cov-report=xml:coverage.xml", "--cov-report=term-missing")
+@nox.session(python=PYTHON_VERSIONS)
+def test(session):
+    """Run tests with pytest."""
+    install_with_groups(session, "testing")
+
+    # Build the project first
+    session.log("Building project with maturin...")
+    session.run("maturin", "develop", "--release")
+
+    session.log("Running tests...")
+    session.run(
+        "pytest",
+        "tests/",
+        "--cov=py_eacopy",
+        "--cov-report=xml:coverage.xml",
+        "--cov-report=term-missing",
+        "--cov-report=html:htmlcov",
+    )
 
 
-@nox.session
+@nox.session(python=DEFAULT_PYTHON)
 def benchmark(session):
     """Run performance benchmarks."""
-    session.install("pytest-benchmark", "memory-profiler", "psutil")
-    session.install("-e", ".")
-    session.run("pytest", "benchmarks/", "--benchmark-only", "--benchmark-sort=mean",
-                "--benchmark-json=benchmarks/results/benchmark.json")
+    install_with_groups(session, "testing")
+
+    # Build the project first
+    session.log("Building project with maturin...")
+    session.run("maturin", "develop", "--release")
+
+    # Ensure results directory exists
+    os.makedirs("benchmarks/results", exist_ok=True)
+
+    session.log("Running benchmarks...")
+    session.run(
+        "pytest",
+        "benchmarks/",
+        "--benchmark-only",
+        "--benchmark-sort=mean",
+        "--benchmark-json=benchmarks/results/benchmark.json",
+    )
 
 
-@nox.session
+@nox.session(python=DEFAULT_PYTHON)
 def benchmark_compare(session):
     """Run comparison benchmarks against standard tools."""
-    session.install("pytest-benchmark", "memory-profiler", "psutil")
-    session.install("-e", ".")
-    session.run("pytest", "benchmarks/test_comparison.py", "--benchmark-only", "--benchmark-sort=mean")
+    install_with_groups(session, "testing")
+
+    # Build the project first
+    session.log("Building project with maturin...")
+    session.run("maturin", "develop", "--release")
+
+    session.log("Running comparison benchmarks...")
+    session.run(
+        "pytest",
+        "benchmarks/test_comparison.py",
+        "--benchmark-only",
+        "--benchmark-sort=mean",
+    )
 
 
-@nox.session
+@nox.session(python=DEFAULT_PYTHON)
 def profile(session):
-    """Run performance profiling."""
-    session.install("py-spy", "memory-profiler")
-    session.install("-e", ".")
-    session.log("Use: py-spy record -o profile.svg -- python your_script.py")
-    session.log("Or run: python scripts/profile.py --help")
+    """Run performance profiling tools."""
+    install_with_groups(session, "testing")
+
+    # Build the project first
+    session.log("Building project with maturin...")
+    session.run("maturin", "develop", "--release")
+
+    session.log("Performance profiling tools available:")
+    session.log("  py-spy record -o profile.svg -- python your_script.py")
+    session.log("  memory_profiler: python -m memory_profiler your_script.py")
+    session.log("  cProfile: python -m cProfile -o profile.prof your_script.py")
 
 
-@nox.session
+@nox.session(python=DEFAULT_PYTHON)
 def codspeed(session):
     """Run CodSpeed benchmarks locally."""
-    session.install("pytest-codspeed")
-    session.install("-e", ".")
+    install_with_groups(session, "testing")
+
+    # Build the project first
+    session.log("Building project with maturin...")
+    session.run("maturin", "develop", "--release")
+
+    # Generate test data if needed
+    os.makedirs("benchmarks/data/test_files", exist_ok=True)
+    session.run("python", "benchmarks/data/generate_test_data.py",
+                "--output-dir", "benchmarks/data/test_files")
+
+    session.log("Running CodSpeed benchmarks...")
     session.run("pytest", "benchmarks/test_codspeed.py", "--codspeed")
 
 
-@nox.session
+@nox.session(python=DEFAULT_PYTHON)
 def codspeed_all(session):
     """Run all benchmarks with CodSpeed locally."""
-    session.install("pytest-codspeed", "memory-profiler", "psutil")
-    session.install("-e", ".")
+    install_with_groups(session, "testing")
+
+    # Build the project first
+    session.log("Building project with maturin...")
+    session.run("maturin", "develop", "--release")
+
+    # Generate test data if needed
+    os.makedirs("benchmarks/data/test_files", exist_ok=True)
+    session.run("python", "benchmarks/data/generate_test_data.py",
+                "--output-dir", "benchmarks/data/test_files")
+
+    session.log("Running all CodSpeed benchmarks...")
     session.run("pytest", "benchmarks/", "--codspeed", "-k", "not comparison")
 
 
-@nox.session
+@nox.session(python=DEFAULT_PYTHON)
 def docs(session):
     """Build documentation."""
-    session.install("-e", ".[docs]")
-    session.chdir("docs")
-    session.run("make", "html", external=True)
+    install_with_groups(session, "docs")
+
+    # Build the project first for API documentation
+    session.log("Building project with maturin...")
+    session.run("maturin", "develop", "--release")
+
+    session.log("Building documentation...")
+    with session.chdir("docs"):
+        session.run("make", "html", external=True)
 
 
-@nox.session
+@nox.session(python=DEFAULT_PYTHON)
 def docs_serve(session):
     """Build and serve documentation with live reloading."""
-    session.install("-e", ".[docs]")
-    session.install("sphinx-autobuild")
+    install_with_groups(session, "docs")
+
+    # Build the project first for API documentation
+    session.log("Building project with maturin...")
+    session.run("maturin", "develop", "--release")
+
+    session.log("Starting documentation server with live reloading...")
     session.run("sphinx-autobuild", "docs", "docs/_build/html", "--open-browser")
 
 
-@nox.session
+@nox.session(python=DEFAULT_PYTHON)
+def build(session):
+    """Build the project using maturin."""
+    install_with_groups(session, "build")
+
+    session.log("Building project with maturin...")
+    session.run("maturin", "build", "--release")
+
+    # List built wheels
+    dist_dir = Path("target/wheels")
+    if dist_dir.exists():
+        wheels = list(dist_dir.glob("*.whl"))
+        session.log(f"Built {len(wheels)} wheels:")
+        for wheel in wheels:
+            session.log(f"  - {wheel.name}")
+    else:
+        session.log("No wheels found in target/wheels")
+
+
+@nox.session(python=DEFAULT_PYTHON)
+def build_pgo(session):
+    """Build the project with Profile-Guided Optimization (PGO)."""
+    install_with_groups(session, "build", "testing")
+
+    session.log("Building PGO-optimized wheel...")
+
+    # Create a temporary directory for PGO data
+    pgo_dir = Path("pgo_data")
+    pgo_dir.mkdir(exist_ok=True)
+
+    try:
+        # Step 1: Build with profile generation
+        session.log("Step 1: Building with profile generation...")
+        env = {"RUSTFLAGS": f"-Cprofile-generate={pgo_dir.absolute()}"}
+        session.run("maturin", "build", "--release", env=env)
+
+        # Step 2: Install and run benchmarks to collect profile data
+        session.log("Step 2: Collecting profile data...")
+        wheels = list(Path("target/wheels").glob("*.whl"))
+        if wheels:
+            session.run("pip", "install", str(wheels[-1]), "--force-reinstall")
+
+            # Run some basic operations to collect profile data
+            session.run("python", "-c", """
+import py_eacopy
+import tempfile
+from pathlib import Path
+
+# Create test data and run copy operations
+with tempfile.TemporaryDirectory() as temp_dir:
+    temp_path = Path(temp_dir)
+    source_dir = temp_path / 'source'
+    dest_dir = temp_path / 'dest'
+    source_dir.mkdir()
+    dest_dir.mkdir()
+
+    # Create test files
+    for i in range(50):
+        test_file = source_dir / f'test_{i}.txt'
+        test_file.write_text(f'Test content {i}' * 100)
+
+    # Run copy operations
+    eacopy = py_eacopy.EACopy()
+    for i in range(20):
+        try:
+            eacopy.copy_file(
+                source_dir / f'test_{i}.txt',
+                dest_dir / f'test_{i}.txt'
+            )
+        except Exception:
+            continue
+
+print('Profile data collection completed')
+""")
+
+        # Step 3: Merge profile data and rebuild
+        session.log("Step 3: Merging profile data and rebuilding...")
+
+        # Use LLVM profdata tool
+        try:
+            # Try to find llvm-profdata
+            profdata_cmd = "llvm-profdata"
+
+            # Merge profile data
+            merged_profile = pgo_dir / "merged.profdata"
+            session.run(
+                profdata_cmd, "merge",
+                "-o", str(merged_profile),
+                *[str(f) for f in pgo_dir.glob("*.profraw")],
+                external=True
+            )
+
+            # Step 4: Build with profile use
+            session.log("Step 4: Building optimized version...")
+            env = {"RUSTFLAGS": f"-Cprofile-use={merged_profile.absolute()}"}
+            session.run("maturin", "build", "--release", env=env)
+
+        except Exception as e:
+            session.log(f"PGO optimization failed: {e}")
+            session.log("Falling back to regular build...")
+            session.run("maturin", "build", "--release")
+
+    finally:
+        # Clean up PGO data
+        import shutil
+        if pgo_dir.exists():
+            shutil.rmtree(pgo_dir)
+
+    # List built wheels
+    dist_dir = Path("target/wheels")
+    if dist_dir.exists():
+        wheels = list(dist_dir.glob("*.whl"))
+        session.log(f"Built {len(wheels)} PGO wheels:")
+        for wheel in wheels:
+            session.log(f"  - {wheel.name}")
+
+
+@nox.session(python=DEFAULT_PYTHON)
 def build_wheels(session):
-    """Build wheels for the current platform using cibuildwheel.
+    """Build wheels using cibuildwheel for multiple platforms."""
+    install_with_groups(session, "build")
 
-    This session builds wheels for the current Python version and platform
-    using cibuildwheel. Configuration is read from .cibuildwheel.toml.
-    """
-    # Install cibuildwheel and dependencies
-    session.log("Installing cibuildwheel and dependencies...")
-    session.install(
-        "cibuildwheel",
-        "wheel",
-        "setuptools>=42.0.0",
-        "setuptools_scm>=8.0.0",
-        "scikit-build-core>=0.5.0",
-        "pybind11>=2.10.0",
-        "cmake>=3.15.0",
-        "ninja",
-    )
+    session.log("Building wheels with cibuildwheel...")
+    session.run("cibuildwheel", "--output-dir", "wheelhouse")
 
-    # Determine current platform for cibuildwheel
-    system = platform.system().lower()
-    if system == "linux":
-        current_platform = "linux"
-    elif system == "darwin":
-        current_platform = "macos"
-    elif system == "windows":
-        current_platform = "windows"
-    else:
-        session.error(f"Unsupported platform: {system}")
-
-    # Set environment variables
-    env = {
-        "CIBW_BUILD_VERBOSITY": "3",
-        "CIBW_BUILD": f"cp{sys.version_info.major}{sys.version_info.minor}-*",
-    }
-
-    # Create output directory if it doesn't exist
-    os.makedirs("wheelhouse", exist_ok=True)
-
-    # On Windows, we need special handling
-    if current_platform == "windows":
-        session.log("Building wheels on Windows...")
-        try:
-            # Try using cibuildwheel first
-            session.run(
-                "python",
-                "-m",
-                "cibuildwheel",
-                "--platform",
-                current_platform,
-                "--output-dir",
-                "wheelhouse",
-                env=env,
-            )
-        except Exception as e:
-            session.log(f"cibuildwheel failed: {e}")
-            session.log("Falling back to pip wheel...")
-
-            # Try direct pip wheel as a fallback
-            session.run(
-                "pip",
-                "wheel",
-                ".",
-                "-w",
-                "wheelhouse",
-                "--no-deps",
-                "-v",
-            )
-    else:
-        # On other platforms, use cibuildwheel
-        session.log(f"Building wheels on {current_platform}...")
-        try:
-            session.run(
-                "python",
-                "-m",
-                "cibuildwheel",
-                "--platform",
-                current_platform,
-                "--output-dir",
-                "wheelhouse",
-                env=env,
-            )
-        except Exception as e:
-            session.log(f"cibuildwheel failed: {e}")
-            session.log("Falling back to pip wheel...")
-
-            # Try direct pip wheel as a fallback
-            session.run(
-                "pip",
-                "wheel",
-                ".",
-                "-w",
-                "wheelhouse",
-                "--no-deps",
-                "-v",
-            )
-
-    # List the built wheels
-    session.log("Built wheels:")
-    for wheel in os.listdir("wheelhouse"):
-        if wheel.endswith(".whl"):
-            session.log(f"  - {wheel}")
+    # List built wheels
+    wheelhouse = Path("wheelhouse")
+    if wheelhouse.exists():
+        wheels = list(wheelhouse.glob("*.whl"))
+        session.log(f"Built {len(wheels)} wheels:")
+        for wheel in wheels:
+            session.log(f"  - {wheel.name}")
 
 
-@nox.session
-def verify_wheels(session):
-    """Verify the built wheels."""
-    session.install("wheel", "setuptools")
+@nox.session(python=DEFAULT_PYTHON)
+def verify_build(session):
+    """Verify the built wheels work correctly."""
+    # Look for wheels in both possible locations
+    wheel_dirs = [Path("target/wheels"), Path("wheelhouse"), Path("dist")]
+    wheels = []
 
-    # Check if wheelhouse directory exists
-    if not os.path.exists("wheelhouse"):
-        session.error("No wheelhouse directory found. Run build_wheels first.")
+    for wheel_dir in wheel_dirs:
+        if wheel_dir.exists():
+            wheels.extend(wheel_dir.glob("*.whl"))
 
-    # List and verify wheels
-    wheels = [f for f in os.listdir("wheelhouse") if f.endswith(".whl")]
     if not wheels:
-        session.error("No wheels found in wheelhouse directory.")
+        session.error("No wheels found. Run 'build' or 'build_wheels' first.")
 
-    session.log(f"Found {len(wheels)} wheels:")
-    for wheel in wheels:
-        session.log(f"  - {wheel}")
+    # Test the most recent wheel
+    latest_wheel = max(wheels, key=lambda p: p.stat().st_mtime)
+    session.log(f"Testing wheel: {latest_wheel.name}")
 
-        # Try to install the wheel
-        try:
-            with session.chdir("wheelhouse"):
-                session.run("pip", "install", wheel, "--force-reinstall")
-            session.log(f"Successfully installed {wheel}")
-        except Exception as e:
-            session.error(f"Failed to install {wheel}: {e}")
+    # Install the wheel
+    session.run("pip", "install", str(latest_wheel), "--force-reinstall")
 
-    # Try to import the package
-    session.run("python", "-c", "import eacopy; print(f'eacopy version: {eacopy.__version__}')")
-    session.log("All wheels verified successfully!")
+    # Test basic functionality
+    session.run("python", "-c", """
+import py_eacopy
+import tempfile
+from pathlib import Path
+
+print(f'py_eacopy imported successfully')
+
+# Test basic functionality
+with tempfile.TemporaryDirectory() as temp_dir:
+    temp_path = Path(temp_dir)
+    source_file = temp_path / 'test.txt'
+    dest_file = temp_path / 'test_copy.txt'
+
+    source_file.write_text('Hello, World!')
+
+    eacopy = py_eacopy.EACopy()
+    eacopy.copy_file(source_file, dest_file)
+
+    if dest_file.exists() and dest_file.read_text() == 'Hello, World!':
+        print('✅ Basic copy functionality works!')
+    else:
+        raise RuntimeError('❌ Basic copy functionality failed!')
+""")
+
+    session.log("✅ Wheel verification completed successfully!")

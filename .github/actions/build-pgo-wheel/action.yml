@@ -1,0 +1,158 @@
+name: Build PGO wheel
+description: Builds a PGO-optimized wheel for py-eacopy
+
+inputs:
+  interpreter:
+    description: 'Python interpreter to build the wheel for'
+    required: true
+  rust-toolchain:
+    description: 'Rust toolchain to use'
+    required: true
+    default: 'stable'
+  target:
+    description: 'Rust target to build for'
+    required: false
+
+outputs:
+  wheel:
+    description: 'Path to the built wheel'
+    value: ${{ steps.find_wheel.outputs.path }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Prepare profiling directory
+      shell: bash
+      run: |
+        # Create profiling directory with proper permissions
+        mkdir -p ${{ github.workspace }}/profdata
+        echo "Created profiling directory: ${{ github.workspace }}/profdata"
+    
+    - name: Build initial wheel for profiling
+      uses: PyO3/maturin-action@v1
+      with:
+        manylinux: auto
+        args: >
+          --release
+          --out pgo-wheel
+          --interpreter ${{ inputs.interpreter }}
+          ${{ inputs.target && format('--target {0}', inputs.target) || '' }}
+        rust-toolchain: ${{ inputs.rust-toolchain }}
+        docker-options: -e CI
+      env:
+        RUSTFLAGS: '-Cprofile-generate=${{ github.workspace }}/profdata'
+    
+    - name: Detect Rust host
+      shell: bash
+      run: |
+        RUST_HOST=$(rustc -Vv | grep host | cut -d ' ' -f 2)
+        echo "RUST_HOST=$RUST_HOST" >> "$GITHUB_ENV"
+        echo "Detected Rust host: $RUST_HOST"
+    
+    - name: Install wheel and generate PGO data
+      shell: bash
+      run: |
+        echo "Installing wheel for profiling..."
+        uv sync --group testing
+        uv pip install py-eacopy --no-index --no-deps --find-links pgo-wheel --force-reinstall
+        
+        echo "Running benchmarks to collect profile data..."
+        # Run basic functionality tests to collect profile data
+        uv run python -c "
+        import py_eacopy
+        import tempfile
+        import os
+        from pathlib import Path
+        
+        # Create test data
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            source_dir = temp_path / 'source'
+            dest_dir = temp_path / 'dest'
+            source_dir.mkdir()
+            dest_dir.mkdir()
+            
+            # Create test files
+            for i in range(100):
+                test_file = source_dir / f'test_{i}.txt'
+                test_file.write_text(f'Test content {i}' * 1000)
+            
+            # Run copy operations to generate profile data
+            eacopy = py_eacopy.EACopy()
+            for i in range(10):
+                try:
+                    eacopy.copy_file(
+                        source_dir / f'test_{i}.txt',
+                        dest_dir / f'test_{i}.txt'
+                    )
+                except Exception as e:
+                    print(f'Copy operation {i} failed: {e}')
+                    continue
+        
+        print('Profile data collection completed')
+        "
+        
+        # Also run pytest benchmarks if they exist
+        if [ -d "benchmarks" ]; then
+          echo "Running pytest benchmarks..."
+          uv run pytest benchmarks/ --benchmark-only --benchmark-sort=mean || echo "Benchmark tests failed, continuing..."
+        fi
+    
+    - name: Setup LLVM tools
+      shell: bash
+      run: |
+        # Get LLVM profdata tool path
+        LLVM_PROFDATA=$(rustup run ${{ inputs.rust-toolchain }} bash -c 'echo $RUSTUP_HOME/toolchains/$RUSTUP_TOOLCHAIN/lib/rustlib/${{ env.RUST_HOST }}/bin/llvm-profdata')
+        echo "LLVM_PROFDATA=$LLVM_PROFDATA" >> "$GITHUB_ENV"
+        echo "LLVM profdata tool: $LLVM_PROFDATA"
+        
+        # Verify tool exists
+        if [ -f "$LLVM_PROFDATA" ]; then
+          echo "LLVM profdata tool found"
+        else
+          echo "Warning: LLVM profdata tool not found at expected location"
+          # Try alternative locations
+          LLVM_PROFDATA=$(find $RUSTUP_HOME -name "llvm-profdata*" -type f | head -1)
+          if [ -n "$LLVM_PROFDATA" ]; then
+            echo "Found alternative LLVM profdata: $LLVM_PROFDATA"
+            echo "LLVM_PROFDATA=$LLVM_PROFDATA" >> "$GITHUB_ENV"
+          fi
+        fi
+    
+    - name: Merge PGO data
+      shell: bash
+      run: |
+        echo "Merging profile data..."
+        ls -la ${{ github.workspace }}/profdata/
+        
+        if [ -n "$(ls -A ${{ github.workspace }}/profdata/)" ]; then
+          ${{ env.LLVM_PROFDATA }} merge -o ${{ github.workspace }}/merged.profdata ${{ github.workspace }}/profdata/*
+          echo "Profile data merged successfully"
+          ls -la ${{ github.workspace }}/merged.profdata
+        else
+          echo "Warning: No profile data found, creating empty profile"
+          touch ${{ github.workspace }}/merged.profdata
+        fi
+    
+    - name: Build PGO-optimized wheel
+      uses: PyO3/maturin-action@v1
+      with:
+        manylinux: auto
+        args: >
+          --release
+          --out dist
+          --interpreter ${{ inputs.interpreter }}
+          ${{ inputs.target && format('--target {0}', inputs.target) || '' }}
+        rust-toolchain: ${{ inputs.rust-toolchain }}
+        docker-options: -e CI
+      env:
+        RUSTFLAGS: '-Cprofile-use=${{ github.workspace }}/merged.profdata'
+    
+    - name: Find built wheel
+      id: find_wheel
+      shell: bash
+      run: |
+        wheel_path=$(ls dist/*.whl | head -1)
+        echo "path=$wheel_path" >> "$GITHUB_OUTPUT"
+        echo "Built PGO wheel: $wheel_path"
+        ls -la dist/

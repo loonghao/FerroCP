@@ -1,5 +1,5 @@
 [build-system]
-requires = ["maturin>=1.0,<2.0"]
+requires = ["maturin>=1,<2", "typing-extensions>=4.6.0,!=4.7.0"]
 build-backend = "maturin"
 
 [project]
@@ -7,13 +7,14 @@ name = "py-eacopy"
 dynamic = ["version"]
 description = "Python bindings for EACopy, a high-performance file copy tool"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = {text = "BSD-3-Clause"}
 authors = [
     {name = "Long Hao", email = "hal.long@outlook.com"},
 ]
 dependencies = [
     "click>=8.0.0",
+    "typing-extensions>=4.6.0,!=4.7.0",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -24,7 +25,6 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
     "Operating System :: MacOS",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -32,23 +32,28 @@ classifiers = [
     "Topic :: System :: Filesystems",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "nox>=2023.4.22",
-]
-test = [
+[dependency-groups]
+dev = ["maturin"]
+testing = [
+    { include-group = "dev" },
     "pytest>=6.0.0",
     "pytest-cov>=2.12.0",
-]
-benchmark = [
     "pytest-benchmark>=4.0",
     "pytest-codspeed>=2.2.0",
     "memory-profiler>=0.60",
     "py-spy>=0.3",
-    "hyperfine>=1.15",
     "psutil>=5.9",
+    "nox>=2023.4.22",
+]
+linting = [
+    { include-group = "dev" },
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+    "isort>=5.12.0",
+    "autoflake>=2.0.0",
 ]
 docs = [
+    { include-group = "dev" },
     "sphinx>=7.0.0",
     "pydata-sphinx-theme>=0.14.1",
     "sphinx-autobuild>=2021.3.14",
@@ -59,16 +64,18 @@ docs = [
     "myst-nb>=1.0.0",
     "tomli>=2.0.0",
 ]
-lint = [
-    "black<25.1.1",
-    "ruff<0.0.270",
-    "isort<6.0.2",
-    "autoflake>=2.0.0",
-]
 build = [
+    { include-group = "dev" },
     "build>=0.10.0",
     "twine>=4.0.2",
     "cibuildwheel>=2.16.0",
+]
+all = [
+    { include-group = "dev" },
+    { include-group = "testing" },
+    { include-group = "linting" },
+    { include-group = "docs" },
+    { include-group = "build" },
 ]
 
 [project.urls]
@@ -185,62 +192,13 @@ force_single_line = true
 sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
 known_first_party = ["py_eacopy"]
 
-[tool.nox]
-sessions = ["lint", "pytest"]
-python = ["3.8", "3.9", "3.10", "3.11", "3.12"]
-reuse_venv = true
-
-[tool.nox.session.lint]
-deps = ["ruff", "mypy", "isort"]
-commands = [
-    "mypy --install-types --non-interactive",
-    "ruff check .",
-    "ruff format --check .",
-    "isort --check-only .",
-    "mypy src/eacopy --strict"
-]
-
-[tool.nox.session.lint_fix]
-deps = ["ruff", "mypy", "isort"]
-commands = [
-    "ruff check --fix .",
-    "ruff format .",
-    "isort ."
-]
-
-[tool.nox.session.pytest]
-deps = ["pytest", "pytest-cov"]
-commands = [
-    "pytest tests/ --cov=py_eacopy --cov-report=xml:coverage.xml --cov-report=term-missing"
-]
-
-[tool.nox.session.benchmark]
-deps = ["pytest-benchmark", "memory-profiler", "psutil"]
-commands = [
-    "pytest benchmarks/ --benchmark-only --benchmark-sort=mean --benchmark-json=benchmarks/results/benchmark.json"
-]
-
-[tool.nox.session.benchmark_compare]
-deps = ["pytest-benchmark", "memory-profiler", "psutil"]
-commands = [
-    "pytest benchmarks/test_comparison.py --benchmark-only --benchmark-sort=mean"
-]
-
-[tool.nox.session.profile]
-deps = ["py-spy", "memory-profiler"]
-commands = [
-    "python -c \"print('Use: py-spy record -o profile.svg -- python your_script.py')\""
-]
-
 [tool.maturin]
-# Python module name
 python-source = "python"
 module-name = "py_eacopy._py_eacopy_binding"
-# Build features
-features = ["python"]
+bindings = "pyo3"
+features = ["pyo3/extension-module"]
 # Compatibility settings
 abi3 = true
-# Minimum Python version for abi3
 abi3-py38 = true
 # Strip debug symbols in release
 strip = true
@@ -253,4 +211,4 @@ version_variable = [
 branch = "main"
 upload_to_pypi = false
 upload_to_release = true
-build_command = "pip install scikit-build-core && python -m build"
+build_command = "maturin build --release"

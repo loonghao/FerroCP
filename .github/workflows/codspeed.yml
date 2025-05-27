@@ -10,31 +10,53 @@ on:
   pull_request:
   # Allow manual triggering for backtest analysis
   workflow_dispatch:
+    inputs:
+      benchmark_type:
+        description: 'Type of benchmarks to run'
+        required: false
+        default: 'standard'
+        type: choice
+        options:
+          - standard
+          - comprehensive
+          - parallel
+
+env:
+  # Performance optimization flags
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  # CodSpeed configuration
+  CODSPEED_ENABLE_PGO: true
+  CODSPEED_REGRESSION_THRESHOLD: 5
 
 jobs:
   benchmarks:
     name: Run CodSpeed benchmarks
     runs-on: ubuntu-latest
-    
+    # Run standard benchmarks by default, or when explicitly requested
+    if: github.event_name != 'workflow_dispatch' || inputs.benchmark_type == 'standard' || inputs.benchmark_type == 'comprehensive'
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         submodules: recursive
-    
+
     - name: Install uv
       uses: astral-sh/setup-uv@v5
-    
+      with:
+        enable-cache: true
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: "3.11"
-    
+
     - name: Set up Rust
       uses: dtolnay/rust-toolchain@stable
       with:
         components: rustfmt, clippy
-    
+
     - name: Cache Rust dependencies
       uses: actions/cache@v4
       with:
@@ -42,104 +64,190 @@ jobs:
           ~/.cargo/registry
           ~/.cargo/git
           target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-cargo-pgo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: |
+          ${{ runner.os }}-cargo-pgo-
           ${{ runner.os }}-cargo-
-    
+
     - name: Install dependencies
       run: |
-        uv sync --all-extras --dev
-    
-    - name: Build project
+        uv sync --group testing
+
+    - name: Build PGO-optimized project
+      uses: ./.github/actions/build-pgo-wheel
+      with:
+        interpreter: python3.11
+        rust-toolchain: stable
+
+    - name: Install PGO wheel
       run: |
-        uv run maturin develop --release
-    
+        wheel_file=$(ls dist/*.whl | head -1)
+        if [ -n "$wheel_file" ]; then
+          echo "Installing PGO wheel: $wheel_file"
+          uv pip install "$wheel_file" --force-reinstall
+        else
+          echo "No PGO wheel found, falling back to regular build"
+          uv run maturin develop --release
+        fi
+
     - name: Verify installation
       run: |
-        uv run python -c "import py_eacopy; print(f'py_eacopy imported successfully')"
-    
+        uv run python -c "import py_eacopy; print(f'PGO-optimized py_eacopy imported successfully')"
+
+    - name: Generate test data for benchmarks
+      run: |
+        mkdir -p benchmarks/data/test_files
+        uv run python benchmarks/data/generate_test_data.py --output-dir benchmarks/data/test_files
+
     - name: Run CodSpeed benchmarks
       uses: CodSpeedHQ/action@v3
       with:
-        run: uv run pytest benchmarks/test_codspeed.py --codspeed
+        run: uv run pytest benchmarks/test_codspeed.py --codspeed --benchmark-sort=mean
         token: ${{ secrets.CODSPEED_TOKEN }}
+      env:
+        # Enable PGO-specific optimizations
+        CODSPEED_PGO_ENABLED: true
+        # Set performance regression threshold (5% by default)
+        CODSPEED_REGRESSION_THRESHOLD: ${{ env.CODSPEED_REGRESSION_THRESHOLD }}
+        # Additional Rust performance flags
+        RUSTFLAGS: "-C target-cpu=native"
 
   # Additional job for comprehensive benchmarks (optional)
   comprehensive-benchmarks:
     name: Run comprehensive benchmarks
     runs-on: ubuntu-latest
-    # Only run on main branch pushes to avoid overwhelming CI
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/rust-native-implementation'
-    
+    # Run on main branch pushes or when explicitly requested
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/rust-native-implementation') || (github.event_name == 'workflow_dispatch' && inputs.benchmark_type == 'comprehensive')
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         submodules: recursive
-    
+
     - name: Install uv
       uses: astral-sh/setup-uv@v5
-    
+      with:
+        enable-cache: true
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: "3.11"
-    
+
     - name: Set up Rust
       uses: dtolnay/rust-toolchain@stable
-    
+      with:
+        components: rustfmt, clippy
+
     - name: Install dependencies
       run: |
-        uv sync --all-extras --dev
-    
-    - name: Build project
+        uv sync --group testing
+
+    - name: Build PGO-optimized project
+      uses: ./.github/actions/build-pgo-wheel
+      with:
+        interpreter: python3.11
+        rust-toolchain: stable
+
+    - name: Install PGO wheel
       run: |
-        uv run maturin develop --release
-    
+        wheel_file=$(ls dist/*.whl | head -1)
+        if [ -n "$wheel_file" ]; then
+          echo "Installing PGO wheel: $wheel_file"
+          uv pip install "$wheel_file" --force-reinstall
+        else
+          echo "No PGO wheel found, falling back to regular build"
+          uv run maturin develop --release
+        fi
+
+    - name: Generate test data for comprehensive benchmarks
+      run: |
+        mkdir -p benchmarks/data/test_files
+        uv run python benchmarks/data/generate_test_data.py --output-dir benchmarks/data/test_files
+
     - name: Run all benchmarks for CodSpeed
       uses: CodSpeedHQ/action@v3
       with:
-        run: uv run pytest benchmarks/ --codspeed -k "not comparison"
+        run: uv run pytest benchmarks/ --codspeed -k "not comparison" --benchmark-sort=mean --benchmark-min-rounds=3
         token: ${{ secrets.CODSPEED_TOKEN }}
+      env:
+        # Enable PGO-specific optimizations
+        CODSPEED_PGO_ENABLED: true
+        # More strict threshold for comprehensive benchmarks
+        CODSPEED_REGRESSION_THRESHOLD: 3
+        # Additional Rust performance flags
+        RUSTFLAGS: "-C target-cpu=native -C opt-level=3"
 
   # Parallel benchmarks for faster execution (if needed)
   parallel-benchmarks:
     name: Run parallel benchmarks
     runs-on: ubuntu-latest
-    # Only run on workflow_dispatch for testing parallel execution
-    if: github.event_name == 'workflow_dispatch'
+    # Only run when explicitly requested
+    if: github.event_name == 'workflow_dispatch' && inputs.benchmark_type == 'parallel'
     strategy:
       matrix:
         shard: [1, 2, 3, 4]
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         submodules: recursive
-    
+
     - name: Install uv
       uses: astral-sh/setup-uv@v5
-    
+      with:
+        enable-cache: true
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: "3.11"
-    
+
     - name: Set up Rust
       uses: dtolnay/rust-toolchain@stable
-    
+      with:
+        components: rustfmt, clippy
+
     - name: Install dependencies
       run: |
-        uv sync --all-extras --dev
-        uv add --dev pytest-test-groups
-    
-    - name: Build project
+        uv sync --group testing
+        uv add pytest-test-groups
+
+    - name: Build PGO-optimized project
+      uses: ./.github/actions/build-pgo-wheel
+      with:
+        interpreter: python3.11
+        rust-toolchain: stable
+
+    - name: Install PGO wheel
       run: |
-        uv run maturin develop --release
-    
+        wheel_file=$(ls dist/*.whl | head -1)
+        if [ -n "$wheel_file" ]; then
+          echo "Installing PGO wheel: $wheel_file"
+          uv pip install "$wheel_file" --force-reinstall
+        else
+          echo "No PGO wheel found, falling back to regular build"
+          uv run maturin develop --release
+        fi
+
+    - name: Generate test data for parallel benchmarks
+      run: |
+        mkdir -p benchmarks/data/test_files
+        uv run python benchmarks/data/generate_test_data.py --output-dir benchmarks/data/test_files
+
     - name: Run sharded benchmarks
       uses: CodSpeedHQ/action@v3
       with:
-        run: uv run pytest benchmarks/test_codspeed.py --codspeed --test-group=${{ matrix.shard }} --test-group-count=4
+        run: uv run pytest benchmarks/test_codspeed.py --codspeed --test-group=${{ matrix.shard }} --test-group-count=4 --benchmark-sort=mean
         token: ${{ secrets.CODSPEED_TOKEN }}
+      env:
+        # Enable PGO-specific optimizations
+        CODSPEED_PGO_ENABLED: true
+        # Standard threshold for parallel benchmarks
+        CODSPEED_REGRESSION_THRESHOLD: ${{ env.CODSPEED_REGRESSION_THRESHOLD }}
+        # Additional Rust performance flags
+        RUSTFLAGS: "-C target-cpu=native"
+        # Shard identifier for CodSpeed
+        CODSPEED_SHARD: ${{ matrix.shard }}
