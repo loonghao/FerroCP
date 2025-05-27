@@ -116,7 +116,7 @@ exclude_lines = [
 ]
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.9"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
@@ -134,8 +134,8 @@ disable_error_code = ["type-arg", "misc", "no-any-return"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py38"
-src = ["src", "tests"]
+target-version = "py39"
+src = ["python", "tests"]
 
 [tool.ruff.lint]
 select = [
@@ -148,7 +148,7 @@ select = [
 ignore = ["D203", "D213", "ARG001", "D107", "D105", "D102", "F811", "I001"]
 
 [tool.ruff.lint.per-file-ignores]
-"__init__.py" = ["F401"]
+"*/__init__.py" = ["F401"]
 "tests/*.py" = ["ARG001", "F401", "F811", "D107", "D105", "D102", "E501", "I001"]
 "nox_actions/*.py" = ["D100", "D103", "D104", "E402"]
 "noxfile.py" = ["D100", "E402", "D401", "D400"]
@@ -162,7 +162,7 @@ line-ending = "auto"
 
 [tool.black]
 line-length = 120
-target-version = ["py38"]
+target-version = ["py39"]
 include = '\.pyi?$'
 exclude = '''
 /(
@@ -199,7 +199,7 @@ bindings = "pyo3"
 features = ["python", "pyo3/extension-module"]
 # Compatibility settings
 abi3 = true
-abi3-py38 = true
+abi3-py39 = true
 # Strip debug symbols in release
 strip = true
 

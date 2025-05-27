@@ -2,7 +2,6 @@
 """Generate test data for benchmarks."""
 
 import argparse
-import os
 import random
 from pathlib import Path
 

@@ -1,11 +1,10 @@
 """Core performance benchmarks for py-eacopy."""
 
 import shutil
-from pathlib import Path
 
 import pytest
 import py_eacopy
-from .utils import PerformanceMonitor, create_test_file, format_throughput
+from .utils import PerformanceMonitor, create_test_file
 
 
 class TestFileCopyPerformance:

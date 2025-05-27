@@ -1,6 +1,5 @@
 """Command-line interface for py-eacopy."""
 
-import os
 import sys
 import time
 from pathlib import Path
@@ -96,7 +95,7 @@ def copy(
         duration = end_time - start_time
         speed_mbps = (stats.bytes_copied / (1024 * 1024)) / duration if duration > 0 else 0
 
-        click.echo(f"✓ Copy completed successfully!")
+        click.echo("✓ Copy completed successfully!")
         click.echo(f"  Files copied: {stats.files_copied}")
         click.echo(f"  Bytes copied: {stats.bytes_copied:,}")
         click.echo(f"  Duration: {duration:.2f}s")

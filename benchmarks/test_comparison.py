@@ -3,11 +3,10 @@
 import shutil
 import subprocess
 import sys
-from pathlib import Path
 
 import pytest
 import py_eacopy
-from .utils import create_test_file, create_test_directory, measure_copy_performance
+from .utils import create_test_file, create_test_directory
 
 
 class TestVsStandardLibrary:

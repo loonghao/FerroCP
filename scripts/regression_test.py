@@ -5,7 +5,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 
 import subprocess
 
@@ -105,7 +105,7 @@ class RegressionAnalyzer:
         regressions = sum(1 for c in comparisons.values() if c['is_regression'])
         improvements = sum(1 for c in comparisons.values() if c['is_improvement'])
         
-        report.append(f"## Summary")
+        report.append("## Summary")
         report.append(f"- Total benchmarks: {total}")
         report.append(f"- Regressions: {regressions}")
         report.append(f"- Improvements: {improvements}")
@@ -248,7 +248,7 @@ def main():
         regressions = sum(1 for c in comparisons.values() if c['is_regression'])
         improvements = sum(1 for c in comparisons.values() if c['is_improvement'])
         
-        print(f"\nSummary:")
+        print("\nSummary:")
         print(f"  Regressions: {regressions}")
         print(f"  Improvements: {improvements}")
         print(f"  Total benchmarks: {len(comparisons)}")
@@ -261,7 +261,7 @@ def main():
         if regressions > 0:
             print(f"\n⚠️  Found {regressions} performance regressions")
         else:
-            print(f"\n✅ No performance regressions found")
+            print("\n✅ No performance regressions found")
         
         return 0
     

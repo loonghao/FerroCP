@@ -1,11 +1,10 @@
 """Utility functions for benchmarks."""
 
-import os
 import shutil
 import subprocess
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 
 import psutil
 
@@ -67,6 +66,7 @@ def generate_test_data(size: int, pattern: str = "mixed") -> bytes:
     
     Returns:
         Generated test data
+
     """
     if pattern == "zeros":
         return b"\x00" * size
@@ -115,6 +115,7 @@ def create_test_directory(
     
     Returns:
         Path to created directory
+
     """
     path.mkdir(parents=True, exist_ok=True)
     
@@ -151,6 +152,7 @@ def measure_copy_performance(
     
     Returns:
         Performance metrics
+
     """
     total_size = get_path_size(source)
     times = []
@@ -212,6 +214,7 @@ def run_command_benchmark(command: List[str], iterations: int = 3) -> Dict[str, 
     
     Returns:
         Performance metrics
+
     """
     times = []
     
