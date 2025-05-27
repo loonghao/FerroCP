@@ -408,8 +408,33 @@ impl FileOperations for EACopy {
             fs::create_dir_all(parent).await?;
         }
 
+        // Check if we should skip this file
+        if self.should_skip_file(source, destination).await? {
+            let mut stats = CopyStats {
+                files_copied: 0,
+                bytes_copied: 0,
+                directories_created: 0,
+                files_skipped: 1,
+                errors: 0,
+                duration: start_time.elapsed(),
+                avg_speed: 0.0,
+                peak_speed: 0.0,
+                concurrent_operations: 1,
+                total_files_processed: 1,
+                compression_ratio: None,
+                zerocopy_used: 0,
+                zerocopy_bytes: 0,
+                source_device_type: None,
+                dest_device_type: None,
+                small_files_batched: 0,
+                batch_operations: 0,
+            };
+            stats.calculate_speed();
+            return Ok(stats);
+        }
+
         // Check if destination exists and handle overwrite
-        if self.exists(destination).await {
+        if self.exists(destination).await && !self.config.skip_existing {
             return Err(Error::other(format!("Destination {:?} already exists", destination)));
         }
 
@@ -503,8 +528,33 @@ impl FileOperations for EACopy {
             fs::create_dir_all(parent).await?;
         }
 
+        // Check if we should skip this file
+        if self.should_skip_file(source, destination).await? {
+            let mut stats = CopyStats {
+                files_copied: 0,
+                bytes_copied: 0,
+                directories_created: 0,
+                files_skipped: 1,
+                errors: 0,
+                duration: start_time.elapsed(),
+                avg_speed: 0.0,
+                peak_speed: 0.0,
+                concurrent_operations: 1,
+                total_files_processed: 1,
+                compression_ratio: None,
+                zerocopy_used: 0,
+                zerocopy_bytes: 0,
+                source_device_type: None,
+                dest_device_type: None,
+                small_files_batched: 0,
+                batch_operations: 0,
+            };
+            stats.calculate_speed();
+            return Ok(stats);
+        }
+
         // Check if destination exists and handle overwrite
-        if self.exists(destination).await {
+        if self.exists(destination).await && !self.config.skip_existing {
             return Err(Error::other(format!("Destination {:?} already exists", destination)));
         }
 
@@ -627,9 +677,42 @@ impl FileOperations for EACopy {
     async fn metadata<P: AsRef<Path>>(&self, path: P) -> Result<std::fs::Metadata> {
         fs::metadata(path).await.map_err(Error::from)
     }
+
+
 }
 
 impl EACopy {
+    /// Check if we should skip copying a file based on skip_existing configuration
+    async fn should_skip_file<P: AsRef<Path>, Q: AsRef<Path>>(
+        &self,
+        source: P,
+        destination: Q,
+    ) -> Result<bool> {
+        if !self.config.skip_existing {
+            return Ok(false);
+        }
+
+        let dest_path = destination.as_ref();
+        if !self.exists(dest_path).await {
+            return Ok(false);
+        }
+
+        let source_metadata = self.metadata(source).await?;
+        let dest_metadata = self.metadata(dest_path).await?;
+
+        // Skip if destination is newer or same size
+        let source_modified = source_metadata.modified().unwrap_or(std::time::UNIX_EPOCH);
+        let dest_modified = dest_metadata.modified().unwrap_or(std::time::UNIX_EPOCH);
+
+        let should_skip = dest_modified >= source_modified && dest_metadata.len() == source_metadata.len();
+
+        if should_skip {
+            debug!("Skipping file {:?} - destination is newer or same size", dest_path);
+        }
+
+        Ok(should_skip)
+    }
+
     /// Copy multiple files concurrently
     pub async fn copy_files_batch<P: AsRef<Path> + Send, Q: AsRef<Path> + Send>(
         &self,
