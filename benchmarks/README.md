@@ -4,30 +4,47 @@ This directory contains comprehensive performance benchmarks for py-eacopy, incl
 
 ## Quick Start
 
+### Prerequisites
+
+Install **hyperfine** (command-line benchmarking tool):
+
+```bash
+# Ubuntu/Debian
+sudo apt install hyperfine
+
+# macOS
+brew install hyperfine
+
+# Windows (using Chocolatey)
+choco install hyperfine
+
+# Or download from: https://github.com/sharkdp/hyperfine/releases
+```
+
 ### Install Dependencies
 
 ```bash
-# Install benchmark dependencies
-pip install -e ".[benchmark]"
+# Install benchmark dependencies using uv (recommended)
+uv sync --group testing
 
-# Or using uv
-uv pip install -e ".[benchmark]"
+# Or using pip
+pip install -e ".[testing]"
 ```
 
 ### Run Basic Benchmarks
 
 ```bash
 # Run all benchmarks
-uvx nox -s benchmark
+uv run nox -s benchmark
 
 # Run comparison benchmarks only
-uvx nox -s benchmark_compare
+uv run nox -s benchmark_compare
 
 # Run CodSpeed benchmarks
-uvx nox -s codspeed
+uv run nox -s codspeed
 
 # Run specific benchmark groups
-pytest benchmarks/ --benchmark-only --benchmark-group=file_copy_sizes
+uv run pytest benchmarks/ --benchmark-only --benchmark-group=file_copy_sizes
 ```
 
 ## Benchmark Categories
@@ -58,13 +75,13 @@ Optimized benchmarks for continuous performance monitoring:
 
 ```bash
 # Run CodSpeed benchmarks locally
-make codspeed
+uv run nox -s codspeed
 
 # Run all CodSpeed benchmarks
-make codspeed-all
+uv run nox -s codspeed_all
 
 # Test CodSpeed integration
-pytest benchmarks/test_codspeed.py --codspeed -v
+uv run pytest benchmarks/test_codspeed.py --codspeed -v
 ```
 
 ### 4. Rust Benchmarks (`../benches/copy_benchmarks.rs`)
@@ -85,23 +102,19 @@ cargo bench -- --output-format html
 
 ```bash
 # Generate test files for benchmarks
-python benchmarks/data/generate_test_data.py --output-dir benchmarks/data/test_files
+uv run python benchmarks/data/generate_test_data.py --output-dir benchmarks/data/test_files
 ```
 
 ### Performance Profiling
 
 ```bash
-# Profile with py-spy (recommended)
-python scripts/profile.py --test-type file_copy --profiler py-spy
+# Use nox profiling session (recommended)
+uv run nox -s profile
 
-# Profile with cProfile
-python scripts/profile.py --test-type file_copy --profiler cprofile
-
-# Memory profiling
-python scripts/profile.py --test-type file_copy --profiler memory
-
-# Profile all aspects
-python scripts/profile.py --test-type file_copy --profiler all
+# Or run profiling tools directly:
+# py-spy record -o profile.svg -- python your_script.py
+# memory_profiler: python -m memory_profiler your_script.py
+# cProfile: python -m cProfile -o profile.prof your_script.py
 ```
 
 ### Flamegraph Generation
@@ -165,20 +178,20 @@ Benchmarks run automatically in CI to detect performance regressions:
 ```yaml
 # .github/workflows/benchmark.yml
 - name: Run benchmarks
-  run: uvx nox -s benchmark
+  run: uv run nox -s benchmark
 
 - name: Compare with baseline
-  run: pytest-benchmark compare baseline.json current.json
+  run: uv run pytest-benchmark compare baseline.json current.json
 ```
 
 ### Performance Regression Detection
 
 ```bash
 # Save baseline
-pytest benchmarks/ --benchmark-only --benchmark-save=baseline
+uv run pytest benchmarks/ --benchmark-only --benchmark-save=baseline
 
 # Compare against baseline
-pytest benchmarks/ --benchmark-only --benchmark-compare=baseline
+uv run pytest benchmarks/ --benchmark-only --benchmark-compare=baseline
 ```
 
 ## Optimization Guidelines
@@ -214,13 +227,13 @@ pytest benchmarks/ --benchmark-only --benchmark-compare=baseline
 
 ```bash
 # Enable debug logging
-RUST_LOG=debug python scripts/profile.py
+RUST_LOG=debug uv run nox -s profile
 
 # Use verbose benchmarks
-pytest benchmarks/ --benchmark-only -v
+uv run pytest benchmarks/ --benchmark-only -v
 
 # Check system resources
-python -c "import psutil; print(psutil.virtual_memory(), psutil.disk_usage('.'))"
+uv run python -c "import psutil; print(psutil.virtual_memory(), psutil.disk_usage('.'))"
 ```
 
 ## Contributing

@@ -3,20 +3,26 @@ include README.md
 include README_zh.md
 include CHANGELOG.md
 include pyproject.toml
-include CMakeLists.txt
+include Cargo.toml
+include Cargo.lock
 
-recursive-include src/eacopy *.py
-recursive-include src/binding *.cpp *.h
-recursive-include extern/EACopy/include *.h
+recursive-include src *.rs
+recursive-include python *.py
+recursive-include benches *.rs
+recursive-include examples *.rs
 
-recursive-include docs *.rst *.py
-recursive-include examples *.py
+recursive-include docs *.rst *.py *.md
+recursive-include tests *.py *.rs
 
 prune docs/_build
 prune docs/_static
 prune docs/_templates
 prune tests/__pycache__
-prune src/eacopy/__pycache__
+prune python/__pycache__
+prune benchmarks/__pycache__
+prune target
 prune .github
 prune .vscode
 prune .idea
+prune .nox
+prune htmlcov
