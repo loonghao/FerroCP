@@ -1,0 +1,145 @@
+name: CodSpeed Performance Monitoring
+
+on:
+  # Run on pushes to main branch
+  push:
+    branches:
+      - main
+      - rust-native-implementation
+  # Run on all pull requests
+  pull_request:
+  # Allow manual triggering for backtest analysis
+  workflow_dispatch:
+
+jobs:
+  benchmarks:
+    name: Run CodSpeed benchmarks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+    
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+    
+    - name: Cache Rust dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+    
+    - name: Install dependencies
+      run: |
+        uv sync --all-extras --dev
+    
+    - name: Build project
+      run: |
+        uv run maturin develop --release
+    
+    - name: Verify installation
+      run: |
+        uv run python -c "import py_eacopy; print(f'py_eacopy imported successfully')"
+    
+    - name: Run CodSpeed benchmarks
+      uses: CodSpeedHQ/action@v3
+      with:
+        run: uv run pytest benchmarks/test_codspeed.py --codspeed
+        token: ${{ secrets.CODSPEED_TOKEN }}
+
+  # Additional job for comprehensive benchmarks (optional)
+  comprehensive-benchmarks:
+    name: Run comprehensive benchmarks
+    runs-on: ubuntu-latest
+    # Only run on main branch pushes to avoid overwhelming CI
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/rust-native-implementation'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+    
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+    
+    - name: Install dependencies
+      run: |
+        uv sync --all-extras --dev
+    
+    - name: Build project
+      run: |
+        uv run maturin develop --release
+    
+    - name: Run all benchmarks for CodSpeed
+      uses: CodSpeedHQ/action@v3
+      with:
+        run: uv run pytest benchmarks/ --codspeed -k "not comparison"
+        token: ${{ secrets.CODSPEED_TOKEN }}
+
+  # Parallel benchmarks for faster execution (if needed)
+  parallel-benchmarks:
+    name: Run parallel benchmarks
+    runs-on: ubuntu-latest
+    # Only run on workflow_dispatch for testing parallel execution
+    if: github.event_name == 'workflow_dispatch'
+    strategy:
+      matrix:
+        shard: [1, 2, 3, 4]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+    
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+    
+    - name: Install dependencies
+      run: |
+        uv sync --all-extras --dev
+        uv add --dev pytest-test-groups
+    
+    - name: Build project
+      run: |
+        uv run maturin develop --release
+    
+    - name: Run sharded benchmarks
+      uses: CodSpeedHQ/action@v3
+      with:
+        run: uv run pytest benchmarks/test_codspeed.py --codspeed --test-group=${{ matrix.shard }} --test-group-count=4
+        token: ${{ secrets.CODSPEED_TOKEN }}

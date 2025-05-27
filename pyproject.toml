@@ -1,12 +1,6 @@
 [build-system]
-requires = [
-    "scikit-build-core>=0.5.0",
-    "pybind11>=2.10.0",
-    "setuptools>=61.0.0",
-    "wheel>=0.36.0",
-    "setuptools_scm>=8.0.0",
-]
-build-backend = "scikit_build_core.build"
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
 
 [project]
 name = "py-eacopy"
@@ -46,6 +40,14 @@ test = [
     "pytest>=6.0.0",
     "pytest-cov>=2.12.0",
 ]
+benchmark = [
+    "pytest-benchmark>=4.0",
+    "pytest-codspeed>=2.2.0",
+    "memory-profiler>=0.60",
+    "py-spy>=0.3",
+    "hyperfine>=1.15",
+    "psutil>=5.9",
+]
 docs = [
     "sphinx>=7.0.0",
     "pydata-sphinx-theme>=0.14.1",
@@ -76,7 +78,7 @@ Issues = "https://github.com/loonghao/py-eacopy/issues"
 Changelog = "https://github.com/loonghao/py-eacopy/blob/main/CHANGELOG.md"
 
 [project.scripts]
-eacopy = "eacopy.cli:main"
+py-eacopy = "py_eacopy.cli:main"
 
 [tool.commitizen]
 name = "cz_conventional_commits"
@@ -84,7 +86,7 @@ version = "0.1.0"
 tag_format = "$version"
 version_files = [
     "pyproject.toml:version",
-    "src/eacopy/__version__.py",
+    "python/py_eacopy/__version__.py",
 ]
 
 [tool.pytest.ini_options]
@@ -94,7 +96,7 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 
 [tool.coverage.run]
-source = ["eacopy"]
+source = ["py_eacopy"]
 branch = true
 
 [tool.coverage.report]
@@ -181,7 +183,7 @@ line_length = 120
 force_sort_within_sections = true
 force_single_line = true
 sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
-known_first_party = ["eacopy"]
+known_first_party = ["py_eacopy"]
 
 [tool.nox]
 sessions = ["lint", "pytest"]
@@ -209,44 +211,43 @@ commands = [
 [tool.nox.session.pytest]
 deps = ["pytest", "pytest-cov"]
 commands = [
-    "pytest tests/ --cov=eacopy --cov-report=xml:coverage.xml --cov-report=term-missing"
+    "pytest tests/ --cov=py_eacopy --cov-report=xml:coverage.xml --cov-report=term-missing"
 ]
 
-[tool.scikit-build]
-# Basic configuration
-wheel.packages = ["src/eacopy"]
-wheel.exclude = ["tests/*"]
-wheel.expand-macos-universal-tags = false
-sdist.include = ["src/eacopy/*", "src/binding/*", "CMakeLists.txt", "LICENSE", "README.md", "extern/EACopy/*"]
-sdist.exclude = ["tests/data/*"]
-# Enable experimental features
-experimental = true
+[tool.nox.session.benchmark]
+deps = ["pytest-benchmark", "memory-profiler", "psutil"]
+commands = [
+    "pytest benchmarks/ --benchmark-only --benchmark-sort=mean --benchmark-json=benchmarks/results/benchmark.json"
+]
 
-[tool.scikit-build.metadata.version]
-provider = "scikit_build_core.metadata.setuptools_scm"
+[tool.nox.session.benchmark_compare]
+deps = ["pytest-benchmark", "memory-profiler", "psutil"]
+commands = [
+    "pytest benchmarks/test_comparison.py --benchmark-only --benchmark-sort=mean"
+]
 
-[tool.setuptools_scm]
-# Format: 1.2.3 (without 'v' prefix)
-tag_regex = "^(?P<version>[0-9]+\\.[0-9]+\\.[0-9]+)(?P<dev>-[a-zA-Z0-9]+)?$"
-local_scheme = "no-local-version"
-# Don't use dev0 suffix for non-tagged versions to avoid metadata mismatches
-version_scheme = "release-branch-semver"
+[tool.nox.session.profile]
+deps = ["py-spy", "memory-profiler"]
+commands = [
+    "python -c \"print('Use: py-spy record -o profile.svg -- python your_script.py')\""
+]
 
-[tool.scikit-build.cmake]
-version = ">=3.15"
-build-type = "Release"
-
-[tool.scikit-build.cmake.define]
-PYTHON_LIMITED_API = "OFF"
-CMAKE_POSITION_INDEPENDENT_CODE = "ON"
-# Ensure symbols are properly exported on Windows
-CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS = "ON"
-# Disable ABI3 mode
-SKBUILD_SOABI = "OFF"
+[tool.maturin]
+# Python module name
+python-source = "python"
+module-name = "py_eacopy._py_eacopy_binding"
+# Build features
+features = ["python"]
+# Compatibility settings
+abi3 = true
+# Minimum Python version for abi3
+abi3-py38 = true
+# Strip debug symbols in release
+strip = true
 
 [tool.semantic_release]
 version_variable = [
-    "src/eacopy/__version__.py:__version__",
+    "python/py_eacopy/__version__.py:__version__",
     "pyproject.toml:version"
 ]
 branch = "main"

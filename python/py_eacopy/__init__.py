@@ -8,8 +8,8 @@ from typing import Optional, Union
 # Import local modules
 from .__version__ import __version__
 
-# Import C++ bindings
-from ._eacopy_binding import (
+# Import Rust bindings
+from ._py_eacopy_binding import (
     EACopy,
     copy,
     copy2,

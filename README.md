@@ -109,6 +109,57 @@ nox -s docs
 nox -s docs-serve
 ```
 
+## Performance Benchmarks
+
+py-eacopy includes comprehensive performance benchmarks and continuous performance monitoring:
+
+### Local Benchmarking
+
+```bash
+# Install benchmark dependencies
+pip install -e ".[benchmark]"
+
+# Run all benchmarks
+uvx nox -s benchmark
+
+# Run quick benchmarks (for development)
+make benchmark-quick
+
+# Run comparison benchmarks vs standard tools
+uvx nox -s benchmark_compare
+
+# Generate performance profiles
+python scripts/profile.py --test-type file_copy --profiler all
+```
+
+### Continuous Performance Monitoring with CodSpeed
+
+This project uses [CodSpeed](https://codspeed.io/) for continuous performance monitoring:
+
+```bash
+# Run CodSpeed benchmarks locally
+make codspeed
+
+# Run all CodSpeed benchmarks
+make codspeed-all
+```
+
+CodSpeed automatically:
+- 🔍 Detects performance regressions in pull requests
+- 📊 Provides detailed performance analysis and visualizations
+- 📈 Tracks performance trends over time
+- ✅ Integrates seamlessly with our GitHub Actions CI
+
+### Benchmark Results
+
+Current performance targets:
+- **Small files (< 1MB)**: > 100 MB/s
+- **Large files (> 10MB)**: > 500 MB/s
+- **vs shutil**: 2-5x faster for large files
+- **vs robocopy**: Competitive performance (within 20%)
+
+See [benchmarks/README.md](benchmarks/README.md) for detailed benchmarking documentation.
+
 ## Dependencies
 
 - [EACopy](https://github.com/electronicarts/EACopy) - High-performance file copy tool by Electronic Arts

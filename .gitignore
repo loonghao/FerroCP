@@ -47,3 +47,18 @@ poetry.lock
 
 # macOS
 .DS_Store
+
+# Benchmark results
+benchmarks/results/*.json
+benchmarks/results/*.svg
+benchmarks/results/*.prof
+
+# CodSpeed local results
+.codspeed/
+
+# Rust build artifacts
+target/
+Cargo.lock
+
+# Wheel build artifacts
+wheelhouse/
