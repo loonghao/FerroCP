@@ -1,154 +1,276 @@
-# ferrocp
+# FerroCP
 
 <div align="center">
 
-[![PyPI version](https://badge.fury.io/py/ferrocp.svg)](https://badge.fury.io/py/ferrocp)
-[![Build Status](https://github.com/loonghao/ferrocp/workflows/Build%20and%20Release/badge.svg)](https://github.com/loonghao/ferrocp/actions)
-[![Documentation Status](https://readthedocs.org/projects/ferrocp/badge/?version=latest)](https://ferrocp.readthedocs.io/en/latest/?badge=latest)
+[![Build Status](https://github.com/loonghao/FerroCP/workflows/Build%20and%20Release/badge.svg)](https://github.com/loonghao/FerroCP/actions)
 [![Python Version](https://img.shields.io/pypi/pyversions/ferrocp.svg)](https://pypi.org/project/ferrocp/)
-[![License](https://img.shields.io/github/license/loonghao/ferrocp.svg)](https://github.com/loonghao/ferrocp/blob/main/LICENSE)
-[![Downloads](https://static.pepy.tech/badge/ferrocp)](https://pepy.tech/project/ferrocp)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![License](https://img.shields.io/github/license/loonghao/FerroCP.svg)](https://github.com/loonghao/FerroCP/blob/main/LICENSE)
 [![Ruff](https://img.shields.io/badge/ruff-enabled-brightgreen)](https://github.com/astral-sh/ruff)
+[![CodSpeed](https://img.shields.io/badge/CodSpeed-performance%20monitoring-blue)](https://codspeed.io/loonghao/FerroCP)
 
 **⚠️ 开发中项目 ⚠️**
-本项目目前正在积极开发中，尚未准备好用于生产环境。
+
+**🚀 高性能文件复制工具**
+*使用 Rust 构建，追求最大速度和可靠性*
+
+**本项目目前正在积极开发中，尚未准备好用于生产环境。**
+
+[English Documentation](README.md) | [文档](https://ferrocp.readthedocs.io/) | [性能测试](benchmarks/README.md)
 
 </div>
 
-Python绑定库，用于Electronic Arts开发的高性能文件复制工具EACopy。该包提供对EACopy的C++功能的直接访问，为文件复制操作提供卓越的性能。
+**FerroCP** (Iron Copy) 是一个使用 Rust 编写的高性能跨平台文件复制工具，提供 Python 绑定。从零开始设计，专注于速度和可靠性，FerroCP 的目标是在保持熟悉易用 API 的同时，提供比标准 Python 工具快 **2-5 倍**的文件操作性能。
 
-## 特性
+## ✨ 计划功能
 
-- 通过直接C++绑定实现高性能文件复制
-- API与Python的`shutil`模块兼容
-- 支持EACopyService加速网络文件传输
-- 跨平台兼容性（Windows原生支持，其他平台提供回退方案）
-- 多线程文件操作
+### 🚀 **性能优先** (开发中)
+- **目标：比 Python 的 `shutil` 快 2-5 倍**处理大文件
+- **原生 Rust 实现**，零拷贝优化
+- **多线程操作**，自动 CPU 检测
+- **内存高效**，可配置缓冲区大小
 
-## 安装
+### 🔧 **开发者友好** (计划中)
+- **Python `shutil` 模块的直接替代品**
+- **熟悉的 API** - 无需学习成本
+- **类型提示**和全面的文档
+- **现代工具链**，支持 maturin 和 uv
+
+### 🌍 **跨平台卓越** (开发中)
+- **Windows、Linux、macOS** 原生支持
+- **跨平台一致性能**
+- **平台特定优化**自动应用
+- **Unicode 文件名支持**，正确编码处理
+
+### 📊 **开发状态**
+- **进行中** - 核心功能正在实现
+- **测试框架**正在建立
+- **性能基准测试**基础设施已就位
+- **CI/CD 流水线**已配置用于未来发布
+
+## 📦 安装
+
+### ⚠️ 暂未可用
+
+**FerroCP 目前正在开发中，暂不可安装。**
+
+准备就绪后，将通过以下方式提供：
 
 ```bash
+# 未来的 PyPI 安装（暂不可用）
 pip install ferrocp
+
+# 或使用 uv（暂不可用）
+uv add ferrocp
 ```
 
-或者使用 Poetry:
+### 开发安装（贡献者）
 
 ```bash
-poetry add ferrocp
+# 克隆仓库
+git clone https://github.com/loonghao/FerroCP.git
+cd FerroCP
+
+# 安装开发依赖
+uv sync --group all
+uv run maturin develop --release
+
+# 注意：核心功能仍在实现中
 ```
 
-## 使用方法
+### 系统要求（可用时）
+
+- **Python 3.9+**（推荐 3.11+ 以获得最佳性能）
+- **Rust 工具链**（maturin 会自动安装）
+- **64 位系统**（Windows、Linux、macOS）
+
+## 🚀 计划 API（开发中）
+
+### 基本用法（计划的直接替代）
 
 ```python
 import ferrocp
 
-# 复制文件（类似于shutil.copy）
+# 计划的 API - 用 ferrocp.copy 替代 shutil.copy
 ferrocp.copy("source.txt", "destination.txt")
 
-# 复制文件及其元数据（类似于shutil.copy2）
+# 复制文件及其元数据（类似于 shutil.copy2）
 ferrocp.copy2("source.txt", "destination.txt")
 
-# 复制目录树（类似于shutil.copytree）
+# 复制目录树（类似于 shutil.copytree）
 ferrocp.copytree("source_dir", "destination_dir")
-
-# 使用网络服务加速传输
-ferrocp.copy_with_server("source_dir", "destination_dir", "server_address", port=31337)
-
-# 配置全局设置
-ferrocp.config.thread_count = 8  # 使用8个线程进行复制
-ferrocp.config.compression_level = 5  # 网络传输使用压缩级别5
 ```
 
-## 开发
+### 高级配置（计划中）
 
-### 环境设置
+```python
+import ferrocp
+
+# 计划的高级 API
+copier = ferrocp.EACopy(
+    thread_count=8,           # 使用 8 个线程进行并行操作
+    buffer_size=8*1024*1024,  # 8MB 缓冲区用于大文件
+    compression_level=3,      # 网络传输压缩
+    verify_integrity=True     # 复制后验证文件完整性
+)
+
+# 高性能文件复制（计划中）
+copier.copy_file("large_dataset.zip", "backup/dataset.zip")
+
+# 带进度跟踪的批量操作（计划中）
+files_to_copy = [
+    ("data1.bin", "backup/data1.bin"),
+    ("data2.bin", "backup/data2.bin"),
+    ("data3.bin", "backup/data3.bin"),
+]
+
+for src, dst in files_to_copy:
+    result = copier.copy_file(src, dst)
+    print(f"复制了 {result.bytes_copied} 字节，耗时 {result.duration:.2f}s")
+```
+
+### 命令行界面（计划中）
 
 ```bash
-# 克隆仓库并初始化子模块
-git clone https://github.com/loonghao/ferrocp.git
-cd ferrocp
-git submodule update --init --recursive
+# 计划的 CLI 界面
+ferrocp copy source.txt destination.txt
 
-# 使用 Poetry 安装依赖
-poetry install
+# 带选项的复制（计划中）
+ferrocp copy --threads 8 --verbose large_file.zip backup/
+
+# 目录同步（计划中）
+ferrocp copy --mirror source_dir/ destination_dir/
+
+# 显示帮助（计划中）
+ferrocp --help
+```
+
+## 📊 性能目标
+
+FerroCP 的目标是实现以下性能指标：
+
+| 操作 | 文件大小 | 目标 FerroCP | shutil | 目标提升 |
+|------|----------|--------------|--------|----------|
+| **单文件** | 1 KB | < 100 μs | 290 μs | **3x+ 更快** |
+| **单文件** | 1 MB | < 300 μs | 1.9 ms | **6x+ 更快** |
+| **单文件** | 10 MB | < 5 ms | 12.5 ms | **2.5x+ 更快** |
+| **单文件** | 100 MB | < 50 ms | 125 ms | **2.5x+ 更快** |
+| **目录树** | 1000 文件 | < 2 s | 4.8 s | **2x+ 更快** |
+
+### 计划基准测试
+
+```python
+import time
+import ferrocp  # 暂不可用
+import shutil
+
+# 未来基准测试示例
+start = time.time()
+ferrocp.copy("large_file.bin", "backup.bin")
+ferrocp_time = time.time() - start
+
+start = time.time()
+shutil.copy("large_file.bin", "backup_shutil.bin")
+shutil_time = time.time() - start
+
+print(f"FerroCP: {ferrocp_time:.2f}s")
+print(f"shutil:  {shutil_time:.2f}s")
+print(f"提升: {shutil_time/ferrocp_time:.1f}x 更快")
+```
+
+*性能目标基于初步研究。实际结果将在实现完成后测量和记录。*
+
+## 🔬 开发
+
+### 前置要求
+
+- **Python 3.9+**（推荐 3.11+）
+- **Rust 工具链**（从 [rustup.rs](https://rustup.rs/) 安装）
+- **uv**（推荐，从 [uv docs](https://docs.astral.sh/uv/) 安装）
+
+### 开发设置
+
+```bash
+# 克隆仓库
+git clone https://github.com/loonghao/FerroCP.git
+cd FerroCP
+
+# 安装所有开发依赖
+uv sync --group all
+
+# 或安装特定依赖组
+uv sync --group testing    # 测试工具（pytest、coverage）
+uv sync --group linting    # 代码质量（ruff、mypy）
+uv sync --group docs       # 文档（sphinx、mkdocs）
+uv sync --group benchmark  # 性能测试工具
 ```
 
 ### 从源码构建
 
-本项目使用scikit-build-core构建C++扩展：
+本项目使用 **maturin** 构建 Rust 扩展：
 
 ```bash
-# 安装构建依赖
-pip install scikit-build-core pybind11 cmake
+# 开发构建（快速，用于测试）
+uv run maturin develop --features python
 
-# 构建包
-python -m pip install -e .
+# 发布构建（优化）
+uv run maturin develop --release --features python
+
+# 构建 Python wheel 包
+uv run maturin build --release --features python
+
+# 构建独立 CLI 工具（无 Python 依赖）
+cargo build --release --bin ferrocp
 ```
+
+**注意**：CLI 工具（`ferrocp.exe`）构建时不依赖 Python，可独立运行。Python 模块需要启用 `python` 特性。
 
 ### 测试
 
 ```bash
-# 使用 nox 运行测试
-nox -s pytest
+# 运行测试
+uv run nox -s test
+
+# 运行特定 Python 版本的测试
+uv run nox -s test-3.11
 
 # 运行代码检查
-nox -s lint
+uv run nox -s lint
 
-# 修复代码风格问题
-nox -s lint_fix
+# 自动修复代码风格问题
+uv run nox -s lint_fix
 ```
 
 ### 文档
 
 ```bash
 # 构建文档
-nox -s docs
+uv run nox -s docs
 
-# 启动带有实时重载功能的文档服务器
-nox -s docs-serve
+# 启动带实时重载的文档服务器
+uv run nox -s docs_serve
 ```
 
 ## 依赖
 
-- [EACopy](https://github.com/electronicarts/EACopy) - Electronic Arts开发的高性能文件复制工具
-- [pybind11](https://github.com/pybind/pybind11) - C++11 Python绑定
+### 核心依赖
+- [Rust](https://www.rust-lang.org/) - 高性能扩展的系统编程语言
+- [PyO3](https://pyo3.rs/) - Python 的 Rust 绑定
+- [maturin](https://github.com/PyO3/maturin) - 基于 Rust 的 Python 扩展构建工具
+
+### 开发依赖
+- [uv](https://docs.astral.sh/uv/) - 快速 Python 包管理器
+- [nox](https://nox.thea.codes/) - 灵活的测试自动化
+- [ruff](https://github.com/astral-sh/ruff) - 快速 Python 代码检查和格式化工具
+- [pytest](https://pytest.org/) - 测试框架
+- [CodSpeed](https://codspeed.io/) - 持续性能监控
 
 ## 许可证
 
-BSD-3-Clause（与EACopy相同）
-
-## CI/CD 配置
-
-本项目使用 GitHub Actions 进行 CI/CD，包含以下工作流：
-
-- **构建和测试**：在多个 Python 版本和操作系统上测试包。
-- **发布**：在创建新版本时构建并发布wheel包到 PyPI。
-- **文档**：构建文档并部署到 GitHub Pages。
-
-发布工作流使用 cibuildwheel 为每个平台构建带有正确编译的C++扩展的特定wheel包。
-
-### 发布流程
-
-创建新版本的步骤：
-
-1. 更新 `pyproject.toml` 和 `python/ferrocp/__version__.py` 中的版本号
-2. 更新 `CHANGELOG.md`，添加新版本和变更内容
-3. 提交并推送更改
-4. 创建一个带有版本号的新标签（例如 `0.1.0`）
-5. 将标签推送到 GitHub
-
-```bash
-# 发布流程示例
-git add pyproject.toml python/ferrocp/__version__.py CHANGELOG.md
-git commit -m "Release 0.1.0"
-git tag 0.1.0
-git push && git push --tags
-```
+BSD-3-Clause
 
 ## 贡献
 
-欢迎贡献！请随时提交Pull Request。
+欢迎贡献！请随时提交 Pull Request。
 
 1. Fork 仓库
 2. 创建您的特性分支 (`git checkout -b feature/amazing-feature`)
