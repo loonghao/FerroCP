@@ -26,6 +26,14 @@ struct Cli {
     #[arg(short, long)]
     verbose: bool,
 
+    /// Enable debug output (more verbose than --verbose)
+    #[arg(long)]
+    debug: bool,
+
+    /// Quiet mode - only show errors
+    #[arg(short, long)]
+    quiet: bool,
+
     /// Number of threads to use
     #[arg(short, long, default_value = "0")]
     threads: usize,
@@ -60,6 +68,9 @@ enum Commands {
         /// Follow symbolic links
         #[arg(long)]
         follow_symlinks: bool,
+        /// Skip files that already exist and are newer or same size
+        #[arg(long)]
+        skip_existing: bool,
     },
     /// Copy using network server acceleration
     Server {
@@ -102,8 +113,17 @@ enum Commands {
 async fn main() {
     let cli = Cli::parse();
 
-    // Initialize logging
-    let log_level = if cli.verbose { Level::DEBUG } else { Level::INFO };
+    // Initialize logging with proper level hierarchy
+    let log_level = if cli.debug {
+        Level::DEBUG
+    } else if cli.verbose {
+        Level::INFO
+    } else if cli.quiet {
+        Level::ERROR
+    } else {
+        Level::WARN
+    };
+
     tracing_subscriber::fmt()
         .with_max_level(log_level)
         .with_target(false)
@@ -128,6 +148,7 @@ async fn main() {
             preserve_metadata,
             overwrite,
             follow_symlinks,
+            skip_existing,
         } => {
             copy_command(
                 config,
@@ -136,6 +157,7 @@ async fn main() {
                 preserve_metadata,
                 overwrite,
                 follow_symlinks,
+                skip_existing,
                 !cli.no_progress,
             ).await
         }
@@ -183,11 +205,13 @@ async fn copy_command(
     preserve_metadata: bool,
     overwrite: bool,
     follow_symlinks: bool,
+    skip_existing: bool,
     show_progress: bool,
 ) -> py_eacopy::Result<()> {
     config = config
         .with_preserve_metadata(preserve_metadata)
-        .with_follow_symlinks(follow_symlinks);
+        .with_follow_symlinks(follow_symlinks)
+        .with_skip_existing(skip_existing);
 
     let mut eacopy = EACopy::with_config(config);
 

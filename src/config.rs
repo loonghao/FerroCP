@@ -145,6 +145,8 @@ pub struct Config {
     pub network: NetworkConfig,
     /// Compression configuration
     pub compression: CompressionConfig,
+    /// Whether to skip files that already exist and are newer or same size
+    pub skip_existing: bool,
 }
 
 impl Default for Config {
@@ -169,6 +171,7 @@ impl Default for Config {
             small_file_batch_size: 100,
             network: NetworkConfig::default(),
             compression: CompressionConfig::default(),
+            skip_existing: false,
         }
     }
 }
@@ -195,6 +198,7 @@ impl std::fmt::Debug for Config {
             .field("small_file_batch_size", &self.small_file_batch_size)
             .field("network", &self.network)
             .field("compression", &self.compression)
+            .field("skip_existing", &self.skip_existing)
             .finish()
     }
 }
@@ -265,12 +269,9 @@ impl Config {
         self
     }
 
-    /// Set the progress callback function
-    pub fn with_progress_callback<F>(mut self, callback: F) -> Self
-    where
-        F: Fn(u64, u64, &str) + Send + Sync + 'static,
-    {
-        self.progress_callback = Some(Arc::new(callback));
+    /// Set whether to skip existing files
+    pub fn with_skip_existing(mut self, skip_existing: bool) -> Self {
+        self.skip_existing = skip_existing;
         self
     }
 
@@ -309,26 +310,4 @@ impl Config {
         self.compression = compression;
         self
     }
-}
-
-/// Global configuration instance
-lazy_static::lazy_static! {
-    pub static ref GLOBAL_CONFIG: Arc<Mutex<Config>> = Arc::new(Mutex::new(Config::default()));
-}
-
-/// Get a reference to the global configuration
-pub fn global_config() -> Arc<Mutex<Config>> {
-    GLOBAL_CONFIG.clone()
-}
-
-/// Set the global configuration
-pub fn set_global_config(config: Config) {
-    let mut global = GLOBAL_CONFIG.lock().unwrap();
-    *global = config;
-}
-
-/// Reset the global configuration to defaults
-pub fn reset_global_config() {
-    let mut global = GLOBAL_CONFIG.lock().unwrap();
-    *global = Config::default();
 }
