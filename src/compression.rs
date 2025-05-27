@@ -1,4 +1,4 @@
-//! Compression module for py-eacopy
+//! Compression module for ferrocp
 //!
 //! This module provides adaptive compression functionality using zstd.
 //! It can automatically adjust compression levels based on network conditions

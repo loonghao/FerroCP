@@ -1,6 +1,6 @@
 # CodSpeed Integration Setup
 
-This document explains how to set up CodSpeed continuous performance monitoring for the py-eacopy project.
+This document explains how to set up CodSpeed continuous performance monitoring for the ferrocp project.
 
 ## What is CodSpeed?
 
@@ -17,7 +17,7 @@ CodSpeed is a professional continuous performance monitoring platform that:
 1. **Enable CodSpeed for the repository:**
    - Go to [CodSpeed Settings](https://codspeed.io/settings)
    - Install the CodSpeed GitHub App
-   - Select the py-eacopy repository
+   - Select the ferrocp repository
    - Enable monitoring for the repository
 
 2. **Add CodSpeed Token:**
@@ -111,7 +111,7 @@ def test_core_operation():
     data = create_test_data(1024)
     
     # The actual operation being benchmarked
-    result = py_eacopy.copy(source, dest)
+    result = ferrocp.copy(source, dest)
     
     # Verification (not timed)
     assert result.success
@@ -207,7 +207,7 @@ def test_copy_various_sizes(size):
   uses: CodSpeedHQ/action@v3
   env:
     RUST_LOG: info
-    PY_EACOPY_BUFFER_SIZE: 1048576
+    ferrocp_BUFFER_SIZE: 1048576
   with:
     run: uv run pytest benchmarks/test_codspeed.py --codspeed
     token: ${{ secrets.CODSPEED_TOKEN }}

@@ -1,4 +1,4 @@
-//! Delta copy module for py-eacopy
+//! Delta copy module for ferrocp
 //!
 //! This module provides incremental copy functionality using delta compression.
 //! It can compute differences between files and apply them efficiently,

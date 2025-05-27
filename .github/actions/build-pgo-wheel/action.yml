@@ -1,5 +1,5 @@
 name: Build PGO wheel
-description: Builds a PGO-optimized wheel for py-eacopy
+description: Builds a PGO-optimized wheel for ferrocp
 
 inputs:
   interpreter:
@@ -54,12 +54,12 @@ runs:
       run: |
         echo "Installing wheel for profiling..."
         uv sync --group testing
-        uv pip install py-eacopy --no-index --no-deps --find-links pgo-wheel --force-reinstall
+        uv pip install ferrocp --no-index --no-deps --find-links pgo-wheel --force-reinstall
         
         echo "Running benchmarks to collect profile data..."
         # Run basic functionality tests to collect profile data
         uv run python -c "
-        import py_eacopy
+        import ferrocp
         import tempfile
         import os
         from pathlib import Path
@@ -78,7 +78,7 @@ runs:
                 test_file.write_text(f'Test content {i}' * 1000)
             
             # Run copy operations to generate profile data
-            eacopy = py_eacopy.EACopy()
+            eacopy = ferrocp.EACopy()
             for i in range(10):
                 try:
                     eacopy.copy_file(

@@ -1,4 +1,4 @@
-//! Error handling for py-eacopy
+//! Error handling for ferrocp
 //!
 //! This module defines the error types used throughout the library.
 //! All errors implement the standard Error trait and can be converted
@@ -7,10 +7,10 @@
 use std::io;
 use std::path::PathBuf;
 
-/// Result type alias for py-eacopy operations
+/// Result type alias for ferrocp operations
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Main error type for py-eacopy operations
+/// Main error type for ferrocp operations
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     /// I/O operation failed

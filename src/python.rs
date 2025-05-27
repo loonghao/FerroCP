@@ -1,4 +1,4 @@
-//! Python bindings for py-eacopy
+//! Python bindings for ferrocp
 //!
 //! This module provides PyO3 bindings to expose the Rust EACopy functionality
 //! to Python. It maintains compatibility with the existing Python API while
@@ -194,24 +194,42 @@ impl PyEACopy {
     }
 
     /// Copy a file from source to destination
-    fn copy_file(&self, source: &str, destination: &str) -> PyResult<PyCopyStats> {
+    #[pyo3(signature = (source, destination, skip_existing = None))]
+    fn copy_file(&self, source: &str, destination: &str, skip_existing: Option<bool>) -> PyResult<PyCopyStats> {
         let source = PathBuf::from(source);
         let destination = PathBuf::from(destination);
 
+        // Create a new EACopy instance with skip_existing configuration if needed
+        let eacopy = if let Some(skip) = skip_existing {
+            let config = self.inner.get_config().clone().with_skip_existing(skip);
+            EACopy::with_config(config)
+        } else {
+            EACopy::with_config(self.inner.get_config().clone())
+        };
+
         let stats = self.runtime
-            .block_on(self.inner.copy_file(&source, &destination))
+            .block_on(eacopy.copy_file(&source, &destination))
             .map_err(error_to_py_err)?;
 
         Ok(stats.into())
     }
 
     /// Copy a directory tree from source to destination
-    fn copy_directory(&self, source: &str, destination: &str) -> PyResult<PyCopyStats> {
+    #[pyo3(signature = (source, destination, skip_existing = None))]
+    fn copy_directory(&self, source: &str, destination: &str, skip_existing: Option<bool>) -> PyResult<PyCopyStats> {
         let source = PathBuf::from(source);
         let destination = PathBuf::from(destination);
 
+        // Create a new EACopy instance with skip_existing configuration if needed
+        let eacopy = if let Some(skip) = skip_existing {
+            let config = self.inner.get_config().clone().with_skip_existing(skip);
+            EACopy::with_config(config)
+        } else {
+            EACopy::with_config(self.inner.get_config().clone())
+        };
+
         let stats = self.runtime
-            .block_on(self.inner.copy_directory(&source, &destination))
+            .block_on(eacopy.copy_directory(&source, &destination))
             .map_err(error_to_py_err)?;
 
         Ok(stats.into())
@@ -322,12 +340,14 @@ fn copyfile(source: &str, destination: &str) -> PyResult<PyCopyStats> {
 
 /// Copy a directory tree from source to destination
 #[pyfunction]
+#[pyo3(signature = (source, destination, symlinks = None, _ignore_dangling_symlinks = None, dirs_exist_ok = None, skip_existing = None))]
 fn copytree(
     source: &str,
     destination: &str,
     symlinks: Option<bool>,
     _ignore_dangling_symlinks: Option<bool>,
     dirs_exist_ok: Option<bool>,
+    skip_existing: Option<bool>,
 ) -> PyResult<PyCopyStats> {
     let runtime = Runtime::new()
         .map_err(|e| PyRuntimeError::new_err(format!("Failed to create async runtime: {}", e)))?;
@@ -338,6 +358,9 @@ fn copytree(
     }
     if let Some(exist_ok) = dirs_exist_ok {
         config = config.with_dirs_exist_ok(exist_ok);
+    }
+    if let Some(skip) = skip_existing {
+        config = config.with_skip_existing(skip);
     }
 
     let eacopy = EACopy::with_config(config);
@@ -423,7 +446,7 @@ fn version() -> String {
 
 /// Python module definition
 #[pymodule]
-fn _py_eacopy_binding(_py: Python, m: &PyModule) -> PyResult<()> {
+fn _ferrocp_binding(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<PyEACopy>()?;
     m.add_class::<PyCopyStats>()?;
     m.add_function(wrap_pyfunction!(copy, m)?)?;

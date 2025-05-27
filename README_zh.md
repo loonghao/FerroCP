@@ -1,13 +1,13 @@
-# py-eacopy
+# ferrocp
 
 <div align="center">
 
-[![PyPI version](https://badge.fury.io/py/py-eacopy.svg)](https://badge.fury.io/py/py-eacopy)
-[![Build Status](https://github.com/loonghao/py-eacopy/workflows/Build%20and%20Release/badge.svg)](https://github.com/loonghao/py-eacopy/actions)
-[![Documentation Status](https://readthedocs.org/projects/py-eacopy/badge/?version=latest)](https://py-eacopy.readthedocs.io/en/latest/?badge=latest)
-[![Python Version](https://img.shields.io/pypi/pyversions/py-eacopy.svg)](https://pypi.org/project/py-eacopy/)
-[![License](https://img.shields.io/github/license/loonghao/py-eacopy.svg)](https://github.com/loonghao/py-eacopy/blob/main/LICENSE)
-[![Downloads](https://static.pepy.tech/badge/py-eacopy)](https://pepy.tech/project/py-eacopy)
+[![PyPI version](https://badge.fury.io/py/ferrocp.svg)](https://badge.fury.io/py/ferrocp)
+[![Build Status](https://github.com/loonghao/ferrocp/workflows/Build%20and%20Release/badge.svg)](https://github.com/loonghao/ferrocp/actions)
+[![Documentation Status](https://readthedocs.org/projects/ferrocp/badge/?version=latest)](https://ferrocp.readthedocs.io/en/latest/?badge=latest)
+[![Python Version](https://img.shields.io/pypi/pyversions/ferrocp.svg)](https://pypi.org/project/ferrocp/)
+[![License](https://img.shields.io/github/license/loonghao/ferrocp.svg)](https://github.com/loonghao/ferrocp/blob/main/LICENSE)
+[![Downloads](https://static.pepy.tech/badge/ferrocp)](https://pepy.tech/project/ferrocp)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Ruff](https://img.shields.io/badge/ruff-enabled-brightgreen)](https://github.com/astral-sh/ruff)
 
@@ -29,35 +29,35 @@ Python绑定库，用于Electronic Arts开发的高性能文件复制工具EACop
 ## 安装
 
 ```bash
-pip install py-eacopy
+pip install ferrocp
 ```
 
 或者使用 Poetry:
 
 ```bash
-poetry add py-eacopy
+poetry add ferrocp
 ```
 
 ## 使用方法
 
 ```python
-import eacopy
+import ferrocp
 
 # 复制文件（类似于shutil.copy）
-eacopy.copy("source.txt", "destination.txt")
+ferrocp.copy("source.txt", "destination.txt")
 
 # 复制文件及其元数据（类似于shutil.copy2）
-eacopy.copy2("source.txt", "destination.txt")
+ferrocp.copy2("source.txt", "destination.txt")
 
 # 复制目录树（类似于shutil.copytree）
-eacopy.copytree("source_dir", "destination_dir")
+ferrocp.copytree("source_dir", "destination_dir")
 
-# 使用EACopyService加速网络传输
-eacopy.copy_with_server("source_dir", "destination_dir", "server_address", port=31337)
+# 使用网络服务加速传输
+ferrocp.copy_with_server("source_dir", "destination_dir", "server_address", port=31337)
 
 # 配置全局设置
-eacopy.config.thread_count = 8  # 使用8个线程进行复制
-eacopy.config.compression_level = 5  # 网络传输使用压缩级别5
+ferrocp.config.thread_count = 8  # 使用8个线程进行复制
+ferrocp.config.compression_level = 5  # 网络传输使用压缩级别5
 ```
 
 ## 开发
@@ -66,8 +66,8 @@ eacopy.config.compression_level = 5  # 网络传输使用压缩级别5
 
 ```bash
 # 克隆仓库并初始化子模块
-git clone https://github.com/loonghao/py-eacopy.git
-cd py-eacopy
+git clone https://github.com/loonghao/ferrocp.git
+cd ferrocp
 git submodule update --init --recursive
 
 # 使用 Poetry 安装依赖
@@ -132,7 +132,7 @@ BSD-3-Clause（与EACopy相同）
 
 创建新版本的步骤：
 
-1. 更新 `pyproject.toml` 和 `src/eacopy/__version__.py` 中的版本号
+1. 更新 `pyproject.toml` 和 `python/ferrocp/__version__.py` 中的版本号
 2. 更新 `CHANGELOG.md`，添加新版本和变更内容
 3. 提交并推送更改
 4. 创建一个带有版本号的新标签（例如 `0.1.0`）
@@ -140,7 +140,7 @@ BSD-3-Clause（与EACopy相同）
 
 ```bash
 # 发布流程示例
-git add pyproject.toml src/eacopy/__version__.py CHANGELOG.md
+git add pyproject.toml python/ferrocp/__version__.py CHANGELOG.md
 git commit -m "Release 0.1.0"
 git tag 0.1.0
 git push && git push --tags

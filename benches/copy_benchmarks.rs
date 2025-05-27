@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
-use py_eacopy::core::EACopy;
-use py_eacopy::config::Config;
+use ferrocp::core::EACopy;
+use ferrocp::config::Config;
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -38,7 +38,7 @@ fn bench_file_copy_sizes(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(size as u64));
         
         group.bench_with_input(
-            BenchmarkId::new("py_eacopy", size_name),
+            BenchmarkId::new("ferrocp", size_name),
             &size,
             |b, &size| {
                 b.iter(|| {

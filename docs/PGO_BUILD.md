@@ -1,6 +1,6 @@
 # Profile-Guided Optimization (PGO) Builds
 
-This document explains how to use Profile-Guided Optimization (PGO) to build high-performance versions of py-eacopy.
+This document explains how to use Profile-Guided Optimization (PGO) to build high-performance versions of ferrocp.
 
 ## What is PGO?
 
@@ -48,7 +48,7 @@ RUSTFLAGS="-Cprofile-generate=./pgo-data" uv run maturin build --release
 # Step 2: Install and run workloads
 pip install target/wheels/*.whl --force-reinstall
 python -c "
-import py_eacopy
+import ferrocp
 import tempfile
 from pathlib import Path
 
@@ -66,7 +66,7 @@ with tempfile.TemporaryDirectory() as temp_dir:
         test_file.write_text(f'Test content {i}' * 1000)
     
     # Run copy operations
-    eacopy = py_eacopy.EACopy()
+    eacopy = ferrocp.EACopy()
     for i in range(50):
         eacopy.copy_file(
             source_dir / f'test_{i}.txt',
@@ -205,13 +205,13 @@ Create custom workloads for specific use cases:
 
 ```python
 # custom_profile_workload.py
-import py_eacopy
+import ferrocp
 import tempfile
 from pathlib import Path
 
 def collect_profile_data():
     """Custom workload for profile data collection."""
-    eacopy = py_eacopy.EACopy()
+    eacopy = ferrocp.EACopy()
     
     # Your specific use case scenarios
     # - Large file operations

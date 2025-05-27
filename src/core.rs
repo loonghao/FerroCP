@@ -1,4 +1,4 @@
-//! Core file operations for py-eacopy
+//! Core file operations for ferrocp
 //!
 //! This module provides the main EACopy struct and file operation functionality.
 //! It includes async file copying, directory traversal, progress reporting,
@@ -7,6 +7,8 @@
 use crate::config::Config;
 use crate::error::{Error, Result};
 use crate::zerocopy::ZeroCopyEngine;
+#[cfg(windows)]
+use crate::windows_optimization::FastDirectoryTraversal;
 use crate::device_detector::{DeviceDetector, DeviceType, IOOptimizationConfig};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -285,6 +287,11 @@ impl EACopy {
     pub fn reset_stats(&mut self) {
         *self.stats.lock().unwrap() = CopyStats::new();
         self.start_time = None;
+    }
+
+    /// Get current configuration
+    pub fn get_config(&self) -> &Config {
+        &self.config
     }
 
     /// Detect device types and optimize configuration
@@ -610,7 +617,6 @@ impl FileOperations for EACopy {
     ) -> Result<CopyStats> {
         let source = source.as_ref();
         let destination = destination.as_ref();
-        let start_time = Instant::now();
 
         debug!("Copying directory: {:?} -> {:?}", source, destination);
 
@@ -624,48 +630,16 @@ impl FileOperations for EACopy {
             return Err(Error::other(format!("{:?} is not a directory", source)));
         }
 
-        // Create destination directory
-        fs::create_dir_all(destination).await?;
-
-        let mut total_stats = CopyStats {
-            directories_created: 1,
-            ..CopyStats::default()
-        };
-
-        // Walk through source directory
-        let mut entries = fs::read_dir(source).await?;
-        while let Some(entry) = entries.next_entry().await? {
-            let entry_path = entry.path();
-            let relative_path = entry_path.strip_prefix(source)
-                .map_err(|_| Error::other("Failed to get relative path"))?;
-            let dest_path = destination.join(relative_path);
-
-            let entry_metadata = entry.metadata().await?;
-
-            if entry_metadata.is_file() {
-                match self.copy_file(&entry_path, &dest_path).await {
-                    Ok(stats) => total_stats.add(&stats),
-                    Err(e) => {
-                        error!("Failed to copy file {:?}: {}", entry_path, e);
-                        total_stats.errors += 1;
-                    }
-                }
-            } else if entry_metadata.is_dir() {
-                match Box::pin(self.copy_directory(&entry_path, &dest_path)).await {
-                    Ok(stats) => total_stats.add(&stats),
-                    Err(e) => {
-                        error!("Failed to copy directory {:?}: {}", entry_path, e);
-                        total_stats.errors += 1;
-                    }
-                }
-            }
+        // Use Windows-specific optimization when available and skip_existing is enabled
+        #[cfg(windows)]
+        if self.config.skip_existing {
+            debug!("Using Windows-specific optimized directory copy");
+            return self.copy_directory_optimized(source, destination).await;
         }
 
-        total_stats.duration = start_time.elapsed();
-        total_stats.calculate_speed();
-
-        info!("Directory copied successfully: {:?}", destination);
-        Ok(total_stats)
+        // Fall back to standard walkdir implementation
+        debug!("Using standard walkdir directory copy");
+        self.copy_directory_walkdir(source, destination).await
     }
 
     /// Check if a path exists
@@ -677,12 +651,11 @@ impl FileOperations for EACopy {
     async fn metadata<P: AsRef<Path>>(&self, path: P) -> Result<std::fs::Metadata> {
         fs::metadata(path).await.map_err(Error::from)
     }
-
-
 }
 
 impl EACopy {
     /// Check if we should skip copying a file based on skip_existing configuration
+    /// Optimized version that minimizes filesystem I/O operations
     async fn should_skip_file<P: AsRef<Path>, Q: AsRef<Path>>(
         &self,
         source: P,
@@ -693,24 +666,97 @@ impl EACopy {
         }
 
         let dest_path = destination.as_ref();
-        if !self.exists(dest_path).await {
+
+        // Single metadata call for destination - combines existence check and metadata retrieval
+        let dest_metadata = match fs::metadata(dest_path).await {
+            Ok(metadata) => metadata,
+            Err(_) => return Ok(false), // Destination doesn't exist, don't skip
+        };
+
+        // Only get source metadata if destination exists
+        let source_metadata = self.metadata(source).await?;
+
+        // Fast size comparison first (most efficient check)
+        if dest_metadata.len() != source_metadata.len() {
             return Ok(false);
         }
 
-        let source_metadata = self.metadata(source).await?;
-        let dest_metadata = self.metadata(dest_path).await?;
-
-        // Skip if destination is newer or same size
+        // Then check modification time
         let source_modified = source_metadata.modified().unwrap_or(std::time::UNIX_EPOCH);
         let dest_modified = dest_metadata.modified().unwrap_or(std::time::UNIX_EPOCH);
 
-        let should_skip = dest_modified >= source_modified && dest_metadata.len() == source_metadata.len();
+        let should_skip = dest_modified >= source_modified;
 
         if should_skip {
             debug!("Skipping file {:?} - destination is newer or same size", dest_path);
         }
 
         Ok(should_skip)
+    }
+
+    /// Synchronous skip check using pre-fetched metadata
+    /// This avoids async overhead when we already have the source metadata
+    fn should_skip_file_sync(
+        &self,
+        source_metadata: &std::fs::Metadata,
+        dest_path: &Path,
+    ) -> Result<bool> {
+        if !self.config.skip_existing {
+            return Ok(false);
+        }
+
+        // Single metadata call for destination - combines existence check and metadata retrieval
+        let dest_metadata = match std::fs::metadata(dest_path) {
+            Ok(metadata) => metadata,
+            Err(_) => return Ok(false), // Destination doesn't exist, don't skip
+        };
+
+        // Fast size comparison first (most efficient check)
+        if dest_metadata.len() != source_metadata.len() {
+            return Ok(false);
+        }
+
+        // Then check modification time
+        let source_modified = source_metadata.modified().unwrap_or(std::time::UNIX_EPOCH);
+        let dest_modified = dest_metadata.modified().unwrap_or(std::time::UNIX_EPOCH);
+
+        let should_skip = dest_modified >= source_modified;
+
+        if should_skip {
+            debug!("Skipping file {:?} - destination is newer or same size", dest_path);
+        }
+
+        Ok(should_skip)
+    }
+
+    /// Fast batch skip check for multiple files
+    /// Processes skip checks in parallel for better performance on large directories
+    async fn batch_skip_check(
+        &self,
+        file_pairs: Vec<(PathBuf, PathBuf)>,
+    ) -> Result<Vec<(PathBuf, PathBuf)>> {
+        if !self.config.skip_existing {
+            return Ok(file_pairs);
+        }
+
+        use futures::stream::{self, StreamExt};
+
+        let max_concurrent = self.config.thread_count.max(4); // At least 4 concurrent checks
+
+        let files_to_copy: Vec<_> = stream::iter(file_pairs)
+            .map(|(src, dest)| async move {
+                match self.should_skip_file(&src, &dest).await {
+                    Ok(true) => None, // Skip this file
+                    Ok(false) => Some((src, dest)), // Copy this file
+                    Err(_) => Some((src, dest)), // On error, attempt to copy
+                }
+            })
+            .buffer_unordered(max_concurrent)
+            .filter_map(|result| async move { result })
+            .collect()
+            .await;
+
+        Ok(files_to_copy)
     }
 
     /// Copy multiple files concurrently
@@ -777,9 +823,10 @@ impl EACopy {
             ..CopyStats::default()
         };
 
-        // Collect all files first
+        // Collect files and perform skip checks during traversal for better performance
         let mut file_pairs = Vec::new();
         let mut dir_count = 0u64;
+        let mut skipped_count = 0u64;
 
         for entry in WalkDir::new(source).into_iter().filter_map(|e| e.ok()) {
             let entry_path = entry.path();
@@ -796,11 +843,44 @@ impl EACopy {
                     dir_count += 1;
                 }
             } else if entry.file_type().is_file() {
-                file_pairs.push((entry_path.to_path_buf(), dest_path));
+                // Perform skip check during traversal using WalkDir's metadata
+                if self.config.skip_existing {
+                    if let Ok(metadata) = entry.metadata() {
+                        match self.should_skip_file_sync(&metadata, &dest_path) {
+                            Ok(true) => {
+                                skipped_count += 1;
+                                debug!("Skipping file during traversal: {:?}", entry_path);
+                                continue; // Skip this file
+                            }
+                            Ok(false) => {
+                                // File should be copied
+                                file_pairs.push((entry_path.to_path_buf(), dest_path));
+                            }
+                            Err(e) => {
+                                warn!("Error checking skip for {:?}: {}", entry_path, e);
+                                // On error, include the file for copying
+                                file_pairs.push((entry_path.to_path_buf(), dest_path));
+                            }
+                        }
+                    } else {
+                        // If we can't get metadata from WalkDir, include the file
+                        file_pairs.push((entry_path.to_path_buf(), dest_path));
+                    }
+                } else {
+                    // Skip checking disabled, add all files
+                    file_pairs.push((entry_path.to_path_buf(), dest_path));
+                }
             }
         }
 
         total_stats.directories_created = dir_count;
+        total_stats.files_skipped = skipped_count;
+
+        debug!(
+            "Directory traversal complete: {} files to copy, {} files skipped",
+            file_pairs.len(),
+            skipped_count
+        );
 
         // Copy files in batches to control memory usage
         let batch_size = self.config.thread_count.max(1);
@@ -813,6 +893,102 @@ impl EACopy {
         total_stats.calculate_speed();
 
         info!("Directory copied successfully: {:?}", destination);
+        Ok(total_stats)
+    }
+
+    /// High-performance directory copy using Windows-specific optimizations
+    /// Falls back to standard walkdir on non-Windows platforms
+    #[cfg(windows)]
+    async fn copy_directory_optimized<P: AsRef<Path>, Q: AsRef<Path>>(
+        &self,
+        source: P,
+        destination: Q,
+    ) -> Result<CopyStats> {
+        let source = source.as_ref();
+        let destination = destination.as_ref();
+        let start_time = Instant::now();
+
+        debug!("Starting optimized directory copy from {:?} to {:?}", source, destination);
+
+        // Create destination directory
+        if let Err(e) = tokio::fs::create_dir_all(destination).await {
+            if !self.config.dirs_exist_ok {
+                return Err(Error::other(format!("Failed to create destination directory: {}", e)));
+            }
+        }
+
+        let mut total_stats = CopyStats {
+            directories_created: 1,
+            ..CopyStats::default()
+        };
+
+        // Use Windows-specific fast directory traversal
+        let traversal = FastDirectoryTraversal::new(source);
+        let files_with_metadata = traversal.collect_files_with_metadata()?;
+
+        debug!("Found {} files using Windows fast traversal", files_with_metadata.len());
+
+        // Perform skip checks and collect files to copy
+        let mut files_to_copy = Vec::new();
+        let mut skipped_count = 0u64;
+
+        for (source_path, source_metadata) in files_with_metadata {
+            let relative_path = source_path.strip_prefix(source)
+                .map_err(|_| Error::other("Failed to get relative path"))?;
+            let dest_path = destination.join(relative_path);
+
+            // Create parent directory if needed
+            if let Some(parent) = dest_path.parent() {
+                if let Err(e) = tokio::fs::create_dir_all(parent).await {
+                    warn!("Failed to create parent directory {:?}: {}", parent, e);
+                    total_stats.errors += 1;
+                    continue;
+                }
+            }
+
+            // Perform skip check using Windows-specific fast metadata
+            if self.config.skip_existing {
+                match crate::windows_optimization::should_skip_file_fast(&source_metadata, &dest_path) {
+                    Ok(true) => {
+                        skipped_count += 1;
+                        debug!("Skipping file (Windows fast check): {:?}", source_path);
+                        continue;
+                    }
+                    Ok(false) => {
+                        // File should be copied
+                        files_to_copy.push((source_path, dest_path));
+                    }
+                    Err(e) => {
+                        warn!("Error in Windows fast skip check for {:?}: {}", source_path, e);
+                        // On error, include the file for copying
+                        files_to_copy.push((source_path, dest_path));
+                    }
+                }
+            } else {
+                files_to_copy.push((source_path, dest_path));
+            }
+        }
+
+        total_stats.files_skipped = skipped_count;
+
+        debug!(
+            "Windows optimized traversal complete: {} files to copy, {} files skipped",
+            files_to_copy.len(),
+            skipped_count
+        );
+
+        // Copy files in batches
+        let batch_size = self.config.thread_count.max(1);
+        for chunk in files_to_copy.chunks(batch_size) {
+            let batch_stats = self.copy_files_batch(chunk.to_vec()).await?;
+            total_stats.add(&batch_stats);
+        }
+
+        total_stats.duration = start_time.elapsed();
+        total_stats.calculate_speed();
+
+        debug!("Optimized directory copy completed in {:?}", total_stats.duration);
+
         Ok(total_stats)
     }
     /// Internal implementation for copying a file

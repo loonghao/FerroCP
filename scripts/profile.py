@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Performance profiling script for py-eacopy."""
+"""Performance profiling script for ferrocp."""
 
 import argparse
 import subprocess
@@ -96,7 +96,7 @@ def create_benchmark_script(temp_dir: Path, test_type: str) -> Path:
     
     if test_type == "file_copy":
         script_content = f'''
-import py_eacopy
+import ferrocp
 from pathlib import Path
 
 # Create test file
@@ -120,13 +120,13 @@ source.write_bytes(data)
 for i in range(10):
     if dest.exists():
         dest.unlink()
-    py_eacopy.copy(str(source), str(dest))
+    ferrocp.copy(str(source), str(dest))
     print(f"Copy {{i+1}}/10 completed")
 '''
     
     elif test_type == "directory_copy":
         script_content = f'''
-import py_eacopy
+import ferrocp
 from pathlib import Path
 import shutil
 
@@ -146,13 +146,13 @@ for i in range(100):
 for i in range(5):
     if dest_dir.exists():
         shutil.rmtree(dest_dir)
-    py_eacopy.copytree(str(source_dir), str(dest_dir))
+    ferrocp.copytree(str(source_dir), str(dest_dir))
     print(f"Directory copy {{i+1}}/5 completed")
 '''
     
     elif test_type == "compression":
         script_content = f'''
-import py_eacopy
+import ferrocp
 from pathlib import Path
 
 # Create test file
@@ -170,7 +170,7 @@ for level in [0, 1, 3, 6, 9]:
     if dest.exists():
         dest.unlink()
     
-    eacopy = py_eacopy.EACopy(compression_level=level)
+    eacopy = ferrocp.EACopy(compression_level=level)
     eacopy.copy_file(str(source), str(dest))
     print(f"Compression level {{level}} completed")
 '''
@@ -184,7 +184,7 @@ for level in [0, 1, 3, 6, 9]:
 
 def main():
     """Main function."""
-    parser = argparse.ArgumentParser(description="Profile py-eacopy performance")
+    parser = argparse.ArgumentParser(description="Profile ferrocp performance")
     parser.add_argument("--test-type", choices=["file_copy", "directory_copy", "compression"],
                        default="file_copy", help="Type of test to profile")
     parser.add_argument("--profiler", choices=["py-spy", "cprofile", "memory", "all"],

@@ -1,6 +1,6 @@
 # Performance Benchmarks
 
-This directory contains comprehensive performance benchmarks for py-eacopy, including both local benchmarking tools and continuous performance monitoring with CodSpeed.
+This directory contains comprehensive performance benchmarks for ferrocp, including both local benchmarking tools and continuous performance monitoring with CodSpeed.
 
 ## Quick Start
 

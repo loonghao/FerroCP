@@ -1,4 +1,4 @@
-//! Network module for py-eacopy
+//! Network module for ferrocp
 //!
 //! This module provides network acceleration functionality similar to EACopyService.
 //! It includes server-side file caching, client-server communication, and

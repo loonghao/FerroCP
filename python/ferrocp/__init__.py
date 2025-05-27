@@ -1,4 +1,4 @@
-"""Python bindings for EACopy, a high-performance file copy tool."""
+"""FerroCP - High-performance cross-platform file copying tool written in Rust."""
 
 # Import built-in modules
 import os
@@ -9,7 +9,7 @@ from typing import Optional, Union
 from .__version__ import __version__
 
 # Import Rust bindings
-from ._py_eacopy_binding import (
+from ._ferrocp_binding import (
     EACopy,
     copy,
     copy2,

@@ -10,7 +10,7 @@ import pytest
 @pytest.fixture(scope="session")
 def benchmark_data_dir() -> Generator[Path, None, None]:
     """Create a temporary directory for benchmark data."""
-    with tempfile.TemporaryDirectory(prefix="py_eacopy_bench_") as temp_dir:
+    with tempfile.TemporaryDirectory(prefix="ferrocp_bench_") as temp_dir:
         yield Path(temp_dir)
 
 

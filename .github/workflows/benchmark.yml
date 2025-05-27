@@ -98,7 +98,7 @@ jobs:
 
     - name: Verify installation
       run: |
-        uv run python -c "import py_eacopy; print(f'py_eacopy imported successfully')"
+        uv run python -c "import ferrocp; print(f'ferrocp imported successfully')"
 
     - name: Generate test data
       run: |

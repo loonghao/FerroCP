@@ -1,4 +1,4 @@
-"""Command-line interface for py-eacopy."""
+"""Command-line interface for ferrocp."""
 
 import sys
 import time
@@ -11,7 +11,7 @@ from . import EACopy, __version__
 
 
 @click.group()
-@click.version_option(version=__version__, prog_name="py-eacopy")
+@click.version_option(version=__version__, prog_name="ferrocp")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
 @click.pass_context
 def cli(ctx: click.Context, verbose: bool) -> None:
@@ -150,7 +150,7 @@ def copy_with_server(
 @cli.command()
 def benchmark() -> None:
     """Run performance benchmarks."""
-    click.echo("Running py-eacopy benchmarks...")
+    click.echo("Running ferrocp benchmarks...")
 
     # Create test data
     test_dir = Path("benchmark_test")

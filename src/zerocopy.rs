@@ -1,4 +1,4 @@
-//! Zero-copy file operations for py-eacopy
+//! Zero-copy file operations for ferrocp
 //!
 //! This module provides platform-specific zero-copy file operations including
 //! copy_file_range (Linux), reflink (BTRFS/XFS), CoW (ReFS), and automatic

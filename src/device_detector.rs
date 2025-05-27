@@ -1,4 +1,4 @@
-//! Storage device detection and optimization for py-eacopy
+//! Storage device detection and optimization for ferrocp
 //!
 //! This module provides functionality to detect storage device types and
 //! optimize I/O operations based on device characteristics.
