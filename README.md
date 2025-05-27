@@ -2,91 +2,95 @@
 
 <div align="center">
 
-[![PyPI version](https://badge.fury.io/py/ferrocp.svg)](https://badge.fury.io/py/ferrocp)
 [![Build Status](https://github.com/loonghao/FerroCP/workflows/Build%20and%20Release/badge.svg)](https://github.com/loonghao/FerroCP/actions)
-[![Documentation Status](https://readthedocs.org/projects/ferrocp/badge/?version=latest)](https://ferrocp.readthedocs.io/en/latest/?badge=latest)
 [![Python Version](https://img.shields.io/pypi/pyversions/ferrocp.svg)](https://pypi.org/project/ferrocp/)
 [![License](https://img.shields.io/github/license/loonghao/FerroCP.svg)](https://github.com/loonghao/FerroCP/blob/main/LICENSE)
-[![Downloads](https://static.pepy.tech/badge/ferrocp)](https://pepy.tech/project/ferrocp)
 [![Ruff](https://img.shields.io/badge/ruff-enabled-brightgreen)](https://github.com/astral-sh/ruff)
 [![CodSpeed](https://img.shields.io/badge/CodSpeed-performance%20monitoring-blue)](https://codspeed.io/loonghao/FerroCP)
 
+**⚠️ WORK IN PROGRESS ⚠️**
+
 **🚀 High-Performance File Copying Tool**
 *Built with Rust for Maximum Speed and Reliability*
+
+**This project is currently under active development and is not ready for production use.**
 
 [中文文档](README_zh.md) | [Documentation](https://ferrocp.readthedocs.io/) | [Benchmarks](benchmarks/README.md)
 
 </div>
 
-**FerroCP** (Iron Copy) is a high-performance, cross-platform file copying tool written in Rust with Python bindings. Designed from the ground up for speed and reliability, FerroCP delivers **2-5x faster** file operations compared to standard Python tools while maintaining a familiar, easy-to-use API.
+**FerroCP** (Iron Copy) is a high-performance, cross-platform file copying tool written in Rust with Python bindings. Designed from the ground up for speed and reliability, FerroCP aims to deliver **2-5x faster** file operations compared to standard Python tools while maintaining a familiar, easy-to-use API.
 
-## ✨ Key Features
+## ✨ Planned Features
 
-### 🚀 **Performance First**
-- **2-5x faster** than Python's `shutil` for large files
+### 🚀 **Performance First** (In Development)
+- **Target: 2-5x faster** than Python's `shutil` for large files
 - **Native Rust implementation** with zero-copy optimizations
 - **Multi-threaded operations** with automatic CPU detection
 - **Memory efficient** with configurable buffer sizes
 
-### 🔧 **Developer Friendly**
+### 🔧 **Developer Friendly** (Planned)
 - **Drop-in replacement** for Python's `shutil` module
 - **Familiar API** - no learning curve required
 - **Type hints** and comprehensive documentation
 - **Modern tooling** with maturin and uv support
 
-### 🌍 **Cross-Platform Excellence**
+### 🌍 **Cross-Platform Excellence** (In Development)
 - **Windows, Linux, macOS** native support
 - **Consistent performance** across all platforms
 - **Platform-specific optimizations** automatically applied
 - **Unicode filename support** with proper encoding handling
 
-### 📊 **Production Ready**
-- **Comprehensive testing** with 95%+ code coverage
-- **Continuous performance monitoring** with CodSpeed
-- **Memory leak detection** and resource management
-- **Error handling** with detailed diagnostics
+### 📊 **Development Status**
+- **Work in Progress** - Core functionality being implemented
+- **Testing framework** being established
+- **Performance benchmarking** infrastructure in place
+- **CI/CD pipeline** configured for future releases
 
 ## 📦 Installation
 
-### Quick Start (Recommended)
+### ⚠️ Not Yet Available
+
+**FerroCP is currently under development and not available for installation.**
+
+When ready, it will be available via:
 
 ```bash
-# Install from PyPI (when available)
+# Future PyPI installation (not yet available)
 pip install ferrocp
 
-# Or install with uv (faster)
+# Or with uv (not yet available)
 uv add ferrocp
 ```
 
-### Development Installation
+### Development Installation (For Contributors)
 
 ```bash
 # Clone the repository
 git clone https://github.com/loonghao/FerroCP.git
 cd FerroCP
 
-# Install with uv (recommended)
+# Install development dependencies
 uv sync --group all
 uv run maturin develop --release
 
-# Or with traditional pip
-pip install -e ".[dev,test,benchmark]"
+# Note: Core functionality is still being implemented
 ```
 
-### Requirements
+### Requirements (When Available)
 
 - **Python 3.9+** (3.11+ recommended for best performance)
 - **Rust toolchain** (automatically installed by maturin if needed)
 - **64-bit system** (Windows, Linux, macOS)
 
-## 🚀 Quick Start
+## 🚀 Planned API (Under Development)
 
-### Basic Usage (Drop-in Replacement)
+### Basic Usage (Planned Drop-in Replacement)
 
 ```python
 import ferrocp
 
-# Replace shutil.copy with ferrocp.copy - same API, better performance!
+# Planned API - Replace shutil.copy with ferrocp.copy
 ferrocp.copy("source.txt", "destination.txt")
 
 # Copy with metadata preservation (like shutil.copy2)
@@ -96,12 +100,12 @@ ferrocp.copy2("source.txt", "destination.txt")
 ferrocp.copytree("source_dir", "destination_dir")
 ```
 
-### Advanced Configuration
+### Advanced Configuration (Planned)
 
 ```python
 import ferrocp
 
-# Create a configured copier instance
+# Planned advanced API
 copier = ferrocp.EACopy(
     thread_count=8,           # Use 8 threads for parallel operations
     buffer_size=8*1024*1024,  # 8MB buffer for large files
@@ -109,10 +113,10 @@ copier = ferrocp.EACopy(
     verify_integrity=True     # Verify file integrity after copy
 )
 
-# High-performance file copying
+# High-performance file copying (planned)
 copier.copy_file("large_dataset.zip", "backup/dataset.zip")
 
-# Batch operations with progress tracking
+# Batch operations with progress tracking (planned)
 files_to_copy = [
     ("data1.bin", "backup/data1.bin"),
     ("data2.bin", "backup/data2.bin"),
@@ -124,42 +128,42 @@ for src, dst in files_to_copy:
     print(f"Copied {result.bytes_copied} bytes in {result.duration:.2f}s")
 ```
 
-### Command Line Interface
+### Command Line Interface (Planned)
 
 ```bash
-# Basic file copy
+# Planned CLI interface
 ferrocp copy source.txt destination.txt
 
-# Copy with options
+# Copy with options (planned)
 ferrocp copy --threads 8 --verbose large_file.zip backup/
 
-# Directory synchronization
+# Directory synchronization (planned)
 ferrocp copy --mirror source_dir/ destination_dir/
 
-# Show help
+# Show help (planned)
 ferrocp --help
 ```
 
-## 📊 Performance Comparison
+## 📊 Performance Goals
 
-FerroCP consistently outperforms standard Python file operations:
+FerroCP aims to achieve the following performance targets:
 
-| Operation | File Size | FerroCP | shutil | Speedup |
-|-----------|-----------|---------|--------|---------|
-| **Single File** | 1 KB | 87.8 μs | 290 μs | **3.3x faster** |
-| **Single File** | 1 MB | 227.5 μs | 1.9 ms | **8.5x faster** |
-| **Single File** | 10 MB | 2.4 ms | 12.5 ms | **5.2x faster** |
-| **Single File** | 100 MB | 24 ms | 125 ms | **5.2x faster** |
-| **Directory Tree** | 1000 files | 1.2 s | 4.8 s | **4.0x faster** |
+| Operation | File Size | Target FerroCP | shutil | Target Speedup |
+|-----------|-----------|----------------|--------|----------------|
+| **Single File** | 1 KB | < 100 μs | 290 μs | **3x+ faster** |
+| **Single File** | 1 MB | < 300 μs | 1.9 ms | **6x+ faster** |
+| **Single File** | 10 MB | < 5 ms | 12.5 ms | **2.5x+ faster** |
+| **Single File** | 100 MB | < 50 ms | 125 ms | **2.5x+ faster** |
+| **Directory Tree** | 1000 files | < 2 s | 4.8 s | **2x+ faster** |
 
-### Real-World Scenarios
+### Planned Benchmarking
 
 ```python
 import time
-import ferrocp
+import ferrocp  # Not yet available
 import shutil
 
-# Benchmark: Copy a 1GB file
+# Future benchmark example
 start = time.time()
 ferrocp.copy("large_file.bin", "backup.bin")
 ferrocp_time = time.time() - start
@@ -173,7 +177,7 @@ print(f"shutil:  {shutil_time:.2f}s")
 print(f"Speedup: {shutil_time/ferrocp_time:.1f}x faster")
 ```
 
-*Benchmarks run on Windows 11, Intel i7-12700K, NVMe SSD. Results may vary by system.*
+*Performance targets based on preliminary research. Actual results will be measured and documented when implementation is complete.*
 
 ## 🔬 Development
 
