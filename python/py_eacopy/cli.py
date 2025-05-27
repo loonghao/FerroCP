@@ -177,7 +177,7 @@ def benchmark() -> None:
             dest = test_dir / f"copy_{filename}"
 
             start_time = time.time()
-            stats = eacopy.copy_file(str(source), str(dest))
+            eacopy.copy_file(str(source), str(dest))
             duration = time.time() - start_time
 
             speed_mbps = (size / (1024 * 1024)) / duration if duration > 0 else 0
@@ -195,7 +195,7 @@ def benchmark() -> None:
 
 
 def main() -> None:
-    """Main entry point for the CLI."""
+    """Run the main CLI entry point."""
     cli()
 
 
