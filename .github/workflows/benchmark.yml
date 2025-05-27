@@ -1,0 +1,225 @@
+name: Performance Benchmarks
+
+on:
+  push:
+    branches: [ main, rust-native-implementation ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run benchmarks weekly on Sunday at 2 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      benchmark_type:
+        description: 'Type of benchmark to run'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - quick
+          - comparison
+          - rust
+
+jobs:
+  benchmark:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.9', '3.11', '3.12']
+        exclude:
+          # Reduce matrix size for faster CI
+          - os: macos-latest
+            python-version: '3.9'
+          - os: windows-latest
+            python-version: '3.9'
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+    
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+    
+    - name: Cache Rust dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+    
+    - name: Install dependencies
+      run: |
+        uv pip install --system -e ".[dev,test,benchmark]"
+    
+    - name: Build project
+      run: |
+        uvx nox -s build_wheels
+    
+    - name: Install built wheel
+      shell: bash
+      run: |
+        wheel_file=$(find wheelhouse -name "*.whl" | head -1)
+        if [ -n "$wheel_file" ]; then
+          uv pip install --system "$wheel_file" --force-reinstall
+        else
+          echo "No wheel file found, using editable install"
+          uv pip install --system -e .
+        fi
+    
+    - name: Generate test data
+      run: |
+        python benchmarks/data/generate_test_data.py --output-dir benchmarks/data/test_files
+    
+    - name: Run quick benchmarks
+      if: github.event_name == 'pull_request' || inputs.benchmark_type == 'quick'
+      run: |
+        uvx nox -s benchmark -- -k "small_file or medium_file" --benchmark-json=benchmarks/results/benchmark-quick-${{ matrix.os }}-py${{ matrix.python-version }}.json
+    
+    - name: Run full benchmarks
+      if: github.event_name == 'push' || github.event_name == 'schedule' || inputs.benchmark_type == 'all'
+      run: |
+        uvx nox -s benchmark -- --benchmark-json=benchmarks/results/benchmark-full-${{ matrix.os }}-py${{ matrix.python-version }}.json
+    
+    - name: Run comparison benchmarks
+      if: inputs.benchmark_type == 'comparison' || inputs.benchmark_type == 'all'
+      run: |
+        uvx nox -s benchmark_compare -- --benchmark-json=benchmarks/results/benchmark-compare-${{ matrix.os }}-py${{ matrix.python-version }}.json
+    
+    - name: Run Rust benchmarks
+      if: inputs.benchmark_type == 'rust' || inputs.benchmark_type == 'all'
+      run: |
+        cargo bench --bench copy_benchmarks
+    
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results-${{ matrix.os }}-py${{ matrix.python-version }}
+        path: |
+          benchmarks/results/*.json
+          target/criterion/
+        retention-days: 30
+    
+    - name: Performance regression check
+      if: github.event_name == 'pull_request'
+      run: |
+        # Download baseline from main branch (if available)
+        # This is a simplified version - in practice you'd want to store baselines
+        echo "Performance regression check would go here"
+        echo "Compare current results with baseline from main branch"
+
+  benchmark-summary:
+    needs: benchmark
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Download all benchmark results
+      uses: actions/download-artifact@v4
+      with:
+        path: benchmark-artifacts
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install analysis dependencies
+      run: |
+        pip install pytest-benchmark pandas matplotlib seaborn
+    
+    - name: Analyze benchmark results
+      run: |
+        python -c "
+        import json
+        import os
+        import pandas as pd
+        from pathlib import Path
+        
+        results = []
+        for root, dirs, files in os.walk('benchmark-artifacts'):
+            for file in files:
+                if file.endswith('.json'):
+                    with open(os.path.join(root, file)) as f:
+                        data = json.load(f)
+                        for benchmark in data.get('benchmarks', []):
+                            results.append({
+                                'name': benchmark['name'],
+                                'mean': benchmark['stats']['mean'],
+                                'stddev': benchmark['stats']['stddev'],
+                                'min': benchmark['stats']['min'],
+                                'max': benchmark['stats']['max'],
+                                'file': file
+                            })
+        
+        if results:
+            df = pd.DataFrame(results)
+            print('Benchmark Summary:')
+            print(df.groupby('name')['mean'].agg(['mean', 'std', 'min', 'max']))
+            
+            # Save summary
+            df.to_csv('benchmark-summary.csv', index=False)
+        else:
+            print('No benchmark results found')
+        "
+    
+    - name: Upload benchmark summary
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-summary
+        path: benchmark-summary.csv
+        retention-days: 90
+
+  performance-comment:
+    needs: benchmark
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Comment PR with performance results
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const comment = `
+          ## 🚀 Performance Benchmark Results
+          
+          Benchmarks have been run for this PR. Here's a summary:
+          
+          - ✅ Quick benchmarks completed
+          - 📊 Detailed results available in artifacts
+          - 🔍 Check for any performance regressions
+          
+          **Next Steps:**
+          1. Download benchmark artifacts to view detailed results
+          2. Compare with baseline performance
+          3. Investigate any significant performance changes
+          
+          *Benchmarks run on: Ubuntu, Windows, macOS with Python 3.9, 3.11, 3.12*
+          `;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });

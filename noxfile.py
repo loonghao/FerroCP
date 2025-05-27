@@ -32,7 +32,49 @@ def pytest(session):
     """Run tests."""
     session.install("pytest", "pytest-cov")
     session.install("-e", ".")
-    session.run("pytest", "tests/", "--cov=eacopy", "--cov-report=xml:coverage.xml", "--cov-report=term-missing")
+    session.run("pytest", "tests/", "--cov=py_eacopy", "--cov-report=xml:coverage.xml", "--cov-report=term-missing")
+
+
+@nox.session
+def benchmark(session):
+    """Run performance benchmarks."""
+    session.install("pytest-benchmark", "memory-profiler", "psutil")
+    session.install("-e", ".")
+    session.run("pytest", "benchmarks/", "--benchmark-only", "--benchmark-sort=mean",
+                "--benchmark-json=benchmarks/results/benchmark.json")
+
+
+@nox.session
+def benchmark_compare(session):
+    """Run comparison benchmarks against standard tools."""
+    session.install("pytest-benchmark", "memory-profiler", "psutil")
+    session.install("-e", ".")
+    session.run("pytest", "benchmarks/test_comparison.py", "--benchmark-only", "--benchmark-sort=mean")
+
+
+@nox.session
+def profile(session):
+    """Run performance profiling."""
+    session.install("py-spy", "memory-profiler")
+    session.install("-e", ".")
+    session.log("Use: py-spy record -o profile.svg -- python your_script.py")
+    session.log("Or run: python scripts/profile.py --help")
+
+
+@nox.session
+def codspeed(session):
+    """Run CodSpeed benchmarks locally."""
+    session.install("pytest-codspeed")
+    session.install("-e", ".")
+    session.run("pytest", "benchmarks/test_codspeed.py", "--codspeed")
+
+
+@nox.session
+def codspeed_all(session):
+    """Run all benchmarks with CodSpeed locally."""
+    session.install("pytest-codspeed", "memory-profiler", "psutil")
+    session.install("-e", ".")
+    session.run("pytest", "benchmarks/", "--codspeed", "-k", "not comparison")
 
 
 @nox.session

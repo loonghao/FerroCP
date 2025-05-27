@@ -6,7 +6,7 @@ from unittest import mock
 from click.testing import CliRunner
 
 # Import local modules
-from eacopy import cli
+from py_eacopy import cli
 
 
 def test_cli_version():
@@ -17,88 +17,96 @@ def test_cli_version():
     assert "version" in result.output.lower()
 
 
-@mock.patch("eacopy.cli.copy")
-def test_cli_cp(mock_copy):
-    """Test CLI cp command."""
+def test_cli_copy():
+    """Test CLI copy command."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         # Create a test file
         with open("source.txt", "w") as f:
             f.write("test content")
 
-        result = runner.invoke(cli.cli, ["cp", "source.txt", "dest.txt"])
+        result = runner.invoke(cli.cli, ["copy", "source.txt", "dest.txt", "--no-progress"])
         assert result.exit_code == 0
-        mock_copy.assert_called_once_with("source.txt", "dest.txt")
-        assert "Copied" in result.output
+        assert "Copy completed successfully" in result.output
+        assert "Files copied: 1" in result.output
+
+        # Verify the file was actually copied
+        with open("dest.txt", "r") as f:
+            assert f.read() == "test content"
 
 
-@mock.patch("eacopy.cli.copy2")
-def test_cli_cp_with_metadata(mock_copy2):
-    """Test CLI cp command with preserve metadata."""
+def test_cli_copy_with_metadata():
+    """Test CLI copy command with preserve metadata."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         # Create a test file
         with open("source.txt", "w") as f:
             f.write("test content")
 
-        result = runner.invoke(cli.cli, ["cp", "source.txt", "dest.txt", "--preserve-metadata"])
+        result = runner.invoke(cli.cli, ["copy", "source.txt", "dest.txt", "--preserve-metadata", "--no-progress"])
         assert result.exit_code == 0
-        mock_copy2.assert_called_once_with("source.txt", "dest.txt")
-        assert "Copied" in result.output
+        assert "Copy completed successfully" in result.output
+
+        # Verify the file was actually copied
+        with open("dest.txt", "r") as f:
+            assert f.read() == "test content"
 
 
-@mock.patch("eacopy.cli.copytree")
-def test_cli_cptree(mock_copytree):
-    """Test CLI cptree command."""
+def test_cli_copy_directory():
+    """Test CLI copy command for directory."""
     runner = CliRunner()
     with runner.isolated_filesystem():
-        # Create a test directory
+        # Create a test directory with a file
         import os
         os.makedirs("source_dir")
+        with open("source_dir/test.txt", "w") as f:
+            f.write("test content")
 
-        result = runner.invoke(cli.cli, ["cptree", "source_dir", "dest_dir"])
+        result = runner.invoke(cli.cli, ["copy", "source_dir", "dest_dir", "--no-progress"])
         assert result.exit_code == 0
-        mock_copytree.assert_called_once_with(
-            "source_dir",
-            "dest_dir",
-            symlinks=False,
-            ignore_dangling_symlinks=False,
-            dirs_exist_ok=False,
-        )
-        assert "Copied directory tree" in result.output
+        assert "Copy completed successfully" in result.output
+
+        # Verify the directory and file were copied
+        assert os.path.exists("dest_dir")
+        assert os.path.exists("dest_dir/test.txt")
+        with open("dest_dir/test.txt", "r") as f:
+            assert f.read() == "test content"
 
 
-@mock.patch("eacopy.cli.copy_with_server")
-def test_cli_server(mock_copy_with_server):
-    """Test CLI server command."""
+@mock.patch("py_eacopy.EACopy")
+def test_cli_copy_with_server(mock_eacopy_class):
+    """Test CLI copy-with-server command."""
+    # Mock the EACopy instance and its methods
+    mock_eacopy = mock_eacopy_class.return_value
+    mock_stats = mock.MagicMock()
+    mock_stats.bytes_copied = 12
+    mock_eacopy.copy_with_server.return_value = mock_stats
+
     runner = CliRunner()
     with runner.isolated_filesystem():
         # Create a test file
         with open("source.txt", "w") as f:
             f.write("test content")
 
-        result = runner.invoke(cli.cli, ["server", "source.txt", "dest.txt", "server.example.com"])
+        result = runner.invoke(cli.cli, ["copy-with-server", "source.txt", "dest.txt", "--server", "server.example.com"])
         assert result.exit_code == 0
-        mock_copy_with_server.assert_called_once_with(
-            "source.txt",
-            "dest.txt",
-            "server.example.com",
-            port=31337,
-            compression_level=0,
-        )
-        assert "Copied" in result.output
+        mock_eacopy.copy_with_server.assert_called_once_with("source.txt", "dest.txt", "server.example.com", 8080)
+        assert "Network copy completed" in result.output
 
 
-@mock.patch("eacopy.cli.copy")
-def test_cli_error(mock_copy):
+@mock.patch("py_eacopy.EACopy")
+def test_cli_error(mock_eacopy_class):
     """Test CLI error handling."""
-    mock_copy.side_effect = Exception("Test error")
+    # Mock the EACopy instance to raise an exception
+    mock_eacopy = mock_eacopy_class.return_value
+    mock_eacopy.copy_file.side_effect = Exception("Test error")
+
     runner = CliRunner()
     with runner.isolated_filesystem():
         # Create a test file
         with open("source.txt", "w") as f:
             f.write("test content")
 
-        result = runner.invoke(cli.cli, ["cp", "source.txt", "dest.txt"])
+        result = runner.invoke(cli.cli, ["copy", "source.txt", "dest.txt"])
         assert result.exit_code == 1
         assert "Error" in result.output
