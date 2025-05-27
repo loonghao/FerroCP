@@ -196,7 +196,7 @@ known_first_party = ["py_eacopy"]
 python-source = "python"
 module-name = "py_eacopy._py_eacopy_binding"
 bindings = "pyo3"
-features = ["pyo3/extension-module"]
+features = ["python", "pyo3/extension-module"]
 # Compatibility settings
 abi3 = true
 abi3-py38 = true

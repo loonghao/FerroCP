@@ -80,7 +80,7 @@ flamegraph = "0.6"
 
 # Features
 [features]
-default = ["python", "cli"]
+default = ["cli"]
 python = ["pyo3"]
 cli = ["clap"]
 

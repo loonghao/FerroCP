@@ -100,15 +100,20 @@ uv sync --group docs     # For documentation
 This project uses **maturin** to build Rust extensions:
 
 ```bash
-# Development build (fast, for testing)
-uv run maturin develop
+# Development build with Python bindings (fast, for testing)
+uv run maturin develop --features python
 
-# Release build (optimized)
-uv run maturin develop --release
+# Release build with Python bindings (optimized)
+uv run maturin develop --release --features python
 
-# Build wheel packages
-uv run maturin build --release
+# Build wheel packages for Python
+uv run maturin build --release --features python
+
+# Build standalone CLI tool (no Python dependencies)
+cargo build --release --bin eacopy
 ```
+
+**Note**: The CLI tool (`eacopy.exe`) is built without Python dependencies and can run independently. The Python module requires the `python` feature to be enabled.
 
 ### Testing
 
