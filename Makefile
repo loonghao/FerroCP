@@ -1,4 +1,4 @@
-# Makefile for py-eacopy development and benchmarking
+# Makefile for ferrocp development and benchmarking
 
 .PHONY: help install test benchmark profile clean docs build
 

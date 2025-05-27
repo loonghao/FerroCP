@@ -1,13 +1,13 @@
-# py-eacopy
+# ferrocp
 
 <div align="center">
 
-[![PyPI version](https://badge.fury.io/py/py-eacopy.svg)](https://badge.fury.io/py/py-eacopy)
-[![Build Status](https://github.com/loonghao/py-eacopy/workflows/Build%20and%20Release/badge.svg)](https://github.com/loonghao/py-eacopy/actions)
-[![Documentation Status](https://readthedocs.org/projects/py-eacopy/badge/?version=latest)](https://py-eacopy.readthedocs.io/en/latest/?badge=latest)
-[![Python Version](https://img.shields.io/pypi/pyversions/py-eacopy.svg)](https://pypi.org/project/py-eacopy/)
-[![License](https://img.shields.io/github/license/loonghao/py-eacopy.svg)](https://github.com/loonghao/py-eacopy/blob/main/LICENSE)
-[![Downloads](https://static.pepy.tech/badge/py-eacopy)](https://pepy.tech/project/py-eacopy)
+[![PyPI version](https://badge.fury.io/py/ferrocp.svg)](https://badge.fury.io/py/ferrocp)
+[![Build Status](https://github.com/loonghao/ferrocp/workflows/Build%20and%20Release/badge.svg)](https://github.com/loonghao/ferrocp/actions)
+[![Documentation Status](https://readthedocs.org/projects/ferrocp/badge/?version=latest)](https://ferrocp.readthedocs.io/en/latest/?badge=latest)
+[![Python Version](https://img.shields.io/pypi/pyversions/ferrocp.svg)](https://pypi.org/project/ferrocp/)
+[![License](https://img.shields.io/github/license/loonghao/ferrocp.svg)](https://github.com/loonghao/ferrocp/blob/main/LICENSE)
+[![Downloads](https://static.pepy.tech/badge/ferrocp)](https://pepy.tech/project/ferrocp)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Ruff](https://img.shields.io/badge/ruff-enabled-brightgreen)](https://github.com/astral-sh/ruff)
 
@@ -16,30 +16,30 @@ This project is currently under active development and not yet ready for product
 
 </div>
 
-Python bindings for EACopy, a high-performance file copy tool developed by Electronic Arts. This package provides direct access to EACopy's C++ functionality, offering superior performance for file copying operations.
+FerroCP - A high-performance cross-platform file copying tool written in Rust with Python bindings. This package provides superior performance for file copying operations through native Rust implementation.
 
 ## Features
 
-- High-performance file copying with direct C++ bindings
+- High-performance file copying with native Rust implementation
 - API compatible with Python's `shutil` module
-- Support for EACopyService for accelerated network file transfers
-- Cross-platform compatibility (Windows native, with fallbacks for other platforms)
-- Multi-threaded file operations
+- Support for network-accelerated file transfers
+- Cross-platform compatibility (Windows, Linux, macOS)
+- Multi-threaded file operations with automatic CPU detection
 
 ## Installation
 
 ### From PyPI
 
 ```bash
-pip install py-eacopy
+pip install ferrocp
 ```
 
 ### From Source
 
 ```bash
 # Clone the repository
-git clone https://github.com/loonghao/py-eacopy.git
-cd py-eacopy
+git clone https://github.com/loonghao/ferrocp.git
+cd ferrocp
 
 # Install using uv (recommended)
 uv sync
@@ -52,23 +52,23 @@ pip install -e .
 ## Usage
 
 ```python
-import eacopy
+import ferrocp
 
 # Copy a file (similar to shutil.copy)
-eacopy.copy("source.txt", "destination.txt")
+ferrocp.copy("source.txt", "destination.txt")
 
 # Copy a file with metadata (similar to shutil.copy2)
-eacopy.copy2("source.txt", "destination.txt")
+ferrocp.copy2("source.txt", "destination.txt")
 
 # Copy a directory tree (similar to shutil.copytree)
-eacopy.copytree("source_dir", "destination_dir")
+ferrocp.copytree("source_dir", "destination_dir")
 
-# Use EACopyService for accelerated network transfers
-eacopy.copy_with_server("source_dir", "destination_dir", "server_address", port=31337)
+# Use network service for accelerated transfers
+ferrocp.copy_with_server("source_dir", "destination_dir", "server_address", port=31337)
 
 # Configure global settings
-eacopy.config.thread_count = 8  # Use 8 threads for copying
-eacopy.config.compression_level = 5  # Use compression level 5 for network transfers
+ferrocp.config.thread_count = 8  # Use 8 threads for copying
+ferrocp.config.compression_level = 5  # Use compression level 5 for network transfers
 ```
 
 ## Development
@@ -83,8 +83,8 @@ eacopy.config.compression_level = 5  # Use compression level 5 for network trans
 
 ```bash
 # Clone the repository
-git clone https://github.com/loonghao/py-eacopy.git
-cd py-eacopy
+git clone https://github.com/loonghao/ferrocp.git
+cd ferrocp
 
 # Install dependencies using uv (recommended)
 uv sync --group all
@@ -110,10 +110,10 @@ uv run maturin develop --release --features python
 uv run maturin build --release --features python
 
 # Build standalone CLI tool (no Python dependencies)
-cargo build --release --bin eacopy
+cargo build --release --bin ferrocp
 ```
 
-**Note**: The CLI tool (`eacopy.exe`) is built without Python dependencies and can run independently. The Python module requires the `python` feature to be enabled.
+**Note**: The CLI tool (`ferrocp.exe`) is built without Python dependencies and can run independently. The Python module requires the `python` feature to be enabled.
 
 ### Testing
 
@@ -143,7 +143,7 @@ uv run nox -s docs_serve
 
 ## Performance Benchmarks
 
-py-eacopy includes comprehensive performance benchmarks and continuous performance monitoring:
+ferrocp includes comprehensive performance benchmarks and continuous performance monitoring:
 
 ### Prerequisites for Benchmarking
 
@@ -243,7 +243,7 @@ See [benchmarks/README.md](benchmarks/README.md) for detailed benchmarking docum
 
 ## License
 
-BSD-3-Clause (same as EACopy)
+BSD-3-Clause
 
 ## CI/CD Configuration
 
@@ -253,13 +253,13 @@ This project uses GitHub Actions for CI/CD with the following workflows:
 - **Release**: Builds and publishes wheels to PyPI when a new release is created.
 - **Documentation**: Builds and deploys documentation to GitHub Pages.
 
-The release workflow uses cibuildwheel to build platform-specific wheels with the C++ extensions properly compiled for each platform.
+The release workflow uses cibuildwheel to build platform-specific wheels with the Rust extensions properly compiled for each platform.
 
 ### Release Process
 
 To create a new release:
 
-1. Update the version in `pyproject.toml` and `src/eacopy/__version__.py`
+1. Update the version in `pyproject.toml` and `python/ferrocp/__version__.py`
 2. Update the `CHANGELOG.md` with the new version and changes
 3. Commit and push the changes
 4. Create a new tag with the version number (e.g., `0.1.0`)
@@ -267,7 +267,7 @@ To create a new release:
 
 ```bash
 # Example release process
-git add pyproject.toml src/eacopy/__version__.py CHANGELOG.md
+git add pyproject.toml python/ferrocp/__version__.py CHANGELOG.md
 git commit -m "Release 0.1.0"
 git tag 0.1.0
 git push && git push --tags

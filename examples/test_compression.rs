@@ -1,7 +1,7 @@
 //! Example demonstrating intelligent compression engine
 
-use py_eacopy::compression::{CompressionEngine, NetworkMonitor};
-use py_eacopy::config::CompressionConfig;
+use ferrocp::compression::{CompressionEngine, NetworkMonitor};
+use ferrocp::config::CompressionConfig;
 use std::io::Cursor;
 use std::time::Duration;
 use tokio::time::sleep;

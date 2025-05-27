@@ -1,7 +1,7 @@
 //! Example demonstrating async file operations
 
-use py_eacopy::core::{EACopy, FileOperations};
-use py_eacopy::config::Config;
+use ferrocp::core::{EACopy, FileOperations};
+use ferrocp::config::Config;
 use std::path::PathBuf;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
@@ -16,7 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Testing async file operations...");
 
     // Create temporary directory
-    let temp_dir = std::env::temp_dir().join("py_eacopy_test");
+    let temp_dir = std::env::temp_dir().join("ferrocp_test");
     fs::create_dir_all(&temp_dir).await?;
 
     // Test 1: Basic file copy

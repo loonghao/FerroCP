@@ -92,7 +92,7 @@ jobs:
 
     - name: Verify installation
       run: |
-        uv run python -c "import py_eacopy; print(f'PGO-optimized py_eacopy imported successfully')"
+        uv run python -c "import ferrocp; print(f'PGO-optimized ferrocp imported successfully')"
 
     - name: Generate test data for benchmarks
       run: |

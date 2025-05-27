@@ -1,4 +1,4 @@
-"""Nox configuration for py-eacopy development tasks.
+"""Nox configuration for ferrocp development tasks.
 
 This file defines development tasks using nox sessions that work with
 the new dependency-groups format and uv package manager.
@@ -39,7 +39,7 @@ def lint(session):
 
     session.log("Running mypy type checking...")
     session.run("mypy", "--install-types", "--non-interactive")
-    session.run("mypy", "python/py_eacopy", "--strict")
+    session.run("mypy", "python/ferrocp", "--strict")
 
 
 @nox.session(python=DEFAULT_PYTHON)
@@ -70,7 +70,7 @@ def test(session):
     session.run(
         "pytest",
         "tests/",
-        "--cov=py_eacopy",
+        "--cov=ferrocp",
         "--cov-report=xml:coverage.xml",
         "--cov-report=term-missing",
         "--cov-report=html:htmlcov",
@@ -239,7 +239,7 @@ def build_pgo(session):
 
             # Run some basic operations to collect profile data
             session.run("python", "-c", """
-import py_eacopy
+import ferrocp
 import tempfile
 from pathlib import Path
 
@@ -257,7 +257,7 @@ with tempfile.TemporaryDirectory() as temp_dir:
         test_file.write_text(f'Test content {i}' * 100)
 
     # Run copy operations
-    eacopy = py_eacopy.EACopy()
+    eacopy = ferrocp.EACopy()
     for i in range(20):
         try:
             eacopy.copy_file(
@@ -352,11 +352,11 @@ def verify_build(session):
 
     # Test basic functionality
     session.run("python", "-c", """
-import py_eacopy
+import ferrocp
 import tempfile
 from pathlib import Path
 
-print(f'py_eacopy imported successfully')
+print(f'ferrocp imported successfully')
 
 # Test basic functionality
 with tempfile.TemporaryDirectory() as temp_dir:
@@ -366,7 +366,7 @@ with tempfile.TemporaryDirectory() as temp_dir:
 
     source_file.write_text('Hello, World!')
 
-    eacopy = py_eacopy.EACopy()
+    eacopy = ferrocp.EACopy()
     eacopy.copy_file(source_file, dest_file)
 
     if dest_file.exists() and dest_file.read_text() == 'Hello, World!':

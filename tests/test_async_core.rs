@@ -1,7 +1,7 @@
 //! Tests for async file operations core module
 
-use py_eacopy::core::{EACopy, FileOperations, CopyStats};
-use py_eacopy::config::Config;
+use ferrocp::core::{EACopy, FileOperations, CopyStats};
+use ferrocp::config::Config;
 use std::path::PathBuf;
 use tempfile::TempDir;
 use tokio::fs;

@@ -1,25 +1,25 @@
 [package]
-name = "py-eacopy"
+name = "ferrocp"
 version = "0.1.0"
 edition = "2021"
-description = "High-performance file copying with Rust implementation"
+description = "FerroCP - High-performance cross-platform file copying tool written in Rust"
 license = "BSD-3-Clause"
 authors = ["Long Hao <hal.long@outlook.com>"]
-repository = "https://github.com/loonghao/py-eacopy"
-homepage = "https://github.com/loonghao/py-eacopy"
-documentation = "https://loonghao.github.io/py-eacopy"
-keywords = ["file-copy", "performance", "async", "compression"]
+repository = "https://github.com/loonghao/ferrocp"
+homepage = "https://github.com/loonghao/ferrocp"
+documentation = "https://loonghao.github.io/ferrocp"
+keywords = ["file-copy", "performance", "async", "compression", "cross-platform"]
 categories = ["filesystem", "command-line-utilities"]
 
 # Rust library for both CLI and Python bindings
 [lib]
-name = "py_eacopy"
+name = "ferrocp"
 crate-type = ["cdylib", "rlib"]
 
 # CLI binary
 [[bin]]
-name = "eacopy"
-path = "src/bin/eacopy.rs"
+name = "ferrocp"
+path = "src/bin/ferrocp.rs"
 
 [dependencies]
 # Python bindings
@@ -70,6 +70,16 @@ toml = "0.8"
 num_cpus = "1.16"
 uuid = { version = "1.0", features = ["v4"] }
 lazy_static = "1.4"
+
+# Windows-specific dependencies
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_Security",
+    "Win32_System_SystemServices",
+] }
 
 # Development dependencies
 [dev-dependencies]

@@ -6,7 +6,7 @@ from unittest import mock
 from click.testing import CliRunner
 
 # Import local modules
-from py_eacopy import cli
+from ferrocp import cli
 
 
 def test_cli_version():
@@ -73,7 +73,7 @@ def test_cli_copy_directory():
             assert f.read() == "test content"
 
 
-@mock.patch("py_eacopy.EACopy")
+@mock.patch("ferrocp.EACopy")
 def test_cli_copy_with_server(mock_eacopy_class):
     """Test CLI copy-with-server command."""
     # Mock the EACopy instance and its methods
@@ -94,7 +94,7 @@ def test_cli_copy_with_server(mock_eacopy_class):
         assert "Network copy completed" in result.output
 
 
-@mock.patch("py_eacopy.EACopy")
+@mock.patch("ferrocp.EACopy")
 def test_cli_error(mock_eacopy_class):
     """Test CLI error handling."""
     # Mock the EACopy instance to raise an exception

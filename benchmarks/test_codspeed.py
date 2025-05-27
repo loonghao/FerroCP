@@ -1,4 +1,4 @@
-"""CodSpeed optimized benchmarks for py-eacopy.
+"""CodSpeed optimized benchmarks for ferrocp.
 
 These benchmarks are specifically designed for CodSpeed continuous performance monitoring.
 They focus on the most critical performance paths and provide stable, reproducible results.
@@ -10,7 +10,7 @@ import uuid
 from pathlib import Path
 
 import pytest
-import py_eacopy
+import ferrocp
 
 
 # Test data sizes for different benchmark categories
@@ -82,7 +82,7 @@ def large_test_file(temp_dir):
 def test_copy_small_file_codspeed(small_test_file, temp_dir):
     """Benchmark small file copying (1KB) - Core performance metric."""
     dest = temp_dir / get_unique_filename("small_dest")
-    py_eacopy.copy(str(small_test_file), str(dest))
+    ferrocp.copy(str(small_test_file), str(dest))
     assert dest.exists()
     assert dest.stat().st_size == SMALL_FILE_SIZE
 
@@ -91,7 +91,7 @@ def test_copy_small_file_codspeed(small_test_file, temp_dir):
 def test_copy_medium_file_codspeed(medium_test_file, temp_dir):
     """Benchmark medium file copying (1MB) - Core performance metric."""
     dest = temp_dir / get_unique_filename("medium_dest")
-    py_eacopy.copy(str(medium_test_file), str(dest))
+    ferrocp.copy(str(medium_test_file), str(dest))
     assert dest.exists()
     assert dest.stat().st_size == MEDIUM_FILE_SIZE
 
@@ -100,7 +100,7 @@ def test_copy_medium_file_codspeed(medium_test_file, temp_dir):
 def test_copy_large_file_codspeed(large_test_file, temp_dir):
     """Benchmark large file copying (10MB) - Core performance metric."""
     dest = temp_dir / get_unique_filename("large_dest")
-    py_eacopy.copy(str(large_test_file), str(dest))
+    ferrocp.copy(str(large_test_file), str(dest))
     assert dest.exists()
     assert dest.stat().st_size == LARGE_FILE_SIZE
 
@@ -120,7 +120,7 @@ def test_shutil_copy_comparison(medium_test_file, temp_dir):
 def test_copy_with_compression(medium_test_file, temp_dir):
     """Benchmark file copying with compression."""
     dest = temp_dir / get_unique_filename("compressed_dest")
-    eacopy = py_eacopy.EACopy(compression_level=3)
+    eacopy = ferrocp.EACopy(compression_level=3)
     eacopy.copy_file(str(medium_test_file), str(dest))
     assert dest.exists()
 
@@ -130,6 +130,6 @@ def test_copy_with_compression(medium_test_file, temp_dir):
 def test_copy_multi_thread(large_test_file, temp_dir):
     """Benchmark multi-threaded file copying."""
     dest = temp_dir / get_unique_filename("multi_thread_dest")
-    eacopy = py_eacopy.EACopy(thread_count=4)
+    eacopy = ferrocp.EACopy(thread_count=4)
     eacopy.copy_file(str(large_test_file), str(dest))
     assert dest.exists()

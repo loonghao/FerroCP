@@ -1,6 +1,6 @@
-//! # py-eacopy: High-Performance File Copying with Rust
+//! # FerroCP: High-Performance Cross-Platform File Copying with Rust
 //!
-//! A pure Rust implementation of EACopy functionality, providing:
+//! FerroCP is a high-performance cross-platform file copying tool written in Rust, providing:
 //! - High-performance file copying with async I/O
 //! - Network acceleration with file deduplication
 //! - Adaptive compression based on network conditions
@@ -27,7 +27,7 @@
 //! - **Compression**: Adaptive zstd compression for network transfers
 //! - **Deduplication**: File-level deduplication using Blake3 hashing
 //! - **Progress Reporting**: Real-time progress callbacks
-//! - **Network Acceleration**: EACopyService-compatible network protocol
+//! - **Network Acceleration**: Compatible with EACopy network protocol
 
 // use std::path::Path; // Unused for now
 
@@ -40,6 +40,7 @@ pub mod config;
 pub mod error;
 pub mod zerocopy;
 pub mod device_detector;
+pub mod windows_optimization;
 
 // Re-export commonly used types
 pub use crate::core::{EACopy, CopyStats, FileOperations};
@@ -63,11 +64,11 @@ pub mod ops {
     /// # Examples
     ///
     /// ```rust
-    /// use py_eacopy::ops;
+    /// use ferrocp::ops;
     ///
     /// # tokio_test::block_on(async {
     /// ops::copy("source.txt", "destination.txt").await?;
-    /// # Ok::<(), py_eacopy::Error>(())
+    /// # Ok::<(), ferrocp::Error>(())
     /// # });
     /// ```
     pub async fn copy<P: AsRef<Path>, Q: AsRef<Path>>(
@@ -85,11 +86,11 @@ pub mod ops {
     /// # Examples
     ///
     /// ```rust
-    /// use py_eacopy::ops;
+    /// use ferrocp::ops;
     ///
     /// # tokio_test::block_on(async {
     /// ops::copy2("source.txt", "destination.txt").await?;
-    /// # Ok::<(), py_eacopy::Error>(())
+    /// # Ok::<(), ferrocp::Error>(())
     /// # });
     /// ```
     pub async fn copy2<P: AsRef<Path>, Q: AsRef<Path>>(
@@ -108,11 +109,11 @@ pub mod ops {
     /// # Examples
     ///
     /// ```rust
-    /// use py_eacopy::ops;
+    /// use ferrocp::ops;
     ///
     /// # tokio_test::block_on(async {
     /// ops::copytree("source_dir", "destination_dir").await?;
-    /// # Ok::<(), py_eacopy::Error>(())
+    /// # Ok::<(), ferrocp::Error>(())
     /// # });
     /// ```
     pub async fn copytree<P: AsRef<Path>, Q: AsRef<Path>>(
@@ -132,11 +133,11 @@ pub mod ops {
     /// # Examples
     ///
     /// ```rust
-    /// use py_eacopy::ops;
+    /// use ferrocp::ops;
     ///
     /// # tokio_test::block_on(async {
     /// ops::copy_zerocopy("large_file.bin", "backup.bin").await?;
-    /// # Ok::<(), py_eacopy::Error>(())
+    /// # Ok::<(), ferrocp::Error>(())
     /// # });
     /// ```
     pub async fn copy_zerocopy<P: AsRef<Path>, Q: AsRef<Path>>(

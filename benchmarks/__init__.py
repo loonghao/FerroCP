@@ -1,1 +1,1 @@
-"""Performance benchmarks for py-eacopy."""
+"""Performance benchmarks for ferrocp."""

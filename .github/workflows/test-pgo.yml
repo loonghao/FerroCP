@@ -57,11 +57,11 @@ jobs:
           
           # Test basic functionality
           uv run python -c "
-          import py_eacopy
+          import ferrocp
           import tempfile
           from pathlib import Path
           
-          print('Testing PGO-optimized py_eacopy...')
+          print('Testing PGO-optimized ferrocp...')
           
           with tempfile.TemporaryDirectory() as temp_dir:
               temp_path = Path(temp_dir)
@@ -70,7 +70,7 @@ jobs:
               
               source_file.write_text('Hello, PGO!')
               
-              eacopy = py_eacopy.EACopy()
+              eacopy = ferrocp.EACopy()
               try:
                   eacopy.copy_file(source_file, dest_file)
                   if dest_file.exists() and dest_file.read_text() == 'Hello, PGO!':
