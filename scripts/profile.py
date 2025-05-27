@@ -3,12 +3,10 @@
 
 import argparse
 import subprocess
-import sys
 import tempfile
 import time
 from pathlib import Path
 
-import py_eacopy
 
 
 def create_test_file(path: Path, size: int):

@@ -14,6 +14,7 @@ class Config:
         zerocopy_min_size: Minimum file size for zero-copy operations (bytes).
         auto_detect_device: Whether to automatically detect device types.
         small_file_batch_size: Batch size for small files.
+
     """
 
     def __init__(self) -> None:

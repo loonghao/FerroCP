@@ -31,7 +31,7 @@ def test_cli_copy():
         assert "Files copied: 1" in result.output
 
         # Verify the file was actually copied
-        with open("dest.txt", "r") as f:
+        with open("dest.txt") as f:
             assert f.read() == "test content"
 
 
@@ -48,7 +48,7 @@ def test_cli_copy_with_metadata():
         assert "Copy completed successfully" in result.output
 
         # Verify the file was actually copied
-        with open("dest.txt", "r") as f:
+        with open("dest.txt") as f:
             assert f.read() == "test content"
 
 
@@ -69,7 +69,7 @@ def test_cli_copy_directory():
         # Verify the directory and file were copied
         assert os.path.exists("dest_dir")
         assert os.path.exists("dest_dir/test.txt")
-        with open("dest_dir/test.txt", "r") as f:
+        with open("dest_dir/test.txt") as f:
             assert f.read() == "test content"
 
 

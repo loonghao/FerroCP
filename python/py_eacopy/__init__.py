@@ -25,14 +25,14 @@ from .config import Config
 config = Config()
 
 __all__ = [
-    "__version__",
+    "Config",
+    "EACopy",
     "__eacopy_version__",
+    "__version__",
     "config",
     "copy",
     "copy2",
+    "copy_with_server",
     "copyfile",
     "copytree",
-    "copy_with_server",
-    "Config",
-    "EACopy",
 ]
