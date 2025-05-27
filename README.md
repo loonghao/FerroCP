@@ -352,7 +352,7 @@ See [benchmarks/README.md](benchmarks/README.md) for detailed benchmarking docum
 
 ## License
 
-BSD-3-Clause
+Apache-2.0
 
 ## CI/CD Configuration
 

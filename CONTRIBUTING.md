@@ -1,23 +1,23 @@
-# Contributing to Your Project Name
+# Contributing to FerroCP
 
-Thank you for your interest in contributing to this project! Here are some guidelines to help you get started.
+Thank you for your interest in contributing to FerroCP! Here are some guidelines to help you get started.
 
 ## Development Setup
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/your-project-name.git
-   cd your-project-name
+   git clone https://github.com/loonghao/FerroCP.git
+   cd FerroCP
    ```
 
-2. Install development dependencies with Poetry:
+2. Install development dependencies with uv:
    ```bash
-   poetry install
+   uv sync --group all
    ```
 
-3. Install pre-commit hooks:
+3. Build the Rust extension:
    ```bash
-   pre-commit install
+   uv run maturin develop --release
    ```
 
 ## Code Style
@@ -29,19 +29,19 @@ This project uses:
 
 You can run the linters with:
 ```bash
-nox -s lint
+uv run nox -s lint
 ```
 
 And fix formatting issues with:
 ```bash
-nox -s lint_fix
+uv run nox -s lint_fix
 ```
 
 ## Testing
 
 Write tests for all new features and bug fixes. Run the test suite with:
 ```bash
-nox -s pytest
+uv run nox -s test
 ```
 
 ## Pull Request Process
@@ -75,4 +75,4 @@ Types include:
 
 ## License
 
-By contributing to this project, you agree that your contributions will be licensed under the project's [MIT License](LICENSE).
+By contributing to this project, you agree that your contributions will be licensed under the project's [Apache-2.0 License](LICENSE).

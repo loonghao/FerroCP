@@ -266,7 +266,7 @@ uv run nox -s docs_serve
 
 ## 许可证
 
-BSD-3-Clause
+Apache-2.0
 
 ## 贡献
 
