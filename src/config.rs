@@ -38,6 +38,72 @@ impl Default for LogLevel {
 /// Type for progress callback function
 pub type ProgressCallback = Option<Arc<dyn Fn(u64, u64, &str) + Send + Sync>>;
 
+/// Compression configuration
+#[derive(Debug, Clone)]
+pub struct CompressionConfig {
+    /// Whether compression is enabled
+    pub enabled: bool,
+    /// Compression level (1-22 for zstd)
+    pub level: i32,
+    /// Whether to use adaptive compression based on network speed
+    pub adaptive: bool,
+    /// Minimum file size to compress (bytes)
+    pub min_file_size: u64,
+    /// Maximum compression buffer size
+    pub buffer_size: usize,
+}
+
+impl Default for CompressionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            level: 3,
+            adaptive: true,
+            min_file_size: 1024, // 1KB minimum
+            buffer_size: 64 * 1024, // 64KB buffer
+        }
+    }
+}
+
+/// Network configuration for EACopy service
+#[derive(Debug, Clone)]
+pub struct NetworkConfig {
+    /// Server bind address
+    pub bind_address: String,
+    /// Server port
+    pub port: u16,
+    /// Maximum number of concurrent connections
+    pub max_connections: usize,
+    /// Connection timeout in seconds
+    pub connection_timeout: u64,
+    /// Buffer size for network operations
+    pub buffer_size: usize,
+    /// Whether to enable compression for network transfers
+    pub enable_compression: bool,
+    /// Compression level (0-9)
+    pub compression_level: u32,
+    /// Cache directory for file deduplication
+    pub cache_directory: Option<String>,
+    /// Maximum cache size in bytes
+    pub max_cache_size: u64,
+}
+
+impl Default for NetworkConfig {
+    fn default() -> Self {
+        Self {
+            bind_address: "0.0.0.0".to_string(),
+            port: 31337,
+            max_connections: 100,
+            connection_timeout: 30,
+            buffer_size: 64 * 1024, // 64KB
+            enable_compression: true,
+            compression_level: 3,
+            cache_directory: None,
+            max_cache_size: 10 * 1024 * 1024 * 1024, // 10GB
+        }
+    }
+}
+
 /// Configuration options for EACopy
 #[derive(Clone)]
 pub struct Config {
@@ -65,16 +131,20 @@ pub struct Config {
     pub progress_callback: ProgressCallback,
     /// Advanced options
     pub extra_options: HashMap<String, String>,
-    /// Whether zero-copy operations are enabled
+    /// Whether to enable zero-copy operations
     pub zerocopy_enabled: bool,
-    /// Minimum file size for zero-copy operations (bytes)
+    /// Minimum file size for zero-copy operations
     pub zerocopy_min_size: u64,
-    /// Whether to automatically detect device types
+    /// Whether to automatically detect device types for optimization
     pub auto_detect_device: bool,
     /// I/O optimization configuration
     pub io_optimization: IOOptimizationConfig,
-    /// Batch size for small files
+    /// Batch size for small file operations
     pub small_file_batch_size: usize,
+    /// Network configuration
+    pub network: NetworkConfig,
+    /// Compression configuration
+    pub compression: CompressionConfig,
 }
 
 impl Default for Config {
@@ -93,11 +163,39 @@ impl Default for Config {
             progress_callback: None,
             extra_options: HashMap::new(),
             zerocopy_enabled: true,
-            zerocopy_min_size: 64 * 1024, // 64KB minimum
+            zerocopy_min_size: 64 * 1024, // 64KB minimum for zero-copy
             auto_detect_device: true,
             io_optimization: IOOptimizationConfig::default(),
-            small_file_batch_size: 50,
+            small_file_batch_size: 100,
+            network: NetworkConfig::default(),
+            compression: CompressionConfig::default(),
         }
+    }
+}
+
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("thread_count", &self.thread_count)
+            .field("compression_level", &self.compression_level)
+            .field("buffer_size", &self.buffer_size)
+            .field("error_strategy", &self.error_strategy)
+            .field("retry_count", &self.retry_count)
+            .field("retry_delay", &self.retry_delay)
+            .field("log_level", &self.log_level)
+            .field("preserve_metadata", &self.preserve_metadata)
+            .field("follow_symlinks", &self.follow_symlinks)
+            .field("dirs_exist_ok", &self.dirs_exist_ok)
+            .field("progress_callback", &self.progress_callback.is_some())
+            .field("extra_options", &self.extra_options)
+            .field("zerocopy_enabled", &self.zerocopy_enabled)
+            .field("zerocopy_min_size", &self.zerocopy_min_size)
+            .field("auto_detect_device", &self.auto_detect_device)
+            .field("io_optimization", &self.io_optimization)
+            .field("small_file_batch_size", &self.small_file_batch_size)
+            .field("network", &self.network)
+            .field("compression", &self.compression)
+            .finish()
     }
 }
 
@@ -175,29 +273,41 @@ impl Config {
         self.progress_callback = Some(Arc::new(callback));
         self
     }
-}
 
-impl std::fmt::Debug for Config {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Config")
-            .field("thread_count", &self.thread_count)
-            .field("compression_level", &self.compression_level)
-            .field("buffer_size", &self.buffer_size)
-            .field("error_strategy", &self.error_strategy)
-            .field("retry_count", &self.retry_count)
-            .field("retry_delay", &self.retry_delay)
-            .field("log_level", &self.log_level)
-            .field("preserve_metadata", &self.preserve_metadata)
-            .field("follow_symlinks", &self.follow_symlinks)
-            .field("dirs_exist_ok", &self.dirs_exist_ok)
-            .field("progress_callback", &self.progress_callback.is_some())
-            .field("extra_options", &self.extra_options)
-            .field("zerocopy_enabled", &self.zerocopy_enabled)
-            .field("zerocopy_min_size", &self.zerocopy_min_size)
-            .field("auto_detect_device", &self.auto_detect_device)
-            .field("io_optimization", &self.io_optimization)
-            .field("small_file_batch_size", &self.small_file_batch_size)
-            .finish()
+    /// Set whether to enable zero-copy operations
+    pub fn with_zerocopy_enabled(mut self, enabled: bool) -> Self {
+        self.zerocopy_enabled = enabled;
+        self
+    }
+
+    /// Set minimum file size for zero-copy operations
+    pub fn with_zerocopy_min_size(mut self, min_size: u64) -> Self {
+        self.zerocopy_min_size = min_size;
+        self
+    }
+
+    /// Set whether to auto-detect device types
+    pub fn with_auto_detect_device(mut self, enabled: bool) -> Self {
+        self.auto_detect_device = enabled;
+        self
+    }
+
+    /// Set small file batch size
+    pub fn with_small_file_batch_size(mut self, batch_size: usize) -> Self {
+        self.small_file_batch_size = batch_size;
+        self
+    }
+
+    /// Set network configuration
+    pub fn with_network_config(mut self, network: NetworkConfig) -> Self {
+        self.network = network;
+        self
+    }
+
+    /// Set compression configuration
+    pub fn with_compression_config(mut self, compression: CompressionConfig) -> Self {
+        self.compression = compression;
+        self
     }
 }
 
@@ -221,61 +331,4 @@ pub fn set_global_config(config: Config) {
 pub fn reset_global_config() {
     let mut global = GLOBAL_CONFIG.lock().unwrap();
     *global = Config::default();
-}
-
-/// Compression configuration
-#[derive(Debug, Clone)]
-pub struct CompressionConfig {
-    /// Whether compression is enabled
-    pub enabled: bool,
-    /// Compression level (1-22 for zstd)
-    pub level: i32,
-    /// Minimum file size to compress (bytes)
-    pub min_file_size: u64,
-    /// Whether to use adaptive compression based on network conditions
-    pub adaptive: bool,
-    /// Maximum compression level for adaptive mode
-    pub max_adaptive_level: i32,
-    /// Minimum compression level for adaptive mode
-    pub min_adaptive_level: i32,
-}
-
-impl Default for CompressionConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            level: 3,
-            min_file_size: 1024, // 1KB
-            adaptive: true,
-            max_adaptive_level: 9,
-            min_adaptive_level: 1,
-        }
-    }
-}
-
-/// Network configuration
-#[derive(Debug, Clone)]
-pub struct NetworkConfig {
-    /// Network buffer size
-    pub buffer_size: usize,
-    /// Connection timeout in seconds
-    pub timeout: u64,
-    /// Maximum number of concurrent connections
-    pub max_connections: usize,
-    /// Whether to use TCP_NODELAY
-    pub tcp_nodelay: bool,
-    /// Keep-alive interval in seconds
-    pub keep_alive: Option<u64>,
-}
-
-impl Default for NetworkConfig {
-    fn default() -> Self {
-        Self {
-            buffer_size: 64 * 1024, // 64KB
-            timeout: 30,
-            max_connections: 10,
-            tcp_nodelay: true,
-            keep_alive: Some(60),
-        }
-    }
 }
