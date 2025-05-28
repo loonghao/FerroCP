@@ -1,8 +1,23 @@
-[package]
-name = "ferrocp"
-version = "0.1.0"
+[workspace]
+members = [
+    "crates/ferrocp-types",
+    "crates/ferrocp-io",
+    "crates/ferrocp-device",
+    "crates/ferrocp-zerocopy",
+    "crates/ferrocp-compression",
+    "crates/ferrocp-network",
+    "crates/ferrocp-sync",
+    "crates/ferrocp-config",
+    "crates/ferrocp-engine",
+    "crates/ferrocp-cli",
+    "crates/ferrocp-python",
+]
+default-members = ["crates/ferrocp-cli"]
+resolver = "2"
+
+[workspace.package]
+version = "0.2.0"
 edition = "2021"
-description = "FerroCP - High-performance cross-platform file copying tool written in Rust"
 license = "Apache-2.0"
 authors = ["Long Hao <hal.long@outlook.com>"]
 repository = "https://github.com/loonghao/ferrocp"
@@ -10,24 +25,14 @@ homepage = "https://github.com/loonghao/ferrocp"
 documentation = "https://loonghao.github.io/ferrocp"
 keywords = ["file-copy", "performance", "async", "compression", "cross-platform"]
 categories = ["filesystem", "command-line-utilities"]
+rust-version = "1.75"
 
-# Rust library for both CLI and Python bindings
-[lib]
-name = "ferrocp"
-crate-type = ["cdylib", "rlib"]
-
-# CLI binary
-[[bin]]
-name = "ferrocp"
-path = "src/bin/ferrocp.rs"
-
-[dependencies]
-# Python bindings
-pyo3 = { version = "0.20", features = ["extension-module", "abi3-py38"], optional = true }
-
+# Workspace-wide dependency management
+[workspace.dependencies]
 # Async runtime and utilities
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.40", features = ["full"] }
 futures = "0.3"
+async-trait = "0.1"
 
 # File system operations
 walkdir = "2.4"
@@ -37,43 +42,64 @@ memmap2 = "0.9"
 # Compression
 zstd = "0.13"
 async-compression = { version = "0.4", features = ["tokio", "zstd"] }
+lz4_flex = "0.11"
+brotli = "6.0"
 
 # Hashing for file deduplication
 blake3 = { version = "1.5", features = ["serde"] }
 sha2 = "0.10"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
 
-# Serialization for network protocol
+# Serialization
 serde = { version = "1.0", features = ["derive"] }
 bincode = "1.3"
+rmp-serde = "1.1"
 
 # Network communication
 tokio-util = { version = "0.7", features = ["codec"] }
+quinn = "0.11"
+h3 = "0.0.4"
+h3-quinn = "0.0.6"
 
 # Error handling
 thiserror = "1.0"
 anyhow = "1.0"
+eyre = "0.6"
 
-# Logging
+# Logging and tracing
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
 
 # CLI interface
-clap = { version = "4.0", features = ["derive"], optional = true }
+clap = { version = "4.4", features = ["derive", "color", "suggestions"] }
+console = "0.15"
+dialoguer = "0.11"
 
 # Progress reporting
 indicatif = "0.17"
 
 # Configuration
+serde_yaml = "0.9"
 toml = "0.8"
+config = "0.14"
 
 # Cross-platform utilities
 num_cpus = "1.16"
-uuid = { version = "1.0", features = ["v4"] }
-lazy_static = "1.4"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+once_cell = "1.19"
 
-# Windows-specific dependencies
-[target.'cfg(windows)'.dependencies]
-windows = { version = "0.58", features = [
+# Performance and profiling
+criterion = { version = "0.5", features = ["html_reports"] }
+pprof = { version = "0.13", features = ["criterion", "flamegraph"] }
+
+# Python bindings
+pyo3 = { version = "0.20", features = ["extension-module", "abi3-py39"] }
+
+# Platform-specific dependencies
+[workspace.dependencies.windows]
+version = "0.58"
+features = [
     "Win32_Foundation",
     "Win32_Storage_FileSystem",
     "Win32_System_IO",
@@ -85,50 +111,73 @@ windows = { version = "0.58", features = [
     "Win32_System_SystemInformation",
     "Win32_Storage_InstallableFileSystems",
     "Win32_System_Ioctl",
-] }
-wmi = "0.13"
+]
+
+[workspace.dependencies.wmi]
+version = "0.13"
+
+[workspace.dependencies.libc]
+version = "0.2"
 
 # Development dependencies
-[dev-dependencies]
-tempfile = "3.8"
-criterion = { version = "0.5", features = ["html_reports"] }
-tokio-test = "0.4"
-flamegraph = "0.6"
+[workspace.dependencies.tempfile]
+version = "3.8"
 
-# Features
-[features]
-default = ["cli"]
-python = ["pyo3"]
-cli = ["clap"]
+[workspace.dependencies.tokio-test]
+version = "0.4"
 
-# Rust benchmarks
-[[bench]]
-name = "copy_benchmarks"
-harness = false
+[workspace.dependencies.proptest]
+version = "1.4"
 
-# Profile optimizations
+[workspace.dependencies.rstest]
+version = "0.18"
+
+# Workspace-level configuration
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+unused_imports = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+cargo = "warn"
+# Allow some pedantic lints that are too strict
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+
+# Modern profile optimizations
 [profile.release]
-lto = true
+lto = "fat"
 codegen-units = 1
 panic = "abort"
-strip = true
+strip = "symbols"
+opt-level = 3
 
 [profile.dev]
-debug = true
+debug = 2
 opt-level = 0
+overflow-checks = true
+
+[profile.test]
+debug = 2
+opt-level = 1
 
 [profile.bench]
-debug = true
+debug = 1
+lto = "thin"
+codegen-units = 16
 
-# PGO (Profile-Guided Optimization) profiles
+# Profile-Guided Optimization
 [profile.release-pgo]
 inherits = "release"
 lto = "fat"
 codegen-units = 1
-panic = "abort"
-strip = true
 
-[profile.bench-pgo]
-inherits = "bench"
-lto = "fat"
-codegen-units = 1
+# Fast development builds
+[profile.dev-fast]
+inherits = "dev"
+opt-level = 1
+debug = 1

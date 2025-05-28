@@ -1,0 +1,23 @@
+[package]
+name = "ferrocp-config"
+description = "Configuration management system for FerroCP"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+ferrocp-types = { path = "../ferrocp-types" }
+
+[dev-dependencies]
+tokio-test = { workspace = true }
+rstest = { workspace = true }

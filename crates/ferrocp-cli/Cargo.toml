@@ -1,0 +1,55 @@
+[package]
+name = "ferrocp-cli"
+description = "Modern CLI tool for FerroCP"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "ferrocp"
+path = "src/main.rs"
+
+[dependencies]
+ferrocp-types = { path = "../ferrocp-types" }
+
+# CLI framework
+clap = { workspace = true }
+console = { workspace = true }
+dialoguer = { workspace = true }
+
+# Progress reporting
+indicatif = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+eyre = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Configuration
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+toml = { workspace = true }
+
+# File operations
+walkdir = { workspace = true }
+
+[dev-dependencies]
+tokio-test = { workspace = true }
+rstest = { workspace = true }
+tempfile = { workspace = true }
