@@ -243,17 +243,138 @@ impl ZeroCopyEngine {
     #[cfg(target_os = "windows")]
     async fn try_refs_cow<P: AsRef<Path>, Q: AsRef<Path>>(
         &self,
-        _source: P,
-        _destination: Q,
-        _file_size: u64,
+        source: P,
+        destination: Q,
+        file_size: u64,
     ) -> Result<ZeroCopyResult> {
-        // TODO: Implement Windows ReFS CoW using FSCTL_DUPLICATE_EXTENTS_TO_FILE
-        warn!("Windows ReFS CoW not yet implemented");
-        Ok(ZeroCopyResult {
-            bytes_copied: 0,
-            zerocopy_used: false,
-            method: ZeroCopyMethod::Fallback,
-        })
+        use windows::Win32::Foundation::{HANDLE, CloseHandle};
+        use windows::Win32::Storage::FileSystem::{
+            CreateFileW, FILE_SHARE_READ, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL,
+            CREATE_ALWAYS
+        };
+        use windows::Win32::System::IO::DeviceIoControl;
+        use windows::core::HSTRING;
+        use std::mem;
+
+        // Define constants
+        const FSCTL_DUPLICATE_EXTENTS_TO_FILE: u32 = 0x00098344;
+        const GENERIC_READ: u32 = 0x80000000;
+        const GENERIC_WRITE: u32 = 0x40000000;
+
+        let source_path = source.as_ref();
+        let dest_path = destination.as_ref();
+
+        // Convert paths to wide strings
+        let source_wide = HSTRING::from(source_path.to_string_lossy().as_ref());
+        let dest_wide = HSTRING::from(dest_path.to_string_lossy().as_ref());
+
+        // Open source file
+        let source_handle = unsafe {
+            CreateFileW(
+                &source_wide,
+                GENERIC_READ,
+                FILE_SHARE_READ,
+                None,
+                OPEN_EXISTING,
+                FILE_ATTRIBUTE_NORMAL,
+                HANDLE::default(),
+            )
+        };
+
+        let source_handle = match source_handle {
+            Ok(handle) => handle,
+            Err(_) => {
+                debug!("Failed to open source file for ReFS CoW");
+                return Ok(ZeroCopyResult {
+                    bytes_copied: 0,
+                    zerocopy_used: false,
+                    method: ZeroCopyMethod::Fallback,
+                });
+            }
+        };
+
+        // Create destination file
+        let dest_handle = unsafe {
+            CreateFileW(
+                &dest_wide,
+                GENERIC_WRITE,
+                FILE_SHARE_READ,
+                None,
+                CREATE_ALWAYS,
+                FILE_ATTRIBUTE_NORMAL,
+                HANDLE::default(),
+            )
+        };
+
+        let dest_handle = match dest_handle {
+            Ok(handle) => handle,
+            Err(_) => {
+                unsafe { let _ = CloseHandle(source_handle); };
+                debug!("Failed to create destination file for ReFS CoW");
+                return Ok(ZeroCopyResult {
+                    bytes_copied: 0,
+                    zerocopy_used: false,
+                    method: ZeroCopyMethod::Fallback,
+                });
+            }
+        };
+
+        // Prepare DUPLICATE_EXTENTS_DATA structure
+        #[repr(C)]
+        struct DuplicateExtentsData {
+            file_handle: HANDLE,
+            source_file_offset: i64,
+            target_file_offset: i64,
+            byte_count: i64,
+        }
+
+        let duplicate_data = DuplicateExtentsData {
+            file_handle: source_handle,
+            source_file_offset: 0,
+            target_file_offset: 0,
+            byte_count: file_size as i64,
+        };
+
+        let mut bytes_returned = 0u32;
+
+        // Try to duplicate extents
+        let result = unsafe {
+            DeviceIoControl(
+                dest_handle,
+                FSCTL_DUPLICATE_EXTENTS_TO_FILE,
+                Some(&duplicate_data as *const _ as *const std::ffi::c_void),
+                mem::size_of::<DuplicateExtentsData>() as u32,
+                None,
+                0,
+                Some(&mut bytes_returned),
+                None,
+            )
+        };
+
+        // Clean up handles
+        unsafe {
+            let _ = CloseHandle(source_handle);
+            let _ = CloseHandle(dest_handle);
+        }
+
+        match result {
+            Ok(_) => {
+                debug!("Successfully used ReFS CoW for {} bytes", file_size);
+                Ok(ZeroCopyResult {
+                    bytes_copied: file_size,
+                    zerocopy_used: true,
+                    method: ZeroCopyMethod::RefsCoW,
+                })
+            }
+            Err(_) => {
+                debug!("ReFS CoW failed, will fallback to regular copy");
+                Ok(ZeroCopyResult {
+                    bytes_copied: 0,
+                    zerocopy_used: false,
+                    method: ZeroCopyMethod::Fallback,
+                })
+            }
+        }
     }
 
     /// Try macOS clonefile

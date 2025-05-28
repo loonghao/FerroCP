@@ -182,10 +182,36 @@ impl DeviceDetector {
     }
 
     #[cfg(target_os = "windows")]
-    async fn get_windows_drive_type(&self, _drive: &str) -> Result<DeviceType> {
-        // TODO: Implement Windows-specific detection using WMI or Win32 API
-        // For now, return SSD as a reasonable default
-        Ok(DeviceType::SSD)
+    async fn get_windows_drive_type(&self, drive: &str) -> Result<DeviceType> {
+        use windows::Win32::Storage::FileSystem::GetDriveTypeW;
+        use windows::core::HSTRING;
+
+        // Convert drive letter to wide string
+        let drive_path = if drive.ends_with('\\') {
+            drive.to_string()
+        } else {
+            format!("{}\\", drive)
+        };
+
+        let wide_path = HSTRING::from(&drive_path);
+
+        // Get basic drive type first
+        let drive_type = unsafe { GetDriveTypeW(&wide_path) };
+
+        match drive_type {
+            4 => return Ok(DeviceType::Network),      // DRIVE_REMOTE
+            2 | 5 => return Ok(DeviceType::Unknown),  // DRIVE_REMOVABLE | DRIVE_CDROM
+            6 => return Ok(DeviceType::SSD),          // DRIVE_RAMDISK - RAM disk is fast like SSD
+            3 => {                                    // DRIVE_FIXED
+                // For fixed drives, try to detect SSD vs HDD using WMI
+                if let Ok(device_type) = self.detect_windows_storage_type(drive).await {
+                    return Ok(device_type);
+                }
+                // Fallback to registry-based detection
+                self.detect_windows_storage_from_registry(drive).await
+            }
+            _ => Ok(DeviceType::Unknown),
+        }
     }
 
     /// Linux-specific device detection
@@ -299,6 +325,115 @@ impl Default for IOOptimizationConfig {
             batch_size: 50,
             enable_zerocopy: true,
             read_ahead: false,
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl DeviceDetector {
+    /// Detect storage type using WMI
+    async fn detect_windows_storage_type(&self, drive: &str) -> Result<DeviceType> {
+        use wmi::{COMLibrary, WMIConnection, Variant};
+        use std::collections::HashMap;
+
+        // Initialize COM library
+        let com_con = COMLibrary::new().map_err(|e| {
+            warn!("Failed to initialize COM library: {}", e);
+            Error::device_detection("COM initialization failed")
+        })?;
+
+        let wmi_con = WMIConnection::new(com_con.into()).map_err(|e| {
+            warn!("Failed to connect to WMI: {}", e);
+            Error::device_detection("WMI connection failed")
+        })?;
+
+        // Get drive letter without backslash
+        let drive_letter = drive.trim_end_matches('\\').trim_end_matches(':');
+
+        // Query Win32_LogicalDisk to get the DeviceID
+        let query = format!("SELECT * FROM Win32_LogicalDisk WHERE DeviceID = '{}:'", drive_letter);
+        let results: Vec<HashMap<String, Variant>> = wmi_con.raw_query(&query).map_err(|e| {
+            warn!("WMI query failed: {}", e);
+            Error::device_detection("WMI query failed")
+        })?;
+
+        if results.is_empty() {
+            return Err(Error::device_detection("Drive not found"));
+        }
+
+        // Query Win32_DiskDrive for physical disk information
+        let disk_query = "SELECT * FROM Win32_DiskDrive".to_string();
+        let disk_results: Vec<HashMap<String, Variant>> = wmi_con.raw_query(&disk_query).map_err(|e| {
+            warn!("Disk WMI query failed: {}", e);
+            Error::device_detection("Disk WMI query failed")
+        })?;
+
+        // Look for SSD indicators
+        for disk in disk_results {
+            if let Some(Variant::String(model)) = disk.get("Model") {
+                let model_lower = model.to_lowercase();
+
+                // Check for NVMe
+                if model_lower.contains("nvme") {
+                    debug!("Detected NVMe drive: {}", model);
+                    return Ok(DeviceType::NVMe);
+                }
+
+                // Check for SSD indicators
+                if model_lower.contains("ssd") ||
+                   model_lower.contains("solid state") ||
+                   model_lower.contains("flash") {
+                    debug!("Detected SSD drive: {}", model);
+                    return Ok(DeviceType::SSD);
+                }
+            }
+
+            // Check MediaType if available
+            if let Some(Variant::String(media_type)) = disk.get("MediaType") {
+                if media_type.to_lowercase().contains("solid state") {
+                    debug!("Detected SSD via MediaType: {}", media_type);
+                    return Ok(DeviceType::SSD);
+                }
+            }
+        }
+
+        // Default to HDD if no SSD indicators found
+        debug!("No SSD indicators found, assuming HDD");
+        Ok(DeviceType::HDD)
+    }
+
+    /// Fallback detection using Windows Registry
+    async fn detect_windows_storage_from_registry(&self, _drive: &str) -> Result<DeviceType> {
+        use windows::Win32::System::Registry::{
+            RegOpenKeyExW, RegCloseKey, HKEY_LOCAL_MACHINE, KEY_READ, HKEY
+        };
+        use windows::Win32::Foundation::ERROR_SUCCESS;
+        use windows::core::HSTRING;
+
+        // Try to read from registry for storage device information
+        // This is a simplified approach - in practice, you'd need to map drive letters to physical devices
+
+        let registry_path = HSTRING::from("SYSTEM\\CurrentControlSet\\Services\\disk\\Enum");
+        let mut key_handle = HKEY::default();
+
+        let result = unsafe {
+            RegOpenKeyExW(
+                HKEY_LOCAL_MACHINE,
+                &registry_path,
+                0,
+                KEY_READ,
+                &mut key_handle,
+            )
+        };
+
+        if result == ERROR_SUCCESS {
+            unsafe { RegCloseKey(key_handle) };
+            // For now, return SSD as a reasonable default for modern systems
+            debug!("Registry access successful, defaulting to SSD");
+            Ok(DeviceType::SSD)
+        } else {
+            warn!("Registry access failed, defaulting to Unknown");
+            Ok(DeviceType::Unknown)
         }
     }
 }

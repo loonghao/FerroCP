@@ -69,6 +69,10 @@ pub enum Error {
     #[error("Insufficient disk space: need {needed} bytes, have {available} bytes")]
     InsufficientSpace { needed: u64, available: u64 },
 
+    /// Device detection error
+    #[error("Device detection error: {message}")]
+    DeviceDetection { message: String },
+
     /// Generic error with custom message
     #[error("{message}")]
     Other { message: String },
@@ -146,6 +150,13 @@ impl Error {
     /// Create a new insufficient space error
     pub fn insufficient_space(needed: u64, available: u64) -> Self {
         Self::InsufficientSpace { needed, available }
+    }
+
+    /// Create a new device detection error
+    pub fn device_detection<S: Into<String>>(message: S) -> Self {
+        Self::DeviceDetection {
+            message: message.into(),
+        }
     }
 
     /// Create a new generic error
