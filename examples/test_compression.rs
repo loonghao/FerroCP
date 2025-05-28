@@ -22,7 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         level: 6,
         adaptive: false,
         min_file_size: 1024,
-        dictionary_path: None,
+        buffer_size: 64 * 1024,
     };
 
     let engine = CompressionEngine::new(config);
@@ -91,7 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         level: 6,
         adaptive: true,
         min_file_size: 1024,
-        dictionary_path: None,
+        buffer_size: 64 * 1024,
     };
 
     let adaptive_engine = CompressionEngine::new(adaptive_config);
@@ -161,7 +161,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             level,
             adaptive: false,
             min_file_size: 1024,
-            dictionary_path: None,
+            buffer_size: 64 * 1024,
         };
         
         let engine = CompressionEngine::new(config);
