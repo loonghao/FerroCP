@@ -16,8 +16,31 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
-ferrocp-types = { path = "../ferrocp-types" }
+ferrocp-types = { path = "../ferrocp-types", features = ["async"] }
+ferrocp-config = { path = "../ferrocp-config" }
+ferrocp-io = { path = "../ferrocp-io" }
+
+# Async runtime
+tokio = { workspace = true, features = ["full"] }
+futures = { workspace = true }
+async-trait = { workspace = true }
+
+# File operations
+walkdir = { workspace = true }
+filetime = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Utilities
+uuid = { workspace = true }
+num_cpus = { workspace = true }
 
 [dev-dependencies]
 tokio-test = { workspace = true }
 rstest = { workspace = true }
+tempfile = { workspace = true }
