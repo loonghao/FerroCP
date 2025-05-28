@@ -3,7 +3,7 @@
 use crate::task::{Task, TaskId, TaskStatus};
 use ferrocp_config::Config;
 use ferrocp_types::{Error, Priority, Result};
-use std::collections::{BinaryHeap, HashMap, VecDeque};
+use std::collections::{BinaryHeap, HashMap};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, RwLock};
@@ -163,7 +163,7 @@ impl TaskScheduler {
     pub async fn mark_task_started(&self, mut task: Task) -> Result<()> {
         task.start();
         let task_id = task.id;
-        
+
         self.active_tasks.write().await.insert(task_id, task);
         debug!("Task {} marked as started", task_id);
         Ok(())
@@ -172,7 +172,7 @@ impl TaskScheduler {
     /// Mark a task as completed
     pub async fn mark_task_completed(&self, task_id: TaskId) -> Result<()> {
         let mut active_tasks = self.active_tasks.write().await;
-        
+
         if let Some(mut task) = active_tasks.remove(&task_id) {
             task.complete();
             self.completed_tasks.write().await.insert(task_id, task);
@@ -187,7 +187,7 @@ impl TaskScheduler {
     /// Mark a task as failed
     pub async fn mark_task_failed(&self, task_id: TaskId, error: String) -> Result<()> {
         let mut active_tasks = self.active_tasks.write().await;
-        
+
         if let Some(mut task) = active_tasks.remove(&task_id) {
             task.fail(error);
             self.completed_tasks.write().await.insert(task_id, task);
@@ -228,7 +228,7 @@ impl TaskScheduler {
         let mut queue = self.pending_queue.write().await;
         let original_len = queue.len();
         *queue = queue.drain().filter(|pt| pt.task.id != task_id).collect();
-        
+
         if queue.len() < original_len {
             debug!("Task {} cancelled from pending queue", task_id);
             return Ok(());
@@ -302,16 +302,14 @@ impl TaskScheduler {
 
         // Cleanup task for removing old completed tasks
         let cleanup_task = tokio::spawn(async move {
-            let mut interval = tokio::time::interval(
-                config.read().await.cleanup_interval
-            );
+            let mut interval = tokio::time::interval(config.read().await.cleanup_interval);
 
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
                         let mut completed = completed_tasks.write().await;
                         let cutoff = Instant::now() - Duration::from_secs(3600); // Keep for 1 hour
-                        
+
                         completed.retain(|_, task| {
                             task.completed_at.map_or(true, |time| time > cutoff)
                         });
@@ -323,7 +321,9 @@ impl TaskScheduler {
             }
         });
 
-        cleanup_task.await.map_err(|e| Error::other(format!("Scheduler error: {}", e)))?;
+        cleanup_task
+            .await
+            .map_err(|e| Error::other(format!("Scheduler error: {}", e)))?;
         Ok(())
     }
 
@@ -346,7 +346,7 @@ mod tests {
     async fn test_scheduler_creation() {
         let config = SchedulerConfig::default();
         let scheduler = TaskScheduler::new(config);
-        
+
         let (pending, active, completed) = scheduler.get_queue_stats().await;
         assert_eq!(pending, 0);
         assert_eq!(active, 0);
@@ -361,7 +361,7 @@ mod tests {
         let task_id = task.id;
 
         scheduler.submit(task).await.unwrap();
-        
+
         let status = scheduler.get_task_status(task_id).await.unwrap();
         assert!(matches!(status, Some(TaskStatus::Pending)));
     }
@@ -369,14 +369,14 @@ mod tests {
     #[tokio::test]
     async fn test_priority_scheduling() {
         let scheduler = TaskScheduler::new(SchedulerConfig::default());
-        
+
         // Submit tasks with different priorities
         let low_task = Task::new(CopyRequest::new("src1", "dst1").with_priority(Priority::Low));
         let high_task = Task::new(CopyRequest::new("src2", "dst2").with_priority(Priority::High));
-        
+
         scheduler.submit(low_task).await.unwrap();
         scheduler.submit(high_task.clone()).await.unwrap();
-        
+
         // High priority task should be returned first
         let next_task = scheduler.get_next_task().await.unwrap();
         assert_eq!(next_task.id, high_task.id);

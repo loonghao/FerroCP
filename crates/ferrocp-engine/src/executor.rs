@@ -1,6 +1,6 @@
 //! Task executor for running copy operations
 
-use crate::task::{CopyResult, Task, TaskId, TaskStatus};
+use crate::task::{CopyResult, Task, TaskId};
 use ferrocp_config::Config;
 use ferrocp_io::{BufferedCopyEngine, CopyEngine as IoCopyEngine, CopyOptions};
 use ferrocp_types::{Error, Result};
@@ -102,12 +102,16 @@ impl TaskExecutor {
         debug!("Starting execution of task {}", task_id);
 
         // Acquire semaphore permit
-        let permit = self.semaphore.clone().acquire_owned().await
+        let permit = self
+            .semaphore
+            .clone()
+            .acquire_owned()
+            .await
             .map_err(|e| Error::other(format!("Failed to acquire execution permit: {}", e)))?;
 
         // Create cancellation channel
         let (cancel_tx, mut cancel_rx) = mpsc::channel(1);
-        
+
         // Store task handle
         let handle = TaskHandle {
             task: task.clone(),
@@ -142,7 +146,7 @@ impl TaskExecutor {
 
             // Store result
             completed_results.write().await.insert(task_id, result);
-            
+
             // Remove from active tasks
             active_tasks.write().await.remove(&task_id);
 
@@ -184,22 +188,28 @@ impl TaskExecutor {
         let max_retries = copy_options.max_retries;
 
         loop {
-            match copy_engine.copy_file_with_options(
-                &task.request.source,
-                &task.request.destination,
-                copy_options.clone(),
-            ).await {
+            match copy_engine
+                .copy_file_with_options(
+                    &task.request.source,
+                    &task.request.destination,
+                    copy_options.clone(),
+                )
+                .await
+            {
                 Ok(stats) => {
                     debug!("Copy operation successful for task {}", task_id);
                     return CopyResult::success(task_id, stats, start_time.elapsed());
                 }
                 Err(error) => {
                     error!("Copy operation failed for task {}: {}", task_id, error);
-                    
+
                     if retry_count < max_retries {
                         retry_count += 1;
-                        warn!("Retrying task {} (attempt {}/{})", task_id, retry_count, max_retries);
-                        
+                        warn!(
+                            "Retrying task {} (attempt {}/{})",
+                            task_id, retry_count, max_retries
+                        );
+
                         // Wait before retry
                         tokio::time::sleep(config.retry_delay).await;
                         continue;
@@ -218,7 +228,7 @@ impl TaskExecutor {
     /// Cancel a task
     pub async fn cancel_task(&self, task_id: TaskId) -> Result<()> {
         let active_tasks = self.active_tasks.read().await;
-        
+
         if let Some(handle) = active_tasks.get(&task_id) {
             let _ = handle.cancel_tx.send(()).await;
             debug!("Cancellation signal sent for task {}", task_id);
@@ -244,7 +254,10 @@ impl TaskExecutor {
             interval.tick().await;
 
             if start.elapsed() > timeout {
-                return Err(Error::other(format!("Timeout waiting for task {}", task_id)));
+                return Err(Error::other(format!(
+                    "Timeout waiting for task {}",
+                    task_id
+                )));
             }
 
             if let Some(result) = self.completed_results.read().await.get(&task_id) {
@@ -283,7 +296,7 @@ impl TaskExecutor {
                     _ = interval.tick() => {
                         let mut results = completed_results.write().await;
                         let cutoff = Instant::now() - Duration::from_secs(3600); // Keep for 1 hour
-                        
+
                         results.retain(|_, result| {
                             // Keep recent results based on when they were created
                             // For now, just keep all results (proper cleanup would need timestamps)
@@ -297,7 +310,9 @@ impl TaskExecutor {
             }
         });
 
-        cleanup_task.await.map_err(|e| Error::other(format!("Executor error: {}", e)))?;
+        cleanup_task
+            .await
+            .map_err(|e| Error::other(format!("Executor error: {}", e)))?;
         Ok(())
     }
 
@@ -330,7 +345,7 @@ mod tests {
     async fn test_executor_creation() {
         let config = ExecutorConfig::default();
         let executor = TaskExecutor::new(config).await.unwrap();
-        
+
         let (active, completed) = executor.get_execution_stats().await;
         assert_eq!(active, 0);
         assert_eq!(completed, 0);
@@ -341,7 +356,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let source = temp_dir.path().join("source.txt");
         let destination = temp_dir.path().join("destination.txt");
-        
+
         // Create source file
         tokio::fs::write(&source, b"test content").await.unwrap();
 
@@ -351,10 +366,10 @@ mod tests {
         let task_id = task.id;
 
         executor.execute_task(task).await.unwrap();
-        
+
         let result = executor.wait_for_completion(task_id).await.unwrap();
         assert!(result.is_success());
-        
+
         // Verify file was copied
         assert!(destination.exists());
         let content = tokio::fs::read_to_string(&destination).await.unwrap();

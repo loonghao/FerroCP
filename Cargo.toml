@@ -148,6 +148,23 @@ module_name_repetitions = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 
+# Coverage configuration
+[workspace.metadata.tarpaulin]
+# Exclude files from coverage
+exclude = [
+    "*/tests/*",
+    "*/benches/*",
+    "target/*",
+    "python/*",
+    "src/main.rs"
+]
+# Timeout for tests
+timeout = 120
+# Run in release mode for better performance
+release = true
+# Include all features
+all-features = true
+
 # Modern profile optimizations
 [profile.release]
 lto = "fat"

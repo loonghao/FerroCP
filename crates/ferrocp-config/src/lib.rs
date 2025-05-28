@@ -32,11 +32,11 @@
 #![allow(clippy::module_name_repetitions)]
 
 use ferrocp_types::{
-    BufferSize, CompressionAlgorithm, CompressionLevel, NetworkProtocol, Priority, RetryConfig,
-    ThreadCount, TimeoutConfig,
+    BufferSize, CompressionAlgorithm, CompressionLevel, NetworkProtocol, RetryConfig, ThreadCount,
+    TimeoutConfig,
 };
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
 pub mod builder;
@@ -224,18 +224,25 @@ impl Default for LoggingConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityConfig {
     /// Enable permission preservation
+    #[serde(default = "default_preserve_permissions")]
     pub preserve_permissions: bool,
     /// Enable ownership preservation
+    #[serde(default = "default_preserve_ownership")]
     pub preserve_ownership: bool,
     /// Enable extended attributes preservation
+    #[serde(default = "default_preserve_extended_attributes")]
     pub preserve_extended_attributes: bool,
     /// Enable ACL preservation
+    #[serde(default = "default_preserve_acl")]
     pub preserve_acl: bool,
     /// Maximum path length allowed
+    #[serde(default = "default_max_path_length")]
     pub max_path_length: usize,
     /// Allowed file extensions (empty = all allowed)
+    #[serde(default)]
     pub allowed_extensions: Vec<String>,
     /// Blocked file extensions
+    #[serde(default = "default_blocked_extensions")]
     pub blocked_extensions: Vec<String>,
 }
 
@@ -258,6 +265,38 @@ impl Default for SecurityConfig {
             ],
         }
     }
+}
+
+// Default value functions for SecurityConfig serde defaults
+fn default_preserve_permissions() -> bool {
+    true
+}
+
+fn default_preserve_ownership() -> bool {
+    false
+}
+
+fn default_preserve_extended_attributes() -> bool {
+    true
+}
+
+fn default_preserve_acl() -> bool {
+    false
+}
+
+fn default_max_path_length() -> usize {
+    4096
+}
+
+fn default_blocked_extensions() -> Vec<String> {
+    vec![
+        "exe".to_string(),
+        "bat".to_string(),
+        "cmd".to_string(),
+        "scr".to_string(),
+        "com".to_string(),
+        "pif".to_string(),
+    ]
 }
 
 /// Advanced features configuration

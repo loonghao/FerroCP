@@ -12,12 +12,37 @@ keywords.workspace = true
 categories.workspace = true
 rust-version.workspace = true
 
+[lib]
+name = "ferrocp_python"
+crate-type = ["cdylib"]
+
 [lints]
 workspace = true
 
 [dependencies]
-ferrocp-types = { path = "../ferrocp-types" }
+ferrocp-types = { path = "../ferrocp-types", features = ["async"] }
+ferrocp-config = { path = "../ferrocp-config" }
+ferrocp-engine = { path = "../ferrocp-engine" }
+ferrocp-io = { path = "../ferrocp-io" }
+ferrocp-sync = { path = "../ferrocp-sync" }
+ferrocp-network = { path = "../ferrocp-network" }
+
+# Python bindings
+pyo3 = { version = "0.20", features = ["extension-module", "abi3-py38"] }
+pyo3-asyncio = { version = "0.20", features = ["tokio-runtime"] }
+
+# Async runtime
+tokio = { workspace = true, features = ["full"] }
+futures = { workspace = true }
+
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+
+# Utilities
+tracing = { workspace = true }
+uuid = { version = "1.6", features = ["v4"] }
 
 [dev-dependencies]
 tokio-test = { workspace = true }
 rstest = { workspace = true }
+tempfile = { workspace = true }

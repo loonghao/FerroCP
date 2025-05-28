@@ -4,7 +4,7 @@ use crate::AdaptiveBuffer;
 use ferrocp_types::{Error, Result};
 use std::path::Path;
 use tokio::fs::File;
-use tokio::io::{AsyncRead, AsyncReadExt, BufReader};
+use tokio::io::{AsyncReadExt, BufReader};
 use tracing::debug;
 
 /// Async file reader with adaptive buffering
@@ -30,7 +30,11 @@ impl AsyncFileReader {
         let file_size = metadata.len();
         let reader = BufReader::new(file);
 
-        debug!("Opened file for reading: {} ({} bytes)", path.display(), file_size);
+        debug!(
+            "Opened file for reading: {} ({} bytes)",
+            path.display(),
+            file_size
+        );
 
         Ok(Self {
             reader,
@@ -47,13 +51,20 @@ impl AsyncFileReader {
         }
 
         // Read data into buffer
-        let bytes_read = self.reader.read_buf(buffer.as_mut()).await.map_err(|e| Error::Io {
-            message: format!("Failed to read from file: {}", e),
-        })?;
+        let bytes_read = self
+            .reader
+            .read_buf(buffer.as_mut())
+            .await
+            .map_err(|e| Error::Io {
+                message: format!("Failed to read from file: {}", e),
+            })?;
 
         self.bytes_read += bytes_read as u64;
-        
-        debug!("Read {} bytes from file ({} total)", bytes_read, self.bytes_read);
+
+        debug!(
+            "Read {} bytes from file ({} total)",
+            bytes_read, self.bytes_read
+        );
         Ok(bytes_read)
     }
 
@@ -124,7 +135,11 @@ impl FileReader {
 
         let file_size = metadata.len();
 
-        debug!("Opened file for reading: {} ({} bytes)", path.display(), file_size);
+        debug!(
+            "Opened file for reading: {} ({} bytes)",
+            path.display(),
+            file_size
+        );
 
         Ok(Self {
             file,
@@ -136,7 +151,7 @@ impl FileReader {
     /// Read data into a buffer
     pub fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         use std::io::Read;
-        
+
         let bytes_read = self.file.read(buf).map_err(|e| Error::Io {
             message: format!("Failed to read from file: {}", e),
         })?;
@@ -148,7 +163,7 @@ impl FileReader {
     /// Read exact amount of data
     pub fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
         use std::io::Read;
-        
+
         self.file.read_exact(buf).map_err(|e| Error::Io {
             message: format!("Failed to read exact amount: {}", e),
         })?;
@@ -160,7 +175,7 @@ impl FileReader {
     /// Read all remaining data
     pub fn read_to_end(&mut self, buf: &mut Vec<u8>) -> Result<usize> {
         use std::io::Read;
-        
+
         let bytes_read = self.file.read_to_end(buf).map_err(|e| Error::Io {
             message: format!("Failed to read to end: {}", e),
         })?;
@@ -197,8 +212,8 @@ impl FileReader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::NamedTempFile;
     use std::io::Write;
+    use tempfile::NamedTempFile;
 
     #[tokio::test]
     async fn test_async_file_reader() {
@@ -214,7 +229,7 @@ mod tests {
 
         let mut buffer = AdaptiveBuffer::new(ferrocp_types::DeviceType::SSD);
         let bytes_read = reader.read_into_buffer(&mut buffer).await.unwrap();
-        
+
         assert_eq!(bytes_read, test_data.len());
         assert_eq!(reader.bytes_read(), test_data.len() as u64);
         assert!(reader.is_eof());
@@ -235,7 +250,7 @@ mod tests {
 
         let mut buffer = vec![0u8; test_data.len()];
         let bytes_read = reader.read(&mut buffer).unwrap();
-        
+
         assert_eq!(bytes_read, test_data.len());
         assert_eq!(reader.bytes_read(), test_data.len() as u64);
         assert!(reader.is_eof());

@@ -4,7 +4,7 @@ use crate::AdaptiveBuffer;
 use ferrocp_types::{Error, Result};
 use std::path::Path;
 use tokio::fs::File;
-use tokio::io::{AsyncWrite, AsyncWriteExt, BufWriter};
+use tokio::io::{AsyncWriteExt, BufWriter};
 use tracing::debug;
 
 /// Async file writer with adaptive buffering
@@ -66,8 +66,11 @@ impl AsyncFileWriter {
         })?;
 
         self.bytes_written += bytes_written as u64;
-        
-        debug!("Wrote {} bytes to file ({} total)", bytes_written, self.bytes_written);
+
+        debug!(
+            "Wrote {} bytes to file ({} total)",
+            bytes_written, self.bytes_written
+        );
         Ok(bytes_written)
     }
 
@@ -103,9 +106,13 @@ impl AsyncFileWriter {
 
     /// Sync all data to disk
     pub async fn sync_all(&mut self) -> Result<()> {
-        self.writer.get_mut().sync_all().await.map_err(|e| Error::Io {
-            message: format!("Failed to sync to disk: {}", e),
-        })?;
+        self.writer
+            .get_mut()
+            .sync_all()
+            .await
+            .map_err(|e| Error::Io {
+                message: format!("Failed to sync to disk: {}", e),
+            })?;
 
         debug!("Synced all data to disk");
         Ok(())
@@ -166,7 +173,7 @@ impl FileWriter {
     /// Write data from a byte slice
     pub fn write(&mut self, data: &[u8]) -> Result<usize> {
         use std::io::Write;
-        
+
         let bytes_written = self.writer.write(data).map_err(|e| Error::Io {
             message: format!("Failed to write to file: {}", e),
         })?;
@@ -178,7 +185,7 @@ impl FileWriter {
     /// Write all data from a byte slice
     pub fn write_all(&mut self, data: &[u8]) -> Result<()> {
         use std::io::Write;
-        
+
         self.writer.write_all(data).map_err(|e| Error::Io {
             message: format!("Failed to write all data: {}", e),
         })?;
@@ -190,7 +197,7 @@ impl FileWriter {
     /// Flush the writer to ensure all data is written
     pub fn flush(&mut self) -> Result<()> {
         use std::io::Write;
-        
+
         self.writer.flush().map_err(|e| Error::Io {
             message: format!("Failed to flush writer: {}", e),
         })?;
@@ -201,8 +208,6 @@ impl FileWriter {
 
     /// Sync all data to disk
     pub fn sync_all(&mut self) -> Result<()> {
-        use std::io::Write;
-        
         self.writer.get_mut().sync_all().map_err(|e| Error::Io {
             message: format!("Failed to sync to disk: {}", e),
         })?;
@@ -272,8 +277,11 @@ mod tests {
         buffer.as_mut().extend_from_slice(test_data);
 
         let mut writer = AsyncFileWriter::create(&file_path).await.unwrap();
-        let bytes_written = writer.write_from_buffer(&buffer, test_data.len()).await.unwrap();
-        
+        let bytes_written = writer
+            .write_from_buffer(&buffer, test_data.len())
+            .await
+            .unwrap();
+
         assert_eq!(bytes_written, test_data.len());
         assert_eq!(writer.bytes_written(), test_data.len() as u64);
 

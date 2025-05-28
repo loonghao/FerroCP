@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ferrocp Test Coverage Report</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 30px;
+            background: #f8f9fa;
+        }
+        .metric {
+            text-align: center;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .metric-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #333;
+        }
+        .metric-label {
+            color: #666;
+            margin-top: 5px;
+        }
+        .crates {
+            padding: 30px;
+        }
+        .crate-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            margin: 10px 0;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+        }
+        .crate-name {
+            font-weight: 600;
+            color: #333;
+        }
+        .crate-tests {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .note {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 20px 30px;
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🦀 Ferrocp Test Coverage</h1>
+            <p>Rust Test Analysis Report</p>
+        </div>
+        
+        <div class="summary">
+            <div class="metric">
+                <div class="metric-value">10</div>
+                <div class="metric-label">Crates with Tests</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">46</div>
+                <div class="metric-label">Test Files</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">8</div>
+                <div class="metric-label">Test Suites Passed</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">0</div>
+                <div class="metric-label">Test Suites Failed</div>
+            </div>
+        </div>
+        
+        <div class="note">
+            <strong>Note:</strong> This is a basic test analysis report. For detailed line-by-line coverage, 
+            install <code>cargo-tarpaulin</code> or <code>cargo-llvm-cov</code> on a supported platform.
+        </div>
+        
+        <div class="crates">
+            <h2>Crates with Tests</h2>
+            
+            <div class="crate-item">
+                <div class="crate-name">ferrocp-compression</div>
+                <div class="crate-tests">5 test files</div>
+            </div>
+            
+            <div class="crate-item">
+                <div class="crate-name">ferrocp-config</div>
+                <div class="crate-tests">3 test files</div>
+            </div>
+            
+            <div class="crate-item">
+                <div class="crate-name">ferrocp-device</div>
+                <div class="crate-tests">5 test files</div>
+            </div>
+            
+            <div class="crate-item">
+                <div class="crate-name">ferrocp-engine</div>
+                <div class="crate-tests">5 test files</div>
+            </div>
+            
+            <div class="crate-item">
+                <div class="crate-name">ferrocp-io</div>
+                <div class="crate-tests">5 test files</div>
+            </div>
+            
+            <div class="crate-item">
+                <div class="crate-name">ferrocp-network</div>
+                <div class="crate-tests">4 test files</div>
+            </div>
+            
+            <div class="crate-item">
+                <div class="crate-name">ferrocp-python</div>
+                <div class="crate-tests">6 test files</div>
+            </div>
+            
+            <div class="crate-item">
+                <div class="crate-name">ferrocp-sync</div>
+                <div class="crate-tests">6 test files</div>
+            </div>
+            
+            <div class="crate-item">
+                <div class="crate-name">ferrocp-types</div>
+                <div class="crate-tests">1 test files</div>
+            </div>
+            
+            <div class="crate-item">
+                <div class="crate-name">ferrocp-zerocopy</div>
+                <div class="crate-tests">6 test files</div>
+            </div>
+            
+        </div>
+    </div>
+</body>
+</html>

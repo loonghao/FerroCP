@@ -72,20 +72,24 @@ impl ConfigBuilder {
 
     /// Build the configuration
     pub fn build(mut self) -> ConfigResult<Config> {
-        // Add defaults first
-        if self.sources.iter().any(|s| matches!(s, ConfigSource::Defaults)) {
-            let defaults = Config::default();
-            let defaults_value = serde_yaml::to_value(&defaults)
-                .map_err(|e| ConfigError::other(format!("Failed to serialize defaults: {}", e)))?;
-            self.inner = self.inner.add_source(config::Config::try_from(&defaults_value)?);
-        }
+        // Start with defaults as the base configuration
+        let defaults = Config::default();
+
+        // Convert defaults to a config source
+        let defaults_value = serde_yaml::to_value(&defaults)
+            .map_err(|e| ConfigError::other(format!("Failed to serialize defaults: {}", e)))?;
+        self.inner = self
+            .inner
+            .add_source(config::Config::try_from(&defaults_value)?);
 
         // Add file sources
         for source in &self.sources {
             match source {
                 ConfigSource::File { path, format } => {
                     if path.exists() {
-                        self.inner = self.inner.add_source(File::from(path.clone()).format(*format));
+                        self.inner = self
+                            .inner
+                            .add_source(File::from(path.clone()).format(*format));
                     }
                 }
                 ConfigSource::Environment { prefix } => {
@@ -135,7 +139,9 @@ impl ConfigBuilder {
 
         // Validate thread count
         if config.performance.thread_count.get() == 0 {
-            return Err(ConfigError::validation("Thread count must be greater than 0"));
+            return Err(ConfigError::validation(
+                "Thread count must be greater than 0",
+            ));
         }
 
         // Validate compression level
@@ -179,14 +185,17 @@ impl Default for ConfigBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::NamedTempFile;
     use std::io::Write;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_builder_defaults() {
         let config = ConfigBuilder::new().add_defaults().build().unwrap();
         assert!(config.performance.enable_zero_copy);
-        assert_eq!(config.compression.algorithm, ferrocp_types::CompressionAlgorithm::Zstd);
+        assert_eq!(
+            config.compression.algorithm,
+            ferrocp_types::CompressionAlgorithm::Zstd
+        );
     }
 
     #[test]
@@ -201,7 +210,8 @@ performance:
 compression:
   algorithm: Lz4
 "#
-        ).unwrap();
+        )
+        .unwrap();
 
         let config = ConfigBuilder::new()
             .add_defaults()
@@ -211,7 +221,10 @@ compression:
 
         assert!(!config.performance.enable_zero_copy);
         assert_eq!(config.performance.thread_count.get(), 8);
-        assert_eq!(config.compression.algorithm, ferrocp_types::CompressionAlgorithm::Lz4);
+        assert_eq!(
+            config.compression.algorithm,
+            ferrocp_types::CompressionAlgorithm::Lz4
+        );
     }
 
     #[test]
@@ -223,7 +236,8 @@ compression:
 performance:
   thread_count: 0
 "#
-        ).unwrap();
+        )
+        .unwrap();
 
         let result = ConfigBuilder::new()
             .add_defaults()
@@ -231,6 +245,9 @@ performance:
             .build();
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Thread count must be greater than 0"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Thread count must be greater than 0"));
     }
 }

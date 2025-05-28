@@ -62,7 +62,8 @@ pub trait FileOperations {
 pub trait DeviceDetector {
     /// Detect the device type for a given path
     #[cfg(feature = "async")]
-    async fn detect_device_type<P: AsRef<Path> + Send>(&self, path: P) -> Result<DeviceType>;
+    async fn detect_device_type<P: AsRef<Path> + Send + Sync>(&self, path: P)
+        -> Result<DeviceType>;
 
     /// Detect the device type for a given path (sync version)
     #[cfg(not(feature = "async"))]
@@ -103,7 +104,7 @@ pub trait CompressionEngine {
 pub trait ZeroCopyEngine {
     /// Attempt zero-copy operation
     #[cfg(feature = "async")]
-    async fn zero_copy<P: AsRef<Path> + Send>(
+    async fn zero_copy<P: AsRef<Path> + Send + Sync>(
         &self,
         source: P,
         destination: P,

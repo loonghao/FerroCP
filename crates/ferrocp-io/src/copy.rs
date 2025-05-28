@@ -1,11 +1,11 @@
 //! High-performance file copying engine
 
 use crate::{AdaptiveBuffer, AsyncFileReader, AsyncFileWriter, BufferPool};
-use ferrocp_types::{CopyStats, DeviceType, Error, FileMetadata, ProgressInfo, Result};
+use ferrocp_types::{CopyStats, DeviceType, Error, ProgressInfo, Result};
 use std::path::Path;
 use std::time::{Duration, Instant};
 use tokio::fs;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// Copy options for customizing copy behavior
 #[derive(Debug, Clone)]
@@ -102,16 +102,18 @@ impl BufferedCopyEngine {
         let source_path = source.as_ref();
         let dest_path = destination.as_ref();
 
-        info!("Starting copy: {} -> {}", source_path.display(), dest_path.display());
+        info!(
+            "Starting copy: {} -> {}",
+            source_path.display(),
+            dest_path.display()
+        );
 
         let start_time = Instant::now();
         let mut stats = CopyStats::new();
 
         // Get source file metadata
-        let source_metadata = fs::metadata(source_path).await.map_err(|e| {
-            Error::Io {
-                message: format!("Failed to read source metadata: {}", e),
-            }
+        let source_metadata = fs::metadata(source_path).await.map_err(|e| Error::Io {
+            message: format!("Failed to read source metadata: {}", e),
         })?;
 
         let file_size = source_metadata.len();
@@ -121,7 +123,10 @@ impl BufferedCopyEngine {
         let source_device = self.detect_device_type(source_path).await?;
         let dest_device = self.detect_device_type(dest_path).await?;
 
-        debug!("Source device: {:?}, Destination device: {:?}", source_device, dest_device);
+        debug!(
+            "Source device: {:?}, Destination device: {:?}",
+            source_device, dest_device
+        );
 
         // Determine optimal buffer size
         let buffer_size = options.buffer_size.unwrap_or_else(|| {
@@ -154,8 +159,8 @@ impl BufferedCopyEngine {
             stats.bytes_copied = bytes_copied;
 
             // Report progress if enabled
-            if options.enable_progress && 
-               last_progress_time.elapsed() >= options.progress_interval {
+            if options.enable_progress && last_progress_time.elapsed() >= options.progress_interval
+            {
                 let progress = ProgressInfo {
                     current_file: source_path.to_path_buf(),
                     current_file_bytes: bytes_copied,
@@ -197,7 +202,10 @@ impl BufferedCopyEngine {
         stats.duration = start_time.elapsed();
         stats.files_copied = 1;
 
-        info!("Copy completed: {} bytes in {:?}", stats.bytes_copied, stats.duration);
+        info!(
+            "Copy completed: {} bytes in {:?}",
+            stats.bytes_copied, stats.duration
+        );
         Ok(stats)
     }
 
@@ -209,11 +217,11 @@ impl BufferedCopyEngine {
     ) -> usize {
         // Base size on the slower device
         let base_size = match (source_device, dest_device) {
-            (DeviceType::SSD, DeviceType::SSD) => 1024 * 1024,      // 1MB
+            (DeviceType::SSD, DeviceType::SSD) => 1024 * 1024, // 1MB
             (DeviceType::HDD, _) | (_, DeviceType::HDD) => 64 * 1024, // 64KB
             (DeviceType::Network, _) | (_, DeviceType::Network) => 128 * 1024, // 128KB
             (DeviceType::RamDisk, DeviceType::RamDisk) => 8 * 1024 * 1024, // 8MB
-            _ => 256 * 1024, // 256KB default
+            _ => 256 * 1024,                                   // 256KB default
         };
 
         // Adjust based on file size
@@ -234,21 +242,24 @@ impl BufferedCopyEngine {
         source: P,
         destination: P,
     ) -> Result<()> {
-        let source_metadata = fs::metadata(source.as_ref()).await.map_err(|e| {
-            Error::Io {
-                message: format!("Failed to read source metadata: {}", e),
-            }
+        let source_metadata = fs::metadata(source.as_ref()).await.map_err(|e| Error::Io {
+            message: format!("Failed to read source metadata: {}", e),
         })?;
 
         // Set file times
-        let accessed = source_metadata.accessed().unwrap_or_else(|_| std::time::SystemTime::now());
-        let modified = source_metadata.modified().unwrap_or_else(|_| std::time::SystemTime::now());
+        let accessed = source_metadata
+            .accessed()
+            .unwrap_or_else(|_| std::time::SystemTime::now());
+        let modified = source_metadata
+            .modified()
+            .unwrap_or_else(|_| std::time::SystemTime::now());
 
         filetime::set_file_times(
             destination.as_ref(),
             filetime::FileTime::from_system_time(accessed),
             filetime::FileTime::from_system_time(modified),
-        ).map_err(|e| Error::Io {
+        )
+        .map_err(|e| Error::Io {
             message: format!("Failed to set file times: {}", e),
         })?;
 
@@ -257,11 +268,11 @@ impl BufferedCopyEngine {
         {
             use std::os::unix::fs::PermissionsExt;
             let permissions = source_metadata.permissions();
-            fs::set_permissions(destination.as_ref(), permissions).await.map_err(|e| {
-                Error::Io {
+            fs::set_permissions(destination.as_ref(), permissions)
+                .await
+                .map_err(|e| Error::Io {
                     message: format!("Failed to set permissions: {}", e),
-                }
-            })?;
+                })?;
         }
 
         Ok(())
@@ -269,17 +280,15 @@ impl BufferedCopyEngine {
 
     /// Verify that the copy was successful
     async fn verify_copy<P: AsRef<Path>>(&self, source: P, destination: P) -> Result<()> {
-        let source_metadata = fs::metadata(source.as_ref()).await.map_err(|e| {
-            Error::Io {
-                message: format!("Failed to read source metadata: {}", e),
-            }
+        let source_metadata = fs::metadata(source.as_ref()).await.map_err(|e| Error::Io {
+            message: format!("Failed to read source metadata: {}", e),
         })?;
 
-        let dest_metadata = fs::metadata(destination.as_ref()).await.map_err(|e| {
-            Error::Io {
+        let dest_metadata = fs::metadata(destination.as_ref())
+            .await
+            .map_err(|e| Error::Io {
                 message: format!("Failed to read destination metadata: {}", e),
-            }
-        })?;
+            })?;
 
         if source_metadata.len() != dest_metadata.len() {
             return Err(Error::other(format!(
@@ -301,7 +310,8 @@ impl CopyEngine for BufferedCopyEngine {
         source: P,
         destination: P,
     ) -> Result<CopyStats> {
-        self.copy_file_with_options(source, destination, self.default_options.clone()).await
+        self.copy_file_with_options(source, destination, self.default_options.clone())
+            .await
     }
 
     async fn copy_file_with_options<P: AsRef<Path> + Send>(
