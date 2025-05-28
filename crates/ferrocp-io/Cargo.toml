@@ -12,12 +12,52 @@ keywords.workspace = true
 categories.workspace = true
 rust-version.workspace = true
 
-[lints]
-workspace = true
-
 [dependencies]
-ferrocp-types = { path = "../ferrocp-types" }
+ferrocp-types = { path = "../ferrocp-types", features = ["async"] }
+
+# Async runtime
+tokio = { workspace = true, features = ["fs", "io-util", "macros"], optional = true }
+futures = { workspace = true }
+async-trait = { workspace = true, optional = true }
+
+# File operations
+memmap2 = { workspace = true }
+filetime = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Utilities
+tracing = { workspace = true }
+bytes = "1.0"
+
+# Platform-specific
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
 
 [dev-dependencies]
 tokio-test = { workspace = true }
 rstest = { workspace = true }
+tempfile = { workspace = true }
+
+[features]
+default = ["async"]
+async = ["dep:tokio", "dep:async-trait"]
+
+[lints.rust]
+unsafe_code = "allow"  # Memory mapping requires unsafe operations
+missing_docs = "warn"
+unused_imports = "warn"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+cargo = "warn"
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
