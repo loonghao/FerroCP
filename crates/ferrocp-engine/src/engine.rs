@@ -1,19 +1,19 @@
 //! Main copy engine implementation
 
 use crate::{
+    executor::{ExecutorConfig, TaskExecutor},
     monitor::{ProgressMonitor, StatisticsCollector},
-    scheduler::{TaskScheduler, SchedulerConfig},
+    scheduler::{SchedulerConfig, TaskScheduler},
     task::{CopyRequest, CopyResult, Task, TaskId},
-    executor::{TaskExecutor, ExecutorConfig},
 };
 use ferrocp_config::{Config, ConfigLoader};
-use ferrocp_types::{Error, Result};
+use ferrocp_types::Result;
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
-use tracing::{debug, error, info, warn};
+use tokio::sync::mpsc;
+use tracing::{debug, info, warn};
 
 /// Main copy engine that orchestrates all operations
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CopyEngine {
     config: Arc<Config>,
     scheduler: Arc<TaskScheduler>,
@@ -33,14 +33,14 @@ impl CopyEngine {
     /// Create a new copy engine with custom configuration
     pub async fn with_config(config: Config) -> Result<Self> {
         let config = Arc::new(config);
-        
+
         // Create components
         let scheduler_config = SchedulerConfig::from_config(&config);
         let scheduler = Arc::new(TaskScheduler::new(scheduler_config));
-        
+
         let executor_config = ExecutorConfig::from_config(&config);
         let executor = Arc::new(TaskExecutor::new(executor_config).await?);
-        
+
         let progress_monitor = Arc::new(ProgressMonitor::new());
         let statistics = Arc::new(StatisticsCollector::new());
 
@@ -140,7 +140,10 @@ impl CopyEngine {
     }
 
     /// Get the status of a task
-    pub async fn get_task_status(&self, task_id: TaskId) -> Result<Option<crate::task::TaskStatus>> {
+    pub async fn get_task_status(
+        &self,
+        task_id: TaskId,
+    ) -> Result<Option<crate::task::TaskStatus>> {
         self.scheduler.get_task_status(task_id).await
     }
 
@@ -165,7 +168,10 @@ impl CopyEngine {
     }
 
     /// Get progress information for a task
-    pub async fn get_progress(&self, task_id: TaskId) -> Result<Option<crate::monitor::ProgressInfo>> {
+    pub async fn get_progress(
+        &self,
+        task_id: TaskId,
+    ) -> Result<Option<crate::monitor::ProgressInfo>> {
         self.progress_monitor.get_progress(task_id).await
     }
 
@@ -182,11 +188,11 @@ impl CopyEngine {
     /// Update the configuration
     pub async fn update_config(&mut self, config: Config) -> Result<()> {
         self.config = Arc::new(config);
-        
+
         // Update component configurations
         let scheduler_config = SchedulerConfig::from_config(&self.config);
         self.scheduler.update_config(scheduler_config).await?;
-        
+
         let executor_config = ExecutorConfig::from_config(&self.config);
         self.executor.update_config(executor_config).await?;
 
@@ -267,7 +273,7 @@ mod tests {
             .build()
             .await
             .unwrap();
-        
+
         assert!(engine.get_config().performance.enable_zero_copy);
     }
 
@@ -276,14 +282,14 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let source = temp_dir.path().join("source.txt");
         let destination = temp_dir.path().join("destination.txt");
-        
+
         // Create source file
         tokio::fs::write(&source, b"test content").await.unwrap();
 
         let config = Config::default();
         let engine = CopyEngine::with_config(config).await.unwrap();
         let request = CopyRequest::new(source, destination);
-        
+
         let task_id = engine.submit(request).await.unwrap();
         assert!(!task_id.as_uuid().is_nil());
     }

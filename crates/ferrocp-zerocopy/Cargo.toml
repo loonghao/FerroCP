@@ -12,11 +12,42 @@ keywords.workspace = true
 categories.workspace = true
 rust-version.workspace = true
 
-[lints]
-workspace = true
+[lints.rust]
+# Allow unsafe code for platform-specific zero-copy APIs
+unsafe_code = "allow"
+missing_docs = "warn"
+unused_imports = "warn"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+module_name_repetitions = "allow"
 
 [dependencies]
-ferrocp-types = { path = "../ferrocp-types" }
+ferrocp-types = { path = "../ferrocp-types", features = ["async"] }
+tokio = { workspace = true, features = ["fs", "io-util"] }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true, features = ["derive"], optional = true }
+
+# Platform-specific dependencies
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+nix = { version = "0.27", features = ["fs"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+winapi = { version = "0.3", features = [
+    "winbase", "fileapi", "winioctl", "ioapiset", "minwinbase",
+    "winnt", "handleapi", "errhandlingapi", "winerror"
+] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+
+[features]
+default = ["serde"]
+serde = ["dep:serde", "ferrocp-types/serde"]
 
 [dev-dependencies]
 tokio-test = { workspace = true }

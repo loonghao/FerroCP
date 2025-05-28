@@ -19,7 +19,7 @@ impl ConfigWatcher {
     /// Create a new configuration watcher
     pub fn new<P: AsRef<Path>>(config_path: P) -> ConfigResult<Self> {
         let config_path = config_path.as_ref().to_path_buf();
-        
+
         if !config_path.exists() {
             return Err(ConfigError::Io {
                 path: config_path,
@@ -70,11 +70,9 @@ impl ConfigWatcher {
 
         thread::spawn(move || {
             while *running.lock().unwrap() {
-                if let Err(e) = Self::check_and_reload(
-                    &config_path,
-                    &current_config,
-                    &last_modified,
-                ) {
+                if let Err(e) =
+                    Self::check_and_reload(&config_path, &current_config, &last_modified)
+                {
                     eprintln!("Config watcher error: {}", e);
                 }
 
@@ -215,11 +213,11 @@ impl ConfigWatcherBuilder {
 
     /// Build the configuration watcher
     pub fn build(self) -> ConfigResult<ConfigWatcher> {
-        let config_path = self.config_path.ok_or_else(|| {
-            ConfigError::validation("Configuration path is required")
-        })?;
+        let config_path = self
+            .config_path
+            .ok_or_else(|| ConfigError::validation("Configuration path is required"))?;
 
-        let mut watcher = ConfigWatcher::new(config_path)?.poll_interval(self.poll_interval);
+        let watcher = ConfigWatcher::new(config_path)?.poll_interval(self.poll_interval);
 
         if self.auto_start {
             watcher.start_watching()?;
@@ -238,7 +236,7 @@ impl Default for ConfigWatcherBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
+    use std::io::{Seek, Write};
     use tempfile::NamedTempFile;
 
     #[test]
@@ -259,8 +257,10 @@ mod tests {
         temp_file.flush().unwrap();
 
         let watcher = ConfigWatcher::new(temp_file.path()).unwrap();
-        
-        // Modify the file
+
+        // Modify the file by truncating and rewriting
+        temp_file.seek(std::io::SeekFrom::Start(0)).unwrap();
+        temp_file.as_file_mut().set_len(0).unwrap();
         writeln!(temp_file, "performance:\n  enable_zero_copy: false").unwrap();
         temp_file.flush().unwrap();
 

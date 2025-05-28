@@ -1,6 +1,6 @@
 //! Task management and execution for the copy engine
 
-use ferrocp_types::{CopyMode, CopyStats, Error, Priority, Result};
+use ferrocp_types::{CopyMode, CopyStats, Priority};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
@@ -143,7 +143,8 @@ impl CopyRequest {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.exclude_patterns.extend(patterns.into_iter().map(Into::into));
+        self.exclude_patterns
+            .extend(patterns.into_iter().map(Into::into));
         self
     }
 
@@ -153,7 +154,8 @@ impl CopyRequest {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.include_patterns.extend(patterns.into_iter().map(Into::into));
+        self.include_patterns
+            .extend(patterns.into_iter().map(Into::into));
         self
     }
 

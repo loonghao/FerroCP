@@ -26,20 +26,16 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
 #![allow(clippy::module_name_repetitions)]
 
-use ferrocp_types::{CopyStats, Error, FileMetadata, ProgressInfo, Result};
-use std::path::Path;
-use tokio::io::{AsyncRead, AsyncWrite};
-
 pub mod buffer;
 pub mod copy;
 pub mod memory_map;
 pub mod reader;
-pub mod writer;
 pub mod stream;
+pub mod writer;
 
 pub use buffer::{AdaptiveBuffer, BufferPool, SmartBuffer};
 pub use copy::{BufferedCopyEngine, CopyEngine, CopyOptions};
-pub use memory_map::{MemoryMappedFile, MemoryMapOptions};
+pub use memory_map::{MemoryMapOptions, MemoryMappedFile};
 pub use reader::{AsyncFileReader, FileReader};
-pub use writer::{AsyncFileWriter, FileWriter};
 pub use stream::{FileStream, ProgressStream};
+pub use writer::{AsyncFileWriter, FileWriter};

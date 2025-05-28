@@ -22,9 +22,17 @@ impl BufferSize {
     /// Create a new buffer size with validation
     pub fn new(size: usize) -> Result<Self, String> {
         if size < Self::MIN {
-            Err(format!("Buffer size {} is below minimum {}", size, Self::MIN))
+            Err(format!(
+                "Buffer size {} is below minimum {}",
+                size,
+                Self::MIN
+            ))
         } else if size > Self::MAX {
-            Err(format!("Buffer size {} exceeds maximum {}", size, Self::MAX))
+            Err(format!(
+                "Buffer size {} exceeds maximum {}",
+                size,
+                Self::MAX
+            ))
         } else if !size.is_power_of_two() {
             Err(format!("Buffer size {} must be a power of two", size))
         } else {
@@ -58,9 +66,17 @@ impl ThreadCount {
     /// Create a new thread count with validation
     pub fn new(count: usize) -> Result<Self, String> {
         if count < Self::MIN {
-            Err(format!("Thread count {} is below minimum {}", count, Self::MIN))
+            Err(format!(
+                "Thread count {} is below minimum {}",
+                count,
+                Self::MIN
+            ))
         } else if count > Self::MAX {
-            Err(format!("Thread count {} exceeds maximum {}", count, Self::MAX))
+            Err(format!(
+                "Thread count {} exceeds maximum {}",
+                count,
+                Self::MAX
+            ))
         } else {
             Ok(Self(count))
         }
@@ -104,7 +120,11 @@ impl CompressionLevel {
     /// Create a new compression level with validation
     pub fn new(level: u8) -> Result<Self, String> {
         if level > Self::BEST {
-            Err(format!("Compression level {} exceeds maximum {}", level, Self::BEST))
+            Err(format!(
+                "Compression level {} exceeds maximum {}",
+                level,
+                Self::BEST
+            ))
         } else {
             Ok(Self(level))
         }
@@ -169,8 +189,8 @@ impl RetryConfig {
             return self.initial_delay;
         }
 
-        let delay_ms = self.initial_delay.as_millis() as f64
-            * self.backoff_multiplier.powi(attempt as i32);
+        let delay_ms =
+            self.initial_delay.as_millis() as f64 * self.backoff_multiplier.powi(attempt as i32);
         let delay_ms = delay_ms.min(self.max_delay.as_millis() as f64);
         Duration::from_millis(delay_ms as u64)
     }

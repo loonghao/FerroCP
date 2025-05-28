@@ -163,15 +163,21 @@ impl ProgressMonitor {
 
     /// Update progress for a task
     pub async fn update_progress(&self, progress: ProgressInfo) -> Result<()> {
-        self.update_tx.send(ProgressUpdate::Update(progress))
-            .map_err(|e| ferrocp_types::Error::other(format!("Failed to send progress update: {}", e)))?;
+        self.update_tx
+            .send(ProgressUpdate::Update(progress))
+            .map_err(|e| {
+                ferrocp_types::Error::other(format!("Failed to send progress update: {}", e))
+            })?;
         Ok(())
     }
 
     /// Remove progress tracking for a task
     pub async fn remove_task(&self, task_id: TaskId) -> Result<()> {
-        self.update_tx.send(ProgressUpdate::Remove(task_id))
-            .map_err(|e| ferrocp_types::Error::other(format!("Failed to send remove update: {}", e)))?;
+        self.update_tx
+            .send(ProgressUpdate::Remove(task_id))
+            .map_err(|e| {
+                ferrocp_types::Error::other(format!("Failed to send remove update: {}", e))
+            })?;
         Ok(())
     }
 
@@ -188,7 +194,11 @@ impl ProgressMonitor {
 
     /// Run the progress monitor
     pub async fn run(&self) -> Result<()> {
-        let mut update_rx = self.update_rx.write().await.take()
+        let mut update_rx = self
+            .update_rx
+            .write()
+            .await
+            .take()
             .ok_or_else(|| ferrocp_types::Error::other("Progress monitor already running"))?;
 
         let progress_info = Arc::clone(&self.progress_info);
@@ -255,7 +265,11 @@ pub struct StatisticsCollector {
 enum StatisticsUpdate {
     TaskSubmitted,
     TaskStarted,
-    TaskCompleted { bytes_processed: u64, files_processed: u64, execution_time: Duration },
+    TaskCompleted {
+        bytes_processed: u64,
+        files_processed: u64,
+        execution_time: Duration,
+    },
     TaskFailed,
     TaskCancelled,
     TransferRate(f64),
@@ -277,46 +291,70 @@ impl StatisticsCollector {
 
     /// Record a task submission
     pub async fn record_task_submitted(&self) -> Result<()> {
-        self.update_tx.send(StatisticsUpdate::TaskSubmitted)
-            .map_err(|e| ferrocp_types::Error::other(format!("Failed to send statistics update: {}", e)))?;
+        self.update_tx
+            .send(StatisticsUpdate::TaskSubmitted)
+            .map_err(|e| {
+                ferrocp_types::Error::other(format!("Failed to send statistics update: {}", e))
+            })?;
         Ok(())
     }
 
     /// Record a task start
     pub async fn record_task_started(&self) -> Result<()> {
-        self.update_tx.send(StatisticsUpdate::TaskStarted)
-            .map_err(|e| ferrocp_types::Error::other(format!("Failed to send statistics update: {}", e)))?;
+        self.update_tx
+            .send(StatisticsUpdate::TaskStarted)
+            .map_err(|e| {
+                ferrocp_types::Error::other(format!("Failed to send statistics update: {}", e))
+            })?;
         Ok(())
     }
 
     /// Record a task completion
-    pub async fn record_task_completed(&self, bytes_processed: u64, files_processed: u64, execution_time: Duration) -> Result<()> {
-        self.update_tx.send(StatisticsUpdate::TaskCompleted {
-            bytes_processed,
-            files_processed,
-            execution_time,
-        }).map_err(|e| ferrocp_types::Error::other(format!("Failed to send statistics update: {}", e)))?;
+    pub async fn record_task_completed(
+        &self,
+        bytes_processed: u64,
+        files_processed: u64,
+        execution_time: Duration,
+    ) -> Result<()> {
+        self.update_tx
+            .send(StatisticsUpdate::TaskCompleted {
+                bytes_processed,
+                files_processed,
+                execution_time,
+            })
+            .map_err(|e| {
+                ferrocp_types::Error::other(format!("Failed to send statistics update: {}", e))
+            })?;
         Ok(())
     }
 
     /// Record a task failure
     pub async fn record_task_failed(&self) -> Result<()> {
-        self.update_tx.send(StatisticsUpdate::TaskFailed)
-            .map_err(|e| ferrocp_types::Error::other(format!("Failed to send statistics update: {}", e)))?;
+        self.update_tx
+            .send(StatisticsUpdate::TaskFailed)
+            .map_err(|e| {
+                ferrocp_types::Error::other(format!("Failed to send statistics update: {}", e))
+            })?;
         Ok(())
     }
 
     /// Record a task cancellation
     pub async fn record_task_cancelled(&self) -> Result<()> {
-        self.update_tx.send(StatisticsUpdate::TaskCancelled)
-            .map_err(|e| ferrocp_types::Error::other(format!("Failed to send statistics update: {}", e)))?;
+        self.update_tx
+            .send(StatisticsUpdate::TaskCancelled)
+            .map_err(|e| {
+                ferrocp_types::Error::other(format!("Failed to send statistics update: {}", e))
+            })?;
         Ok(())
     }
 
     /// Record transfer rate
     pub async fn record_transfer_rate(&self, rate: f64) -> Result<()> {
-        self.update_tx.send(StatisticsUpdate::TransferRate(rate))
-            .map_err(|e| ferrocp_types::Error::other(format!("Failed to send statistics update: {}", e)))?;
+        self.update_tx
+            .send(StatisticsUpdate::TransferRate(rate))
+            .map_err(|e| {
+                ferrocp_types::Error::other(format!("Failed to send statistics update: {}", e))
+            })?;
         Ok(())
     }
 
@@ -330,8 +368,10 @@ impl StatisticsCollector {
 
     /// Run the statistics collector
     pub async fn run(&self) -> Result<()> {
-        let mut update_rx = self.update_rx.write().await.take()
-            .ok_or_else(|| ferrocp_types::Error::other("Statistics collector already running"))?;
+        let mut update_rx =
+            self.update_rx.write().await.take().ok_or_else(|| {
+                ferrocp_types::Error::other("Statistics collector already running")
+            })?;
 
         let statistics = Arc::clone(&self.statistics);
         let (_shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
@@ -356,7 +396,7 @@ impl StatisticsCollector {
                                         stats.total_bytes_processed += bytes_processed;
                                         stats.total_files_processed += files_processed;
                                         stats.total_execution_time += execution_time;
-                                        
+
                                         // Update average transfer rate
                                         if stats.total_execution_time.as_secs_f64() > 0.0 {
                                             stats.average_transfer_rate = stats.total_bytes_processed as f64 / stats.total_execution_time.as_secs_f64();
@@ -460,7 +500,7 @@ mod tests {
     async fn test_progress_monitor() {
         let monitor = ProgressMonitor::new();
         let task_id = crate::task::TaskId::new();
-        
+
         let progress = ProgressInfo {
             task_id,
             current_file: "test.txt".to_string(),
@@ -476,7 +516,7 @@ mod tests {
         };
 
         monitor.update_progress(progress.clone()).await.unwrap();
-        
+
         // Note: In a real test, we'd need to start the monitor's run loop
         // For now, we just test the API
     }

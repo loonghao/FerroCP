@@ -1,9 +1,9 @@
 //! Smart buffering system for optimal I/O performance
 
-use ferrocp_types::{BufferSize, DeviceType, Result};
+use bytes::{Bytes, BytesMut};
+use ferrocp_types::DeviceType;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
-use bytes::{Bytes, BytesMut};
 
 /// Adaptive buffer that adjusts size based on performance characteristics
 #[derive(Debug)]
@@ -19,7 +19,7 @@ impl AdaptiveBuffer {
     /// Create a new adaptive buffer
     pub fn new(device_type: DeviceType) -> Self {
         let (min_size, optimal_size, max_size) = Self::get_size_limits(device_type);
-        
+
         Self {
             buffer: BytesMut::with_capacity(optimal_size),
             optimal_size,
@@ -33,7 +33,7 @@ impl AdaptiveBuffer {
     pub fn with_size(device_type: DeviceType, size: usize) -> Self {
         let (min_size, _, max_size) = Self::get_size_limits(device_type);
         let optimal_size = size.clamp(min_size, max_size);
-        
+
         Self {
             buffer: BytesMut::with_capacity(optimal_size),
             optimal_size,
@@ -90,7 +90,8 @@ impl AdaptiveBuffer {
 
         if new_size != self.optimal_size {
             self.optimal_size = new_size;
-            self.buffer.reserve(new_size.saturating_sub(self.buffer.capacity()));
+            self.buffer
+                .reserve(new_size.saturating_sub(self.buffer.capacity()));
         }
     }
 
@@ -172,7 +173,7 @@ impl SmartBuffer {
     fn update_avg_operation_size(&mut self) {
         let total_ops = self.usage_stats.total_reads + self.usage_stats.total_writes;
         if total_ops > 0 {
-            self.usage_stats.avg_operation_size = 
+            self.usage_stats.avg_operation_size =
                 self.usage_stats.total_bytes as f64 / total_ops as f64;
         }
     }
@@ -199,13 +200,15 @@ impl BufferPool {
     /// Get a buffer from the pool or create a new one
     pub fn get_buffer(&self) -> BytesMut {
         let mut buffers = self.buffers.lock().unwrap();
-        buffers.pop_front().unwrap_or_else(|| BytesMut::with_capacity(self.buffer_size))
+        buffers
+            .pop_front()
+            .unwrap_or_else(|| BytesMut::with_capacity(self.buffer_size))
     }
 
     /// Return a buffer to the pool
     pub fn return_buffer(&self, mut buffer: BytesMut) {
         buffer.clear();
-        
+
         let mut buffers = self.buffers.lock().unwrap();
         if buffers.len() < self.max_pool_size {
             buffers.push_back(buffer);
@@ -245,11 +248,11 @@ mod tests {
     fn test_adaptive_buffer_size_adaptation() {
         let mut buffer = AdaptiveBuffer::new(DeviceType::SSD);
         let initial_size = buffer.optimal_size;
-        
+
         // Simulate poor performance
         buffer.adapt_size(30.0, 150.0);
         assert!(buffer.optimal_size <= initial_size);
-        
+
         // Simulate good performance
         buffer.adapt_size(300.0, 5.0);
         assert!(buffer.optimal_size >= initial_size);
@@ -258,10 +261,10 @@ mod tests {
     #[test]
     fn test_smart_buffer_stats() {
         let mut buffer = SmartBuffer::new(DeviceType::SSD);
-        
+
         buffer.record_read(1024);
         buffer.record_write(2048);
-        
+
         let stats = buffer.stats();
         assert_eq!(stats.total_reads, 1);
         assert_eq!(stats.total_writes, 1);
@@ -272,16 +275,16 @@ mod tests {
     #[test]
     fn test_buffer_pool() {
         let pool = BufferPool::new(1024, 5);
-        
+
         let buffer1 = pool.get_buffer();
         let buffer2 = pool.get_buffer();
-        
+
         assert_eq!(buffer1.capacity(), 1024);
         assert_eq!(buffer2.capacity(), 1024);
-        
+
         pool.return_buffer(buffer1);
         assert_eq!(pool.pool_size(), 1);
-        
+
         pool.return_buffer(buffer2);
         assert_eq!(pool.pool_size(), 2);
     }

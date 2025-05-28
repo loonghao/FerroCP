@@ -31,20 +31,14 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
 #![allow(clippy::module_name_repetitions)]
 
-use ferrocp_config::Config;
-use ferrocp_types::{CopyMode, CopyStats, Error, Priority, Result};
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use tokio::sync::RwLock;
-
 pub mod engine;
 pub mod executor;
+pub mod monitor;
 pub mod scheduler;
 pub mod task;
-pub mod monitor;
 
 pub use engine::{CopyEngine, EngineBuilder};
-pub use executor::{TaskExecutor, ExecutorConfig};
-pub use scheduler::{TaskScheduler, SchedulerConfig};
-pub use task::{CopyRequest, CopyResult, Task, TaskId, TaskStatus};
+pub use executor::{ExecutorConfig, TaskExecutor};
 pub use monitor::{ProgressMonitor, StatisticsCollector};
+pub use scheduler::{SchedulerConfig, TaskScheduler};
+pub use task::{CopyRequest, CopyResult, Task, TaskId, TaskStatus};

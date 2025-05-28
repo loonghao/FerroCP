@@ -48,10 +48,7 @@ impl MemoryMappedFile {
     }
 
     /// Create a memory-mapped file with custom options
-    pub fn open_with_options<P: AsRef<Path>>(
-        path: P,
-        options: MemoryMapOptions,
-    ) -> Result<Self> {
+    pub fn open_with_options<P: AsRef<Path>>(path: P, options: MemoryMapOptions) -> Result<Self> {
         let path = path.as_ref();
         let file = File::open(path).map_err(|e| Error::Io {
             message: format!("Failed to open file '{}': {}", path.display(), e),
@@ -70,7 +67,7 @@ impl MemoryMappedFile {
 
         // Create memory mapping
         let mut mmap_options = MmapOptions::new();
-        
+
         if options.offset > 0 {
             mmap_options.offset(options.offset);
         }
@@ -216,7 +213,7 @@ impl MemoryMappedFile {
     pub fn optimal_chunk_size(&self) -> usize {
         // Base chunk size on file size and system page size
         let page_size = 4096; // 4KB page size (common on most systems)
-        
+
         if self.len() < 1024 * 1024 {
             // Small files: process in 64KB chunks
             64 * 1024
@@ -226,7 +223,8 @@ impl MemoryMappedFile {
         } else {
             // Large files: process in 4MB chunks
             4 * 1024 * 1024
-        }.max(page_size)
+        }
+        .max(page_size)
     }
 }
 
@@ -259,7 +257,7 @@ mod tests {
         temp_file.flush().unwrap();
 
         let mmap_file = MemoryMappedFile::open(temp_file.path()).unwrap();
-        
+
         assert_eq!(mmap_file.len(), test_data.len());
         assert_eq!(mmap_file.file_size(), test_data.len() as u64);
         assert_eq!(mmap_file.as_slice(), test_data);
@@ -275,14 +273,14 @@ mod tests {
 
         let options = MemoryMapOptions {
             read_only: true,
-            offset: 7, // Skip "Hello, "
+            offset: 7,       // Skip "Hello, "
             length: Some(5), // Read "World"
             huge_pages: false,
             populate: false,
         };
 
         let mmap_file = MemoryMappedFile::open_with_options(temp_file.path(), options).unwrap();
-        
+
         assert_eq!(mmap_file.len(), 5);
         assert_eq!(mmap_file.as_slice(), b"World");
     }
@@ -295,7 +293,7 @@ mod tests {
         temp_file.flush().unwrap();
 
         let mmap_file = MemoryMappedFile::open(temp_file.path()).unwrap();
-        
+
         // Test different memory advice patterns
         mmap_file.advise(MemoryAdvice::Sequential).unwrap();
         mmap_file.advise(MemoryAdvice::Random).unwrap();
@@ -306,7 +304,9 @@ mod tests {
     fn test_file_size_recommendation() {
         assert!(!MemoryMappedFile::is_recommended_for_file_size(1024)); // Too small
         assert!(MemoryMappedFile::is_recommended_for_file_size(1024 * 1024)); // Good size
-        assert!(!MemoryMappedFile::is_recommended_for_file_size(2 * 1024 * 1024 * 1024)); // Too large
+        assert!(!MemoryMappedFile::is_recommended_for_file_size(
+            2 * 1024 * 1024 * 1024
+        )); // Too large
     }
 
     #[test]
@@ -318,7 +318,7 @@ mod tests {
 
         let mmap_file = MemoryMappedFile::open(temp_file.path()).unwrap();
         let chunk_size = mmap_file.optimal_chunk_size();
-        
+
         assert!(chunk_size >= 4096); // At least one page
         assert!(chunk_size <= 4 * 1024 * 1024); // At most 4MB
     }

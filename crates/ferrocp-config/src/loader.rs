@@ -13,7 +13,7 @@ impl ConfigLoader {
 
         // Try common configuration file locations
         let config_paths = Self::get_default_config_paths();
-        
+
         for path in config_paths {
             if path.exists() {
                 builder = builder.add_source_file(&path);
@@ -30,7 +30,7 @@ impl ConfigLoader {
     /// Load configuration from a specific file
     pub fn load_from_file<P: AsRef<Path>>(path: P) -> ConfigResult<Config> {
         let path = path.as_ref();
-        
+
         if !path.exists() {
             return Err(ConfigError::Io {
                 path: path.to_path_buf(),
@@ -83,33 +83,29 @@ impl ConfigLoader {
     /// Save configuration to a file
     pub fn save_to_file<P: AsRef<Path>>(config: &Config, path: P) -> ConfigResult<()> {
         let path = path.as_ref();
-        
+
         // Determine format from file extension
         let content = match path.extension().and_then(|ext| ext.to_str()) {
             Some("yaml") | Some("yml") => {
-                serde_yaml::to_string(config)
-                    .map_err(|e| ConfigError::Serialization {
-                        message: format!("Failed to serialize to YAML: {}", e),
-                    })?
+                serde_yaml::to_string(config).map_err(|e| ConfigError::Serialization {
+                    message: format!("Failed to serialize to YAML: {}", e),
+                })?
             }
             Some("toml") => {
-                toml::to_string_pretty(config)
-                    .map_err(|e| ConfigError::Serialization {
-                        message: format!("Failed to serialize to TOML: {}", e),
-                    })?
+                toml::to_string_pretty(config).map_err(|e| ConfigError::Serialization {
+                    message: format!("Failed to serialize to TOML: {}", e),
+                })?
             }
             Some("json") => {
-                serde_json::to_string_pretty(config)
-                    .map_err(|e| ConfigError::Serialization {
-                        message: format!("Failed to serialize to JSON: {}", e),
-                    })?
+                serde_json::to_string_pretty(config).map_err(|e| ConfigError::Serialization {
+                    message: format!("Failed to serialize to JSON: {}", e),
+                })?
             }
             _ => {
                 // Default to YAML
-                serde_yaml::to_string(config)
-                    .map_err(|e| ConfigError::Serialization {
-                        message: format!("Failed to serialize to YAML: {}", e),
-                    })?
+                serde_yaml::to_string(config).map_err(|e| ConfigError::Serialization {
+                    message: format!("Failed to serialize to YAML: {}", e),
+                })?
             }
         };
 
@@ -183,9 +179,11 @@ mod dirs {
         }
         #[cfg(target_os = "macos")]
         {
-            std::env::var("HOME")
-                .ok()
-                .map(|home| PathBuf::from(home).join("Library").join("Application Support"))
+            std::env::var("HOME").ok().map(|home| {
+                PathBuf::from(home)
+                    .join("Library")
+                    .join("Application Support")
+            })
         }
         #[cfg(target_os = "linux")]
         {
@@ -220,34 +218,40 @@ mod tests {
     fn test_save_and_load_yaml() {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("test.yaml");
-        
+
         let original_config = Config::default();
         ConfigLoader::save_to_file(&original_config, &config_path).unwrap();
-        
+
         let loaded_config = ConfigLoader::load_from_file(&config_path).unwrap();
-        assert_eq!(original_config.performance.enable_zero_copy, loaded_config.performance.enable_zero_copy);
+        assert_eq!(
+            original_config.performance.enable_zero_copy,
+            loaded_config.performance.enable_zero_copy
+        );
     }
 
     #[test]
     fn test_save_and_load_toml() {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("test.toml");
-        
+
         let original_config = Config::default();
         ConfigLoader::save_to_file(&original_config, &config_path).unwrap();
-        
+
         let loaded_config = ConfigLoader::load_from_file(&config_path).unwrap();
-        assert_eq!(original_config.performance.enable_zero_copy, loaded_config.performance.enable_zero_copy);
+        assert_eq!(
+            original_config.performance.enable_zero_copy,
+            loaded_config.performance.enable_zero_copy
+        );
     }
 
     #[test]
     fn test_generate_default_config() {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("default.yaml");
-        
+
         ConfigLoader::generate_default_config(&config_path).unwrap();
         assert!(config_path.exists());
-        
+
         let config = ConfigLoader::load_from_file(&config_path).unwrap();
         assert!(config.performance.enable_zero_copy);
     }

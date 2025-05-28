@@ -8,9 +8,6 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
-#[cfg(feature = "async")]
-use async_trait::async_trait;
-
 /// Unique identifier for operations
 pub type OperationId = uuid::Uuid;
 
@@ -212,7 +209,7 @@ pub enum CopyMode {
 }
 
 /// Compression algorithm
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CompressionAlgorithm {
     /// No compression

@@ -6,11 +6,11 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use console::style;
-use ferrocp_types::{CopyMode, CopyStats, DeviceType, Priority};
+use ferrocp_types::{CopyMode, CopyStats, DeviceType};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::path::PathBuf;
 use std::time::Duration;
-use tracing::{debug, error, info, warn};
+use tracing::info;
 
 /// FerroCP - High-performance cross-platform file copying tool
 #[derive(Parser)]
@@ -152,7 +152,11 @@ async fn main() -> Result<()> {
             exclude,
             include,
         } => {
-            let copy_mode = if mirror { CopyMode::Mirror } else { mode.into() };
+            let copy_mode = if mirror {
+                CopyMode::Mirror
+            } else {
+                mode.into()
+            };
             copy_command(
                 source,
                 destination,
@@ -295,7 +299,10 @@ async fn sync_command(
     );
 
     if dry_run {
-        println!("{} Dry run mode - no changes will be made", style("ℹ").yellow());
+        println!(
+            "{} Dry run mode - no changes will be made",
+            style("ℹ").yellow()
+        );
     }
 
     // TODO: Implement actual sync logic
@@ -369,14 +376,43 @@ fn print_copy_stats(stats: &CopyStats) {
     println!();
     println!("{}", style("Copy Statistics:").bold().underlined());
     println!("  Files copied: {}", style(stats.files_copied).green());
-    println!("  Directories created: {}", style(stats.directories_created).green());
-    println!("  Bytes copied: {}", style(format_bytes(stats.bytes_copied)).green());
+    println!(
+        "  Directories created: {}",
+        style(stats.directories_created).green()
+    );
+    println!(
+        "  Bytes copied: {}",
+        style(format_bytes(stats.bytes_copied)).green()
+    );
     println!("  Files skipped: {}", style(stats.files_skipped).yellow());
-    println!("  Errors: {}", if stats.errors > 0 { style(stats.errors).red() } else { style(stats.errors).green() });
-    println!("  Duration: {}", style(format_duration(stats.duration)).blue());
-    println!("  Transfer rate: {}", style(format!("{:.2} MB/s", stats.transfer_rate() / 1024.0 / 1024.0)).blue());
-    println!("  Zero-copy operations: {}", style(stats.zerocopy_operations).cyan());
-    println!("  Zero-copy efficiency: {:.1}%", style(stats.zerocopy_efficiency() * 100.0).cyan());
+    println!(
+        "  Errors: {}",
+        if stats.errors > 0 {
+            style(stats.errors).red()
+        } else {
+            style(stats.errors).green()
+        }
+    );
+    println!(
+        "  Duration: {}",
+        style(format_duration(stats.duration)).blue()
+    );
+    println!(
+        "  Transfer rate: {}",
+        style(format!(
+            "{:.2} MB/s",
+            stats.transfer_rate() / 1024.0 / 1024.0
+        ))
+        .blue()
+    );
+    println!(
+        "  Zero-copy operations: {}",
+        style(stats.zerocopy_operations).cyan()
+    );
+    println!(
+        "  Zero-copy efficiency: {:.1}%",
+        style(stats.zerocopy_efficiency() * 100.0).cyan()
+    );
 }
 
 fn format_bytes(bytes: u64) -> String {

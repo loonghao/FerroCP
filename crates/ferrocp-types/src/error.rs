@@ -60,63 +60,63 @@ pub enum Error {
     #[error("I/O error: {message}")]
     Io {
         /// Error message from the I/O operation
-        message: String
+        message: String,
     },
 
     /// File not found
     #[error("File not found: {path}")]
     FileNotFound {
         /// Path to the file that was not found
-        path: PathBuf
+        path: PathBuf,
     },
 
     /// Permission denied
     #[error("Permission denied: {path}")]
     PermissionDenied {
         /// Path to the file with permission issues
-        path: PathBuf
+        path: PathBuf,
     },
 
     /// Configuration error
     #[error("Configuration error: {message}")]
     Config {
         /// Error message describing the configuration issue
-        message: String
+        message: String,
     },
 
     /// Network error
     #[error("Network error: {message}")]
     Network {
         /// Error message describing the network issue
-        message: String
+        message: String,
     },
 
     /// Compression error
     #[error("Compression error: {message}")]
     Compression {
         /// Error message describing the compression issue
-        message: String
+        message: String,
     },
 
     /// Device detection error
     #[error("Device detection error: {message}")]
     DeviceDetection {
         /// Error message describing the device detection issue
-        message: String
+        message: String,
     },
 
     /// Zero-copy operation failed
     #[error("Zero-copy operation failed: {message}")]
     ZeroCopy {
         /// Error message describing the zero-copy failure
-        message: String
+        message: String,
     },
 
     /// Synchronization error
     #[error("Synchronization error: {message}")]
     Sync {
         /// Error message describing the synchronization issue
-        message: String
+        message: String,
     },
 
     /// Operation cancelled
@@ -127,14 +127,14 @@ pub enum Error {
     #[error("Operation timed out after {seconds} seconds")]
     Timeout {
         /// Number of seconds after which the operation timed out
-        seconds: u64
+        seconds: u64,
     },
 
     /// Generic error with custom message
     #[error("{message}")]
     Other {
         /// Custom error message
-        message: String
+        message: String,
     },
 }
 
@@ -204,20 +204,18 @@ impl Error {
             Self::Io { message } => {
                 // Check if the error message indicates a recoverable condition
                 message.contains("Interrupted")
-                || message.contains("WouldBlock")
-                || message.contains("TimedOut")
-            },
+                    || message.contains("WouldBlock")
+                    || message.contains("TimedOut")
+            }
             Self::Network { .. }
             | Self::Timeout { .. }
             | Self::Compression { .. }
             | Self::ZeroCopy { .. } => true,
             Self::Cancelled => false,
-            Self::FileNotFound { .. }
-            | Self::PermissionDenied { .. }
-            | Self::Config { .. } => false,
-            Self::DeviceDetection { .. }
-            | Self::Sync { .. }
-            | Self::Other { .. } => true,
+            Self::FileNotFound { .. } | Self::PermissionDenied { .. } | Self::Config { .. } => {
+                false
+            }
+            Self::DeviceDetection { .. } | Self::Sync { .. } | Self::Other { .. } => true,
         }
     }
 

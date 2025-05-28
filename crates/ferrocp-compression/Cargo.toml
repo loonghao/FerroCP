@@ -16,7 +16,23 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
-ferrocp-types = { path = "../ferrocp-types" }
+ferrocp-types = { path = "../ferrocp-types", features = ["async"] }
+async-trait = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tracing = { workspace = true }
+serde = { workspace = true, features = ["derive"], optional = true }
+
+# Compression algorithms
+zstd = "0.13"
+lz4_flex = "0.11"
+brotli = "6.0"
+
+# Performance monitoring
+flate2 = "1.0"
+
+[features]
+default = ["serde"]
+serde = ["dep:serde", "ferrocp-types/serde"]
 
 [dev-dependencies]
 tokio-test = { workspace = true }

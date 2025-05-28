@@ -1,5 +1,6 @@
 //! Streaming utilities for file operations
 
+use bytes::Bytes;
 use ferrocp_types::{Error, ProgressInfo, Result};
 use futures::{Stream, StreamExt};
 use std::path::PathBuf;
@@ -7,7 +8,6 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::fs::File;
 use tokio::io::{AsyncRead, ReadBuf};
-use bytes::Bytes;
 
 /// File stream for reading files in chunks
 #[derive(Debug)]
@@ -201,10 +201,7 @@ pub mod utils {
     use tokio::io::AsyncWriteExt;
 
     /// Copy data from a stream to a writer
-    pub async fn copy_stream_to_writer<S, W>(
-        mut stream: S,
-        mut writer: W,
-    ) -> Result<u64>
+    pub async fn copy_stream_to_writer<S, W>(mut stream: S, mut writer: W) -> Result<u64>
     where
         S: Stream<Item = Result<Bytes>> + Unpin,
         W: tokio::io::AsyncWrite + Unpin,
@@ -233,7 +230,7 @@ pub mod utils {
     {
         let chunks: Vec<Bytes> = stream.try_collect().await?;
         let total_size: usize = chunks.iter().map(|chunk| chunk.len()).sum();
-        
+
         let mut buffer = Vec::with_capacity(total_size);
         for chunk in chunks {
             buffer.extend_from_slice(&chunk);
@@ -294,11 +291,8 @@ mod tests {
         temp_file.flush().unwrap();
 
         let file_stream = FileStream::new(temp_file.path(), 5).await.unwrap();
-        let mut progress_stream = ProgressStream::new(
-            file_stream,
-            temp_file.path(),
-            test_data.len() as u64,
-        );
+        let mut progress_stream =
+            ProgressStream::new(file_stream, temp_file.path(), test_data.len() as u64);
 
         let mut total_bytes = 0;
         while let Some(chunk) = progress_stream.next().await {
@@ -319,7 +313,7 @@ mod tests {
         temp_file.flush().unwrap();
 
         let stream = FileStream::new(temp_file.path(), 10).await.unwrap();
-        
+
         // Test collecting stream
         let collected = utils::collect_stream(stream).await.unwrap();
         assert_eq!(collected, test_data);
