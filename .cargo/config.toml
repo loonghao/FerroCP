@@ -1,0 +1,71 @@
+# Modern Cargo configuration for FerroCP workspace
+
+[build]
+# Use all available CPU cores for compilation (0 means auto-detect)
+# jobs = 0  # Commented out to use default behavior
+
+# Enable incremental compilation for faster builds
+incremental = true
+
+# Use the sparse registry protocol for faster dependency resolution
+[registries.crates-io]
+protocol = "sparse"
+
+# Optimize for faster builds in development
+[profile.dev]
+# Enable some optimizations for dependencies while keeping fast compile times
+opt-level = 0
+debug = true
+split-debuginfo = "unpacked"
+
+# Custom aliases for common tasks
+[alias]
+# Development aliases
+dev-check = "check --workspace --all-targets --all-features"
+dev-test = "test --workspace --all-features"
+dev-clippy = "clippy --workspace --all-targets --all-features -- -D warnings"
+dev-fmt = "fmt --all"
+
+# Build aliases
+build-all = "build --workspace --all-targets --all-features"
+build-release = "build --workspace --release"
+build-cli = "build --package ferrocp-cli --release"
+build-python = "build --package ferrocp-python --release"
+
+# Testing aliases
+test-all = "test --workspace --all-features"
+test-unit = "test --workspace --lib"
+test-integration = "test --workspace --test '*'"
+test-doc = "test --workspace --doc"
+
+# Benchmarking
+bench-all = "bench --workspace"
+bench-criterion = "bench --package ferrocp-engine"
+
+# Documentation
+doc-all = "doc --workspace --all-features --no-deps --open"
+doc-private = "doc --workspace --all-features --document-private-items"
+
+# Utility aliases
+clean-all = "clean --workspace"
+update-deps = "update --workspace"
+audit = "audit --deny warnings"
+
+# Target-specific configurations
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-cpu=native"]
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "target-cpu=native", "-C", "link-arg=-fuse-ld=lld"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "target-cpu=native"]
+
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "target-cpu=native"]
+
+# Environment variables for development
+[env]
+RUST_BACKTRACE = "1"
+RUST_LOG = "debug"
+FERROCP_LOG_LEVEL = "debug"
