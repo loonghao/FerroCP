@@ -54,6 +54,7 @@ impl SyscallTracker {
         self.close_calls.fetch_add(1, Ordering::Relaxed);
     }
 
+    #[allow(dead_code)]
     fn track_seek(&self) {
         self.seek_calls.fetch_add(1, Ordering::Relaxed);
     }
@@ -89,6 +90,7 @@ impl SyscallTracker {
         )
     }
 
+    #[allow(dead_code)]
     fn reset(&self) {
         self.open_calls.store(0, Ordering::Relaxed);
         self.read_calls.store(0, Ordering::Relaxed);

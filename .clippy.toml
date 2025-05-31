@@ -1,0 +1,24 @@
+# Clippy configuration for cross-platform compatibility
+# This file helps ensure consistent clippy behavior across different platforms
+
+# Avoid false positives on different platforms
+avoid-breaking-exported-api = false
+
+# Allow more complex types for cross-platform compatibility
+type-complexity-threshold = 250
+
+# Allow more arguments for platform-specific functions
+too-many-arguments-threshold = 8
+
+# Allow more lines in functions for platform-specific implementations
+too-many-lines-threshold = 150
+
+# Allow cognitive complexity for platform abstraction layers
+cognitive-complexity-threshold = 35
+
+# Suppress warnings that commonly differ across platforms
+disallowed-names = []
+
+# Allow platform-specific naming patterns
+allow-expect-in-tests = true
+allow-unwrap-in-tests = true

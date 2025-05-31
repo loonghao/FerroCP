@@ -1,3 +1,7 @@
+//! Build script for ferrocp-python crate
+//!
+//! This build script configures the Python extension module build process.
+
 fn main() {
     // On Windows, Python extension modules should have .pyd extension
     // PyO3 handles this automatically, but we ensure proper configuration

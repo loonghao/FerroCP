@@ -40,7 +40,7 @@ tokio = { workspace = true, features = ["full"] }
 futures = { workspace = true }
 
 # Serialization
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["derive"], optional = true }
 
 # Utilities
 tracing = { workspace = true }
@@ -66,3 +66,5 @@ tempfile = { workspace = true }
 [features]
 # Feature flag to enable integration tests (disabled by default)
 test-integration = []
+# Enable serde serialization support
+serde = ["dep:serde"]

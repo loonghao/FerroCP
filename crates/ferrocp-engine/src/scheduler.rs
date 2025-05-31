@@ -104,7 +104,9 @@ pub struct TaskScheduler {
     pending_queue: Arc<RwLock<BinaryHeap<PriorityTask>>>,
     active_tasks: Arc<RwLock<HashMap<TaskId, Task>>>,
     completed_tasks: Arc<RwLock<HashMap<TaskId, Task>>>,
+    #[allow(dead_code)]
     task_tx: mpsc::UnboundedSender<Task>,
+    #[allow(dead_code)]
     task_rx: Arc<RwLock<Option<mpsc::UnboundedReceiver<Task>>>>,
     shutdown_tx: Option<mpsc::Sender<()>>,
 }
