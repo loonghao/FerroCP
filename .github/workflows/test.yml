@@ -34,13 +34,26 @@ jobs:
       uses: Swatinem/rust-cache@v2
       with:
         key: ${{ matrix.os }}-${{ matrix.rust }}
-    
+
+    # Clean build cache on macOS to avoid ring compilation issues
+    - name: Clean build cache (macOS)
+      if: matrix.os == 'macos-latest'
+      run: cargo clean
+
+    # Set macOS-specific environment variables for ring compilation
+    - name: Set macOS build environment
+      if: matrix.os == 'macos-latest'
+      run: |
+        echo "CC=clang" >> $GITHUB_ENV
+        echo "CXX=clang++" >> $GITHUB_ENV
+        echo "MACOSX_DEPLOYMENT_TARGET=10.15" >> $GITHUB_ENV
+
     - name: Check formatting
       run: cargo fmt --all -- --check
-    
+
     - name: Run clippy
       run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-    
+
     - name: Build workspace
       run: cargo build --workspace --all-features
     
