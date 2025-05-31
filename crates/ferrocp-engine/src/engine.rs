@@ -91,7 +91,9 @@ impl CopyEngine {
                     if let Err(e) = executor_for_loop.execute_task(task.clone()).await {
                         warn!("Failed to execute task {}: {}", task.id, e);
                         // Mark task as failed
-                        let _ = scheduler_for_loop.mark_task_failed(task.id, e.to_string()).await;
+                        let _ = scheduler_for_loop
+                            .mark_task_failed(task.id, e.to_string())
+                            .await;
                     }
                 }
             }

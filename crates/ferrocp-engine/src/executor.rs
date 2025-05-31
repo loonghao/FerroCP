@@ -182,7 +182,11 @@ impl TaskExecutor {
             Err(error) => {
                 return CopyResult::failure(
                     task_id,
-                    format!("Failed to open file '{}': {}", task.request.source.display(), error),
+                    format!(
+                        "Failed to open file '{}': {}",
+                        task.request.source.display(),
+                        error
+                    ),
                     start_time.elapsed(),
                 );
             }
@@ -197,7 +201,10 @@ impl TaskExecutor {
         } else {
             CopyResult::failure(
                 task_id,
-                format!("Source '{}' is neither a file nor a directory", task.request.source.display()),
+                format!(
+                    "Source '{}' is neither a file nor a directory",
+                    task.request.source.display()
+                ),
                 start_time.elapsed(),
             )
         }
@@ -225,7 +232,7 @@ impl TaskExecutor {
             } else {
                 0
             },
-            enable_preread: true, // Enable pre-read by default
+            enable_preread: true,   // Enable pre-read by default
             preread_strategy: None, // Auto-detect based on device
         };
 
@@ -243,7 +250,11 @@ impl TaskExecutor {
                 .await
             {
                 Ok(stats) => {
-                    info!("Copy completed: {} bytes in {:?}", stats.bytes_copied, start_time.elapsed());
+                    info!(
+                        "Copy completed: {} bytes in {:?}",
+                        stats.bytes_copied,
+                        start_time.elapsed()
+                    );
                     return CopyResult::success(task_id, stats, start_time.elapsed());
                 }
                 Err(error) => {
@@ -285,7 +296,11 @@ impl TaskExecutor {
         // Use high-performance engines for directory copying
         match Self::copy_directory_recursive(source, destination, engine_selector, config).await {
             Ok(stats) => {
-                info!("Directory copy completed: {} -> {}", source.display(), destination.display());
+                info!(
+                    "Directory copy completed: {} -> {}",
+                    source.display(),
+                    destination.display()
+                );
                 CopyResult::success(task_id, stats, start_time.elapsed())
             }
             Err(error) => {
@@ -301,106 +316,137 @@ impl TaskExecutor {
         destination: &'a std::path::Path,
         engine_selector: Arc<EngineSelector>,
         config: &'a ExecutorConfig,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ferrocp_types::CopyStats>> + Send + 'a>> {
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<ferrocp_types::CopyStats>> + Send + 'a>,
+    > {
         Box::pin(async move {
-        use tokio::fs;
-        use ferrocp_types::CopyStats;
-        use std::time::Duration;
+            use ferrocp_types::CopyStats;
+            use std::time::Duration;
+            use tokio::fs;
 
-        let mut files_copied = 0;
-        let mut directories_created = 0;
-        let mut bytes_copied = 0;
-        let mut files_skipped = 0;
-        let mut errors = 0;
+            let mut files_copied = 0;
+            let mut directories_created = 0;
+            let mut bytes_copied = 0;
+            let mut files_skipped = 0;
+            let mut errors = 0;
 
-        // Create destination directory
-        if let Err(e) = fs::create_dir_all(destination).await {
-            return Err(Error::other(format!(
-                "Failed to create destination directory '{}': {}",
-                destination.display(),
-                e
-            )));
-        }
-        directories_created += 1;
-
-        // Read source directory
-        let mut entries = match fs::read_dir(source).await {
-            Ok(entries) => entries,
-            Err(e) => {
+            // Create destination directory
+            if let Err(e) = fs::create_dir_all(destination).await {
                 return Err(Error::other(format!(
-                    "Failed to read source directory '{}': {}",
-                    source.display(),
+                    "Failed to create destination directory '{}': {}",
+                    destination.display(),
                     e
                 )));
             }
-        };
+            directories_created += 1;
 
-        while let Some(entry) = entries.next_entry().await.map_err(|e| {
-            Error::other(format!("Failed to read directory entry: {}", e))
-        })? {
-            let source_path = entry.path();
-            let file_name = match source_path.file_name() {
-                Some(name) => name,
-                None => {
-                    files_skipped += 1;
-                    continue;
-                }
-            };
-            let dest_path = destination.join(file_name);
-
-            let metadata = match entry.metadata().await {
-                Ok(metadata) => metadata,
+            // Read source directory
+            let mut entries = match fs::read_dir(source).await {
+                Ok(entries) => entries,
                 Err(e) => {
-                    warn!("Failed to get metadata for '{}': {}", source_path.display(), e);
-                    errors += 1;
-                    continue;
+                    return Err(Error::other(format!(
+                        "Failed to read source directory '{}': {}",
+                        source.display(),
+                        e
+                    )));
                 }
             };
 
-            if metadata.is_file() {
-                // Copy file using high-performance engines
-                match Self::copy_single_file_with_engine(&source_path, &dest_path, &engine_selector, config).await {
-                    Ok(stats) => {
-                        files_copied += 1;
-                        bytes_copied += stats.bytes_copied;
-                        debug!("Copied file: {} -> {} ({} bytes)", source_path.display(), dest_path.display(), stats.bytes_copied);
+            while let Some(entry) = entries
+                .next_entry()
+                .await
+                .map_err(|e| Error::other(format!("Failed to read directory entry: {}", e)))?
+            {
+                let source_path = entry.path();
+                let file_name = match source_path.file_name() {
+                    Some(name) => name,
+                    None => {
+                        files_skipped += 1;
+                        continue;
                     }
-                    Err(e) => {
-                        warn!("Failed to copy file '{}': {}", source_path.display(), e);
-                        errors += 1;
-                    }
-                }
-            } else if metadata.is_dir() {
-                // Recursively copy subdirectory
-                match Self::copy_directory_recursive(&source_path, &dest_path, Arc::clone(&engine_selector), config).await {
-                    Ok(sub_stats) => {
-                        files_copied += sub_stats.files_copied;
-                        directories_created += sub_stats.directories_created;
-                        bytes_copied += sub_stats.bytes_copied;
-                        files_skipped += sub_stats.files_skipped;
-                        errors += sub_stats.errors;
-                    }
-                    Err(e) => {
-                        warn!("Failed to copy directory '{}': {}", source_path.display(), e);
-                        errors += 1;
-                    }
-                }
-            } else {
-                // Skip special files (symlinks, etc.)
-                files_skipped += 1;
-            }
-        }
+                };
+                let dest_path = destination.join(file_name);
 
-        Ok(CopyStats {
-            files_copied,
-            directories_created,
-            bytes_copied,
-            files_skipped,
-            errors,
-            duration: Duration::from_secs(0), // Will be set by caller
-            zerocopy_operations: 0,
-            zerocopy_bytes: 0,
-        })
+                let metadata = match entry.metadata().await {
+                    Ok(metadata) => metadata,
+                    Err(e) => {
+                        warn!(
+                            "Failed to get metadata for '{}': {}",
+                            source_path.display(),
+                            e
+                        );
+                        errors += 1;
+                        continue;
+                    }
+                };
+
+                if metadata.is_file() {
+                    // Copy file using high-performance engines
+                    match Self::copy_single_file_with_engine(
+                        &source_path,
+                        &dest_path,
+                        &engine_selector,
+                        config,
+                    )
+                    .await
+                    {
+                        Ok(stats) => {
+                            files_copied += 1;
+                            bytes_copied += stats.bytes_copied;
+                            debug!(
+                                "Copied file: {} -> {} ({} bytes)",
+                                source_path.display(),
+                                dest_path.display(),
+                                stats.bytes_copied
+                            );
+                        }
+                        Err(e) => {
+                            warn!("Failed to copy file '{}': {}", source_path.display(), e);
+                            errors += 1;
+                        }
+                    }
+                } else if metadata.is_dir() {
+                    // Recursively copy subdirectory
+                    match Self::copy_directory_recursive(
+                        &source_path,
+                        &dest_path,
+                        Arc::clone(&engine_selector),
+                        config,
+                    )
+                    .await
+                    {
+                        Ok(sub_stats) => {
+                            files_copied += sub_stats.files_copied;
+                            directories_created += sub_stats.directories_created;
+                            bytes_copied += sub_stats.bytes_copied;
+                            files_skipped += sub_stats.files_skipped;
+                            errors += sub_stats.errors;
+                        }
+                        Err(e) => {
+                            warn!(
+                                "Failed to copy directory '{}': {}",
+                                source_path.display(),
+                                e
+                            );
+                            errors += 1;
+                        }
+                    }
+                } else {
+                    // Skip special files (symlinks, etc.)
+                    files_skipped += 1;
+                }
+            }
+
+            Ok(CopyStats {
+                files_copied,
+                directories_created,
+                bytes_copied,
+                files_skipped,
+                errors,
+                duration: Duration::from_secs(0), // Will be set by caller
+                zerocopy_operations: 0,
+                zerocopy_bytes: 0,
+            })
         })
     }
 
@@ -411,11 +457,13 @@ impl TaskExecutor {
         engine_selector: &EngineSelector,
         _config: &ExecutorConfig,
     ) -> Result<ferrocp_types::CopyStats> {
-        use ferrocp_io::CopyEngine as IoCopyEngine;
         use crate::selector::EngineType;
+        use ferrocp_io::CopyEngine as IoCopyEngine;
 
         // Select the optimal engine for this file
-        let selection = engine_selector.select_optimal_engine(source, destination).await?;
+        let selection = engine_selector
+            .select_optimal_engine(source, destination)
+            .await?;
 
         debug!(
             "Selected engine {:?} for file {} -> {} ({})",
@@ -430,23 +478,31 @@ impl TaskExecutor {
             EngineType::MicroFile => {
                 let engine = engine_selector.get_micro_engine().await;
                 let mut engine_guard = engine.lock().await;
-                engine_guard.copy_file_with_options(source, destination, selection.copy_options).await
+                engine_guard
+                    .copy_file_with_options(source, destination, selection.copy_options)
+                    .await
             }
             EngineType::Buffered => {
                 let engine = engine_selector.get_buffered_engine().await;
                 let mut engine_guard = engine.lock().await;
-                engine_guard.copy_file_with_options(source, destination, selection.copy_options).await
+                engine_guard
+                    .copy_file_with_options(source, destination, selection.copy_options)
+                    .await
             }
             EngineType::Parallel => {
                 let engine = engine_selector.get_parallel_engine().await;
                 let mut engine_guard = engine.lock().await;
-                engine_guard.copy_file_with_options(source, destination, selection.copy_options).await
+                engine_guard
+                    .copy_file_with_options(source, destination, selection.copy_options)
+                    .await
             }
             EngineType::ZeroCopy => {
                 // For zero-copy, we still use buffered engine but with zero-copy options
                 let engine = engine_selector.get_buffered_engine().await;
                 let mut engine_guard = engine.lock().await;
-                engine_guard.copy_file_with_options(source, destination, selection.copy_options).await
+                engine_guard
+                    .copy_file_with_options(source, destination, selection.copy_options)
+                    .await
             }
         }
     }
@@ -600,7 +656,10 @@ mod tests {
         use ferrocp_config::Config;
         let main_config = Config::default();
         let executor_config = ExecutorConfig::from_config(&main_config);
-        assert_eq!(executor_config.default_buffer_size, main_config.performance.buffer_size.get());
+        assert_eq!(
+            executor_config.default_buffer_size,
+            main_config.performance.buffer_size.get()
+        );
     }
 
     #[tokio::test]
@@ -636,13 +695,19 @@ mod tests {
 
         // Create source directory with files
         tokio::fs::create_dir_all(&source_dir).await.unwrap();
-        tokio::fs::write(source_dir.join("file1.txt"), b"content1").await.unwrap();
-        tokio::fs::write(source_dir.join("file2.txt"), b"content2").await.unwrap();
+        tokio::fs::write(source_dir.join("file1.txt"), b"content1")
+            .await
+            .unwrap();
+        tokio::fs::write(source_dir.join("file2.txt"), b"content2")
+            .await
+            .unwrap();
 
         // Create subdirectory
         let sub_dir = source_dir.join("subdir");
         tokio::fs::create_dir_all(&sub_dir).await.unwrap();
-        tokio::fs::write(sub_dir.join("file3.txt"), b"content3").await.unwrap();
+        tokio::fs::write(sub_dir.join("file3.txt"), b"content3")
+            .await
+            .unwrap();
 
         let executor = TaskExecutor::new(ExecutorConfig::default()).await.unwrap();
         let request = CopyRequest::new(source_dir, dest_dir.clone());
@@ -662,9 +727,13 @@ mod tests {
         assert!(dest_dir.join("subdir").join("file3.txt").exists());
 
         // Verify file contents
-        let content1 = tokio::fs::read_to_string(dest_dir.join("file1.txt")).await.unwrap();
+        let content1 = tokio::fs::read_to_string(dest_dir.join("file1.txt"))
+            .await
+            .unwrap();
         assert_eq!(content1, "content1");
-        let content3 = tokio::fs::read_to_string(dest_dir.join("subdir").join("file3.txt")).await.unwrap();
+        let content3 = tokio::fs::read_to_string(dest_dir.join("subdir").join("file3.txt"))
+            .await
+            .unwrap();
         assert_eq!(content3, "content3");
 
         // Verify statistics

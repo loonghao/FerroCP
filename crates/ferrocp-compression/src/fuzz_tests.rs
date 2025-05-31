@@ -1,8 +1,8 @@
 //! Fuzz tests for ferrocp-compression components
 
+use crate::adaptive::{AdaptiveCompressor, DataType};
 use crate::algorithms::AlgorithmImpl;
 use crate::engine::CompressionEngineImpl;
-use crate::adaptive::{AdaptiveCompressor, DataType};
 use ferrocp_types::{CompressionAlgorithm, CompressionEngine};
 use proptest::prelude::*;
 
@@ -42,14 +42,17 @@ fn data_pattern_strategy() -> impl Strategy<Value = Vec<u8>> {
         // Small data (1-1024 bytes)
         prop::collection::vec(any::<u8>(), 1..=1024),
         // Medium data (1KB-1MB)
-        prop::collection::vec(any::<u8>(), 1024..=1024*1024),
+        prop::collection::vec(any::<u8>(), 1024..=1024 * 1024),
         // Highly compressible data (repeated patterns)
-        (any::<u8>(), 1usize..=1024*1024).prop_map(|(byte, size)| vec![byte; size]),
+        (any::<u8>(), 1usize..=1024 * 1024).prop_map(|(byte, size)| vec![byte; size]),
         // Text-like data (ASCII printable characters)
-        prop::collection::vec(32u8..=126, 1..=1024*1024),
+        prop::collection::vec(32u8..=126, 1..=1024 * 1024),
         // Binary data with patterns
         (1usize..=1024).prop_flat_map(|pattern_size| {
-            (prop::collection::vec(any::<u8>(), pattern_size), 1usize..=1000)
+            (
+                prop::collection::vec(any::<u8>(), pattern_size),
+                1usize..=1000,
+            )
                 .prop_map(|(pattern, repeats)| pattern.repeat(repeats))
         }),
     ]
@@ -64,16 +67,16 @@ proptest! {
         data in data_pattern_strategy()
     ) {
         let algo_impl = AlgorithmImpl::create(algorithm);
-        
+
         // Skip if level is not supported by algorithm
         let max_level = algo_impl.max_level();
         if level > max_level {
             return Ok(());
         }
-        
+
         // Compress the data
         let compressed_result = algo_impl.compress(&data, level);
-        
+
         match compressed_result {
             Ok(compressed) => {
                 // Decompress and verify
@@ -103,11 +106,11 @@ proptest! {
         data in data_pattern_strategy()
     ) {
         let compressor = AdaptiveCompressor::new();
-        
+
         if data.is_empty() {
             return Ok(());
         }
-        
+
         // Test algorithm selection using public API
         let (selected_algorithm, level) = compressor.choose_algorithm(&data);
         prop_assert!(matches!(selected_algorithm, CompressionAlgorithm::None |
@@ -155,10 +158,10 @@ proptest! {
         malformed_data in prop::collection::vec(any::<u8>(), 0..=1024)
     ) {
         let algo_impl = AlgorithmImpl::create(algorithm);
-        
+
         // Attempt to decompress malformed data
         let result = algo_impl.decompress(&malformed_data);
-        
+
         // Should either succeed (if data happens to be valid) or fail gracefully
         match result {
             Ok(decompressed) => {
@@ -182,7 +185,7 @@ proptest! {
 
         // Test with potentially invalid compression levels
         let result = algo_impl.compress(&data, level);
-        
+
         match result {
             Ok(compressed) => {
                 // If compression succeeds, decompression should work
@@ -245,10 +248,10 @@ mod stress_tests {
             if algorithm == CompressionAlgorithm::None {
                 return Ok(()); // Skip for no compression
             }
-            
+
             let data = vec![pattern; size];
             let algo_impl = AlgorithmImpl::create(algorithm);
-            
+
             let compressed = algo_impl.compress(&data, algo_impl.default_level())?;
             let decompressed = algo_impl.decompress(&compressed)?;
 

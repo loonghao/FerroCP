@@ -6,8 +6,8 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use console::style;
-use ferrocp_types::{CopyMode, CopyStats, DeviceType};
 use ferrocp_engine::{CopyEngine, CopyRequest};
+use ferrocp_types::{CopyMode, CopyStats, DeviceType};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -374,8 +374,6 @@ async fn config_command(default: bool) -> Result<()> {
     }
     Ok(())
 }
-
-
 
 fn print_copy_stats(stats: &CopyStats) {
     println!();

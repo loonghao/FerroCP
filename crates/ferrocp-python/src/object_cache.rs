@@ -3,12 +3,12 @@
 //! This module provides intelligent caching for Python objects and string representations,
 //! reducing the overhead of repeated object creation and GIL acquisition.
 
+use once_cell::sync::Lazy;
 use pyo3::prelude::*;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
-use once_cell::sync::Lazy;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -53,7 +53,7 @@ impl PythonCacheConfig {
         Self {
             max_string_entries: 10000,
             max_object_entries: 2000,
-            ttl: Duration::from_secs(1800), // 30 minutes
+            ttl: Duration::from_secs(1800),  // 30 minutes
             memory_limit: 100 * 1024 * 1024, // 100MB
             ..Default::default()
         }
@@ -64,7 +64,7 @@ impl PythonCacheConfig {
         Self {
             max_string_entries: 2000,
             max_object_entries: 500,
-            ttl: Duration::from_secs(300), // 5 minutes
+            ttl: Duration::from_secs(300),  // 5 minutes
             memory_limit: 20 * 1024 * 1024, // 20MB
             ..Default::default()
         }
@@ -251,7 +251,7 @@ impl PythonCacheManager {
         // Cache miss - create new entry
         let value = factory();
         let entry = StringCacheEntry::new(value.clone());
-        
+
         // Check memory usage before insertion
         let entry_size = entry.estimated_size();
         if self.stats.memory_usage + entry_size > self.config.memory_limit {
@@ -259,7 +259,7 @@ impl PythonCacheManager {
         }
 
         self.string_cache.insert(hash_key, entry);
-        
+
         if self.config.enable_stats {
             self.stats.string_misses += 1;
             self.stats.string_entries = self.string_cache.len();
@@ -280,7 +280,12 @@ impl PythonCacheManager {
     }
 
     /// Get or insert a Python object in cache
-    pub fn get_or_insert_object<K, F>(&mut self, py: Python<'_>, key: K, factory: F) -> PyResult<PyObject>
+    pub fn get_or_insert_object<K, F>(
+        &mut self,
+        py: Python<'_>,
+        key: K,
+        factory: F,
+    ) -> PyResult<PyObject>
     where
         K: Hash,
         F: FnOnce(Python<'_>) -> PyResult<PyObject>,
@@ -299,7 +304,10 @@ impl PythonCacheManager {
                 let removed_entry = self.object_cache.remove(&hash_key).unwrap();
                 if self.config.enable_stats {
                     self.stats.expired_removals += 1;
-                    self.stats.memory_usage = self.stats.memory_usage.saturating_sub(removed_entry.estimated_size);
+                    self.stats.memory_usage = self
+                        .stats
+                        .memory_usage
+                        .saturating_sub(removed_entry.estimated_size);
                 }
             }
         }
@@ -307,7 +315,7 @@ impl PythonCacheManager {
         // Cache miss - create new entry
         let object = factory(py)?;
         let estimated_size = self.estimate_object_size(&object);
-        
+
         // Check memory usage before insertion
         if self.stats.memory_usage + estimated_size > self.config.memory_limit {
             self.evict_lru_objects();
@@ -315,7 +323,7 @@ impl PythonCacheManager {
 
         let entry = ObjectCacheEntry::new(object.clone_ref(py), estimated_size);
         self.object_cache.insert(hash_key, entry);
-        
+
         if self.config.enable_stats {
             self.stats.object_misses += 1;
             self.stats.object_entries = self.object_cache.len();
@@ -365,7 +373,8 @@ impl PythonCacheManager {
         }
 
         // Find the least recently used entry
-        let lru_key = self.string_cache
+        let lru_key = self
+            .string_cache
             .iter()
             .min_by_key(|(_, entry)| entry.last_accessed)
             .map(|(key, _)| *key);
@@ -375,7 +384,10 @@ impl PythonCacheManager {
                 if self.config.enable_stats {
                     self.stats.lru_evictions += 1;
                     self.stats.string_entries = self.string_cache.len();
-                    self.stats.memory_usage = self.stats.memory_usage.saturating_sub(entry.estimated_size());
+                    self.stats.memory_usage = self
+                        .stats
+                        .memory_usage
+                        .saturating_sub(entry.estimated_size());
                 }
             }
         }
@@ -387,7 +399,8 @@ impl PythonCacheManager {
         }
 
         // Find the least recently used entry
-        let lru_key = self.object_cache
+        let lru_key = self
+            .object_cache
             .iter()
             .min_by_key(|(_, entry)| entry.last_accessed)
             .map(|(key, _)| *key);
@@ -397,7 +410,8 @@ impl PythonCacheManager {
                 if self.config.enable_stats {
                     self.stats.lru_evictions += 1;
                     self.stats.object_entries = self.object_cache.len();
-                    self.stats.memory_usage = self.stats.memory_usage.saturating_sub(entry.estimated_size);
+                    self.stats.memory_usage =
+                        self.stats.memory_usage.saturating_sub(entry.estimated_size);
                 }
             }
         }
@@ -405,9 +419,10 @@ impl PythonCacheManager {
 
     fn cleanup_expired(&mut self) {
         let now = Instant::now();
-        
+
         // Cleanup expired string entries
-        let expired_string_keys: Vec<_> = self.string_cache
+        let expired_string_keys: Vec<_> = self
+            .string_cache
             .iter()
             .filter(|(_, entry)| entry.is_expired(self.config.ttl))
             .map(|(key, _)| *key)
@@ -417,13 +432,17 @@ impl PythonCacheManager {
             if let Some(entry) = self.string_cache.remove(&key) {
                 if self.config.enable_stats {
                     self.stats.expired_removals += 1;
-                    self.stats.memory_usage = self.stats.memory_usage.saturating_sub(entry.estimated_size());
+                    self.stats.memory_usage = self
+                        .stats
+                        .memory_usage
+                        .saturating_sub(entry.estimated_size());
                 }
             }
         }
 
         // Cleanup expired object entries
-        let expired_object_keys: Vec<_> = self.object_cache
+        let expired_object_keys: Vec<_> = self
+            .object_cache
             .iter()
             .filter(|(_, entry)| entry.is_expired(self.config.ttl))
             .map(|(key, _)| *key)
@@ -433,7 +452,8 @@ impl PythonCacheManager {
             if let Some(entry) = self.object_cache.remove(&key) {
                 if self.config.enable_stats {
                     self.stats.expired_removals += 1;
-                    self.stats.memory_usage = self.stats.memory_usage.saturating_sub(entry.estimated_size);
+                    self.stats.memory_usage =
+                        self.stats.memory_usage.saturating_sub(entry.estimated_size);
                 }
             }
         }
@@ -456,7 +476,7 @@ impl Default for PythonCacheManager {
 /// Global cache manager instance
 static GLOBAL_CACHE: Lazy<Arc<RwLock<PythonCacheManager>>> = Lazy::new(|| {
     Arc::new(RwLock::new(PythonCacheManager::with_config(
-        PythonCacheConfig::high_performance()
+        PythonCacheConfig::high_performance(),
     )))
 });
 
@@ -683,7 +703,10 @@ impl PyCacheConfig {
     fn __repr__(&self) -> String {
         format!(
             "CacheConfig(string_entries={}, object_entries={}, ttl={}s, memory_limit={}MB)",
-            self.max_string_entries, self.max_object_entries, self.ttl_seconds, self.memory_limit_mb
+            self.max_string_entries,
+            self.max_object_entries,
+            self.ttl_seconds,
+            self.memory_limit_mb
         )
     }
 }

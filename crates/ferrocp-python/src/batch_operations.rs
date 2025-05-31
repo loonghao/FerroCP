@@ -31,12 +31,18 @@ impl PyBatchCopyRequest {
     /// Create a new batch copy request
     #[new]
     pub fn new(source: String, destination: String) -> Self {
-        Self { source, destination }
+        Self {
+            source,
+            destination,
+        }
     }
 
     /// String representation
     fn __repr__(&self) -> String {
-        format!("BatchCopyRequest(source='{}', destination='{}')", self.source, self.destination)
+        format!(
+            "BatchCopyRequest(source='{}', destination='{}')",
+            self.source, self.destination
+        )
     }
 }
 
@@ -109,7 +115,10 @@ impl PyBatchCopyResult {
         crate::object_cache::get_or_insert_string(cache_key, || {
             format!(
                 "BatchCopyResult(total={}, successful={}, failed={}, success_rate={:.1}%)",
-                self.total_files, self.successful_operations, self.failed_operations, self.success_rate()
+                self.total_files,
+                self.successful_operations,
+                self.failed_operations,
+                self.success_rate()
             )
         })
     }
@@ -155,84 +164,98 @@ impl PyBatchCopyEngine {
 
         pyo3_asyncio::tokio::future_into_py(py, async move {
             // Execute batch operations with GIL released during computation
-            let gil_result = gil_manager.execute_with_gil_released(move |progress_tx| async move {
-                let reporter = crate::gil_optimization::GilFreeProgressReporter::new(progress_tx);
-                
-                // Report start
-                let _ = reporter.report_progress(0.0, format!("Starting batch copy of {} files", requests.len()));
+            let gil_result = gil_manager
+                .execute_with_gil_released(move |progress_tx| async move {
+                    let reporter =
+                        crate::gil_optimization::GilFreeProgressReporter::new(progress_tx);
 
-                let total_requests = requests.len();
-                let mut batch_result = PyBatchCopyResult::new();
-                batch_result.total_files = total_requests;
+                    // Report start
+                    let _ = reporter.report_progress(
+                        0.0,
+                        format!("Starting batch copy of {} files", requests.len()),
+                    );
 
-                // Process requests in parallel batches
-                let chunks: Vec<_> = requests.chunks(batch_size).collect();
-                let total_chunks = chunks.len();
+                    let total_requests = requests.len();
+                    let mut batch_result = PyBatchCopyResult::new();
+                    batch_result.total_files = total_requests;
 
-                for (chunk_idx, chunk) in chunks.into_iter().enumerate() {
-                    // Process chunk in parallel using Rayon
-                    let chunk_results: Vec<_> = chunk
-                        .par_iter()
-                        .map(|request| {
-                            // Create individual copy request
-                            let source_path = PathBuf::from(&request.source);
-                            let dest_path = PathBuf::from(&request.destination);
+                    // Process requests in parallel batches
+                    let chunks: Vec<_> = requests.chunks(batch_size).collect();
+                    let total_chunks = chunks.len();
 
-                            // Perform actual file copy operation
-                            let mut result = PyCopyResult::new();
+                    for (chunk_idx, chunk) in chunks.into_iter().enumerate() {
+                        // Process chunk in parallel using Rayon
+                        let chunk_results: Vec<_> = chunk
+                            .par_iter()
+                            .map(|request| {
+                                // Create individual copy request
+                                let source_path = PathBuf::from(&request.source);
+                                let dest_path = PathBuf::from(&request.destination);
 
-                            // Check if source exists
-                            if !source_path.exists() {
-                                result.success = false;
-                                result.error_message = Some(format!("Source file not found: {}", request.source));
-                                return result;
-                            }
+                                // Perform actual file copy operation
+                                let mut result = PyCopyResult::new();
 
-                            // Attempt to copy the file
-                            match std::fs::copy(&source_path, &dest_path) {
-                                Ok(bytes_copied) => {
-                                    result.success = true;
-                                    result.bytes_copied = bytes_copied;
-                                    result.files_copied = 1;
-                                }
-                                Err(e) => {
+                                // Check if source exists
+                                if !source_path.exists() {
                                     result.success = false;
-                                    result.error_message = Some(format!("Copy failed: {}", e));
+                                    result.error_message =
+                                        Some(format!("Source file not found: {}", request.source));
+                                    return result;
                                 }
+
+                                // Attempt to copy the file
+                                match std::fs::copy(&source_path, &dest_path) {
+                                    Ok(bytes_copied) => {
+                                        result.success = true;
+                                        result.bytes_copied = bytes_copied;
+                                        result.files_copied = 1;
+                                    }
+                                    Err(e) => {
+                                        result.success = false;
+                                        result.error_message = Some(format!("Copy failed: {}", e));
+                                    }
+                                }
+
+                                result
+                            })
+                            .collect();
+
+                        // Aggregate results
+                        for result in chunk_results {
+                            if result.success {
+                                batch_result.successful_operations += 1;
+                                batch_result.total_bytes_copied += result.bytes_copied;
+                            } else {
+                                batch_result.failed_operations += 1;
                             }
-
-                            result
-                        })
-                        .collect();
-
-                    // Aggregate results
-                    for result in chunk_results {
-                        if result.success {
-                            batch_result.successful_operations += 1;
-                            batch_result.total_bytes_copied += result.bytes_copied;
-                        } else {
-                            batch_result.failed_operations += 1;
+                            batch_result.results.push(result);
                         }
-                        batch_result.results.push(result);
+
+                        // Report progress
+                        let progress = ((chunk_idx + 1) as f64 / total_chunks as f64) * 100.0;
+                        let _ = reporter.report_progress(
+                            progress,
+                            format!(
+                                "Processed chunk {} of {} ({} files)",
+                                chunk_idx + 1,
+                                total_chunks,
+                                batch_result.results.len()
+                            ),
+                        );
                     }
 
-                    // Report progress
-                    let progress = ((chunk_idx + 1) as f64 / total_chunks as f64) * 100.0;
+                    // Report completion
                     let _ = reporter.report_progress(
-                        progress,
-                        format!("Processed chunk {} of {} ({} files)", chunk_idx + 1, total_chunks, batch_result.results.len())
+                        100.0,
+                        format!(
+                            "Batch copy completed: {}/{} successful",
+                            batch_result.successful_operations, batch_result.total_files
+                        ),
                     );
-                }
 
-                // Report completion
-                let _ = reporter.report_progress(100.0, format!(
-                    "Batch copy completed: {}/{} successful",
-                    batch_result.successful_operations,
-                    batch_result.total_files
-                ));
-
-                Ok::<PyBatchCopyResult, PyErr>(batch_result)
-            }).await?;
+                    Ok::<PyBatchCopyResult, PyErr>(batch_result)
+                })
+                .await?;
 
             // Handle progress callback with GIL (only if needed)
             if progress_callback.is_some() {
@@ -278,10 +301,13 @@ pub fn copy_files_batch<'py>(
 
 /// Convenience function to create batch requests from lists
 #[pyfunction]
-pub fn create_batch_requests(sources: Vec<String>, destinations: Vec<String>) -> PyResult<Vec<PyBatchCopyRequest>> {
+pub fn create_batch_requests(
+    sources: Vec<String>,
+    destinations: Vec<String>,
+) -> PyResult<Vec<PyBatchCopyRequest>> {
     if sources.len() != destinations.len() {
         return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            "Sources and destinations lists must have the same length"
+            "Sources and destinations lists must have the same length",
         ));
     }
 
@@ -295,8 +321,8 @@ pub fn create_batch_requests(sources: Vec<String>, destinations: Vec<String>) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     #[tokio::test]
     async fn test_batch_copy_engine_creation() {

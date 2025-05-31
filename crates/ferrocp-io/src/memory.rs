@@ -1,8 +1,8 @@
 //! Memory monitoring and management for FerroCP I/O operations
 
+use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use std::collections::VecDeque;
 
 /// Memory monitor that tracks usage patterns and provides optimization recommendations
 #[derive(Debug)]
@@ -118,7 +118,8 @@ impl MemoryMonitor {
 
     /// Check current memory status and return any alerts
     pub fn check_memory_status(&self, current_usage: u64, efficiency: f64) -> MemoryAlert {
-        let usage_percent = (current_usage as f64 / self.thresholds.max_memory_bytes as f64) * 100.0;
+        let usage_percent =
+            (current_usage as f64 / self.thresholds.max_memory_bytes as f64) * 100.0;
 
         // Check efficiency first
         if efficiency < self.thresholds.min_efficiency {
@@ -169,10 +170,20 @@ impl MemoryMonitor {
         }
 
         let total_samples = recent_samples.len() as f64;
-        let avg_memory = recent_samples.iter().map(|s| s.memory_used).sum::<u64>() as f64 / total_samples;
-        let avg_efficiency = recent_samples.iter().map(|s| s.efficiency).sum::<f64>() / total_samples;
-        let max_memory = recent_samples.iter().map(|s| s.memory_used).max().unwrap_or(0);
-        let min_memory = recent_samples.iter().map(|s| s.memory_used).min().unwrap_or(0);
+        let avg_memory =
+            recent_samples.iter().map(|s| s.memory_used).sum::<u64>() as f64 / total_samples;
+        let avg_efficiency =
+            recent_samples.iter().map(|s| s.efficiency).sum::<f64>() / total_samples;
+        let max_memory = recent_samples
+            .iter()
+            .map(|s| s.memory_used)
+            .max()
+            .unwrap_or(0);
+        let min_memory = recent_samples
+            .iter()
+            .map(|s| s.memory_used)
+            .min()
+            .unwrap_or(0);
 
         MemoryUsageStats {
             avg_memory_used: avg_memory as u64,
@@ -198,12 +209,14 @@ impl MemoryMonitor {
 
         if recent_stats.max_memory_used > self.thresholds.max_memory_bytes * 8 / 10 {
             recommendations.push(
-                "Memory usage is consistently high. Consider increasing cleanup frequency.".to_string()
+                "Memory usage is consistently high. Consider increasing cleanup frequency."
+                    .to_string(),
             );
         }
 
         let usage_variance = if recent_stats.max_memory_used > recent_stats.min_memory_used {
-            (recent_stats.max_memory_used - recent_stats.min_memory_used) as f64 / recent_stats.avg_memory_used as f64
+            (recent_stats.max_memory_used - recent_stats.min_memory_used) as f64
+                / recent_stats.avg_memory_used as f64
         } else {
             0.0
         };
@@ -278,10 +291,10 @@ mod tests {
     #[test]
     fn test_memory_usage_recording() {
         let monitor = MemoryMonitor::with_default_thresholds();
-        
+
         monitor.record_usage(1024 * 1024, 10, 85.0);
         monitor.record_usage(2048 * 1024, 15, 80.0);
-        
+
         let stats = monitor.get_usage_stats(Duration::from_secs(1));
         assert_eq!(stats.sample_count, 2);
         assert!(stats.avg_memory_used > 0);
@@ -295,21 +308,21 @@ mod tests {
             max_memory_bytes: 1024 * 1024, // 1MB
             min_efficiency: 70.0,
         };
-        
+
         let monitor = MemoryMonitor::new(thresholds);
-        
+
         // Normal usage
         let alert = monitor.check_memory_status(256 * 1024, 85.0); // 25% usage
         assert_eq!(alert, MemoryAlert::Normal);
-        
+
         // Warning level
         let alert = monitor.check_memory_status(600 * 1024, 85.0); // 60% usage
         assert!(matches!(alert, MemoryAlert::Warning { .. }));
-        
+
         // Critical level
         let alert = monitor.check_memory_status(900 * 1024, 85.0); // 90% usage
         assert!(matches!(alert, MemoryAlert::Critical { .. }));
-        
+
         // Low efficiency
         let alert = monitor.check_memory_status(256 * 1024, 50.0); // Low efficiency
         assert!(matches!(alert, MemoryAlert::LowEfficiency { .. }));
@@ -318,12 +331,12 @@ mod tests {
     #[test]
     fn test_optimization_recommendations() {
         let monitor = MemoryMonitor::with_default_thresholds();
-        
+
         // Record some usage patterns
         monitor.record_usage(1024 * 1024, 10, 50.0); // Low efficiency
         thread::sleep(Duration::from_millis(10));
         monitor.record_usage(2048 * 1024, 15, 55.0);
-        
+
         let recommendations = monitor.get_optimization_recommendations();
         assert!(!recommendations.is_empty());
         assert!(recommendations.iter().any(|r| r.contains("efficiency")));

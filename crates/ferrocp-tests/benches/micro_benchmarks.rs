@@ -6,7 +6,7 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use ferrocp_io::{
     AsyncFileReader, AsyncFileWriter, BufferedCopyEngine, CopyEngine, CopyOptions,
-    MicroFileCopyEngine, MicroCopyStrategy, ParallelCopyEngine, PreReadStrategy,
+    MicroCopyStrategy, MicroFileCopyEngine, ParallelCopyEngine, PreReadStrategy,
 };
 use std::fs;
 use tempfile::TempDir;
@@ -155,9 +155,7 @@ fn bench_buffer_operations(c: &mut Criterion) {
             BenchmarkId::new("vec_allocation", size_name),
             &buffer_size,
             |b, &buffer_size| {
-                b.iter(|| {
-                    black_box(vec![0u8; buffer_size])
-                });
+                b.iter(|| black_box(vec![0u8; buffer_size]));
             },
         );
 
@@ -221,7 +219,8 @@ fn bench_copy_engines(c: &mut Criterion) {
                         let dest = temp_dir.path().join("dest.dat");
 
                         rt.block_on(async {
-                            let mut engine = MicroFileCopyEngine::with_strategy(MicroCopyStrategy::UltraFast);
+                            let mut engine =
+                                MicroFileCopyEngine::with_strategy(MicroCopyStrategy::UltraFast);
                             black_box(engine.copy_file(&source, &dest).await.unwrap())
                         })
                     });
@@ -281,10 +280,24 @@ fn bench_preread_strategies(c: &mut Criterion) {
 
     let strategies = vec![
         ("no_preread", None),
-        ("256KB_preread", Some(PreReadStrategy::SSD { size: 256 * 1024 })),
-        ("512KB_preread", Some(PreReadStrategy::SSD { size: 512 * 1024 })),
-        ("1MB_preread", Some(PreReadStrategy::SSD { size: 1024 * 1024 })),
-        ("2MB_preread", Some(PreReadStrategy::SSD { size: 2 * 1024 * 1024 })),
+        (
+            "256KB_preread",
+            Some(PreReadStrategy::SSD { size: 256 * 1024 }),
+        ),
+        (
+            "512KB_preread",
+            Some(PreReadStrategy::SSD { size: 512 * 1024 }),
+        ),
+        (
+            "1MB_preread",
+            Some(PreReadStrategy::SSD { size: 1024 * 1024 }),
+        ),
+        (
+            "2MB_preread",
+            Some(PreReadStrategy::SSD {
+                size: 2 * 1024 * 1024,
+            }),
+        ),
     ];
 
     for (strategy_name, preread_strategy) in strategies {
@@ -304,7 +317,12 @@ fn bench_preread_strategies(c: &mut Criterion) {
                             preread_strategy,
                             ..Default::default()
                         };
-                        black_box(engine.copy_file_with_options(&source, &dest, options).await.unwrap())
+                        black_box(
+                            engine
+                                .copy_file_with_options(&source, &dest, options)
+                                .await
+                                .unwrap(),
+                        )
                     })
                 });
             },

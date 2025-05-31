@@ -73,7 +73,10 @@ fn benchmark_preread_performance(c: &mut Criterion) {
                         let mut engine = BufferedCopyEngine::new();
                         let options = CopyOptions {
                             enable_preread: true,
-                            preread_strategy: Some(PreReadStrategy::for_device(DeviceType::SSD, false)), // Optimized 512KB
+                            preread_strategy: Some(PreReadStrategy::for_device(
+                                DeviceType::SSD,
+                                false,
+                            )), // Optimized 512KB
                             ..Default::default()
                         };
                         let result = engine

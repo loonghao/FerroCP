@@ -48,7 +48,7 @@ pub use buffer::{AdaptiveBuffer, BufferPool, MemoryStats, MultiSizeBufferPool, S
 pub use copy::{BufferedCopyEngine, CopyEngine, CopyOptions};
 pub use memory::{MemoryAlert, MemoryMonitor, MemoryThresholds, MemoryUsageStats};
 pub use memory_map::{MemoryMapOptions, MemoryMappedFile};
-pub use micro_copy::{MicroFileCopyEngine, MicroCopyStats, MicroCopyStrategy};
+pub use micro_copy::{MicroCopyStats, MicroCopyStrategy, MicroFileCopyEngine};
 pub use parallel::{ParallelCopyConfig, ParallelCopyEngine, ParallelCopyStats};
 pub use preread::{PreReadBuffer, PreReadStats, PreReadStrategy};
 pub use reader::{AsyncFileReader, FileReader};

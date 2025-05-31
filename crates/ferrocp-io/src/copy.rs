@@ -1,6 +1,8 @@
 //! High-performance file copying engine
 
-use crate::{AdaptiveBuffer, AsyncFileReader, AsyncFileWriter, BufferPool, PreReadBuffer, PreReadStrategy};
+use crate::{
+    AdaptiveBuffer, AsyncFileReader, AsyncFileWriter, BufferPool, PreReadBuffer, PreReadStrategy,
+};
 use ferrocp_types::{CopyStats, DeviceType, Error, ProgressInfo, Result};
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -40,7 +42,7 @@ impl Default for CopyOptions {
             preserve_metadata: true,
             enable_zero_copy: true,
             max_retries: 3,
-            enable_preread: true, // Enable pre-read by default for large files
+            enable_preread: true,   // Enable pre-read by default for large files
             preread_strategy: None, // Auto-detect based on device
         }
     }
@@ -149,9 +151,9 @@ impl BufferedCopyEngine {
 
         // Create buffer (with or without pre-read)
         let mut preread_buffer = if use_preread {
-            let strategy = options.preread_strategy.unwrap_or_else(|| {
-                PreReadStrategy::for_device(source_device, false)
-            });
+            let strategy = options
+                .preread_strategy
+                .unwrap_or_else(|| PreReadStrategy::for_device(source_device, false));
             Some(PreReadBuffer::with_strategy(source_device, strategy))
         } else {
             None

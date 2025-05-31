@@ -17,17 +17,17 @@ pub enum PreReadStrategy {
     /// SSD strategy: Large pre-read sizes (1-4MB) for high-speed sequential access
     SSD {
         /// Pre-read buffer size in bytes
-        size: usize
+        size: usize,
     },
     /// HDD strategy: Medium pre-read sizes (64-256KB) to minimize seek overhead
     HDD {
         /// Pre-read buffer size in bytes
-        size: usize
+        size: usize,
     },
     /// Network strategy: Small pre-read sizes (8-32KB) to reduce latency
     Network {
         /// Pre-read buffer size in bytes
-        size: usize
+        size: usize,
     },
     /// Disabled: No pre-reading
     Disabled,
@@ -53,7 +53,11 @@ impl PreReadStrategy {
             },
             DeviceType::RamDisk => Self::SSD {
                 // RamDisk can handle larger buffers efficiently
-                size: if aggressive { 8 * 1024 * 1024 } else { 2 * 1024 * 1024 },
+                size: if aggressive {
+                    8 * 1024 * 1024
+                } else {
+                    2 * 1024 * 1024
+                },
             },
             DeviceType::Unknown => Self::HDD {
                 size: if aggressive { 128 * 1024 } else { 32 * 1024 },
@@ -210,7 +214,10 @@ impl PreReadBuffer {
     pub fn get_prefetched_buffer(&mut self) -> Option<BytesMut> {
         if let Some(buffer) = self.prefetch_buffer.pop_front() {
             self.stats.cache_hits += 1;
-            trace!("Pre-read cache hit, {} buffers remaining", self.prefetch_buffer.len());
+            trace!(
+                "Pre-read cache hit, {} buffers remaining",
+                self.prefetch_buffer.len()
+            );
             Some(buffer)
         } else {
             self.stats.cache_misses += 1;
@@ -220,7 +227,10 @@ impl PreReadBuffer {
     }
 
     /// Perform pre-read operation with AsyncFileReader
-    pub async fn preread_from_file_reader(&mut self, reader: &mut crate::AsyncFileReader) -> Result<()> {
+    pub async fn preread_from_file_reader(
+        &mut self,
+        reader: &mut crate::AsyncFileReader,
+    ) -> Result<()> {
         if !self.strategy.is_enabled() {
             return Ok(());
         }
@@ -249,7 +259,7 @@ impl PreReadBuffer {
         // Create a temporary adaptive buffer for pre-reading
         let mut temp_buffer = crate::AdaptiveBuffer::with_size(
             crate::buffer::AdaptiveBuffer::new(DeviceType::SSD).device_type(),
-            preread_size
+            preread_size,
         );
 
         // Perform the pre-read using AsyncFileReader's method
@@ -268,7 +278,11 @@ impl PreReadBuffer {
                     self.stats.total_preread_bytes += bytes_read as u64;
                     self.stats.total_preread_time_ns += start_time.elapsed().as_nanos() as u64;
 
-                    trace!("Pre-read {} bytes, {} buffers cached", bytes_read, self.prefetch_buffer.len());
+                    trace!(
+                        "Pre-read {} bytes, {} buffers cached",
+                        bytes_read,
+                        self.prefetch_buffer.len()
+                    );
                 }
             }
             Err(e) => {
@@ -297,19 +311,21 @@ impl PreReadBuffer {
 
         let elapsed = self.last_performance_check.elapsed();
         let bytes_in_period = self.stats.total_preread_bytes;
-        
+
         if bytes_in_period > 0 {
-            let throughput_mbps = (bytes_in_period as f64 / (1024.0 * 1024.0)) / elapsed.as_secs_f64();
-            
+            let throughput_mbps =
+                (bytes_in_period as f64 / (1024.0 * 1024.0)) / elapsed.as_secs_f64();
+
             // Keep performance history
             self.performance_history.push_back(throughput_mbps);
             if self.performance_history.len() > 10 {
                 self.performance_history.pop_front();
             }
-            
+
             // Adapt strategy if we have enough data
             if self.performance_history.len() >= 3 {
-                let avg_throughput: f64 = self.performance_history.iter().sum::<f64>() / self.performance_history.len() as f64;
+                let avg_throughput: f64 = self.performance_history.iter().sum::<f64>()
+                    / self.performance_history.len() as f64;
                 let hit_ratio = self.stats.hit_ratio();
 
                 // Enhanced adaptation logic that preserves 512KB SSD optimum
@@ -341,7 +357,7 @@ impl PreReadBuffer {
                 }
             }
         }
-        
+
         self.last_performance_check = Instant::now();
     }
 
@@ -353,9 +369,9 @@ impl PreReadBuffer {
             PreReadStrategy::SSD { size } if size > 256 * 1024 => {
                 // For SSD, don't go below 256KB (half of optimal 512KB)
                 let new_size = if size == 512 * 1024 {
-                    256 * 1024  // From optimal to minimum
+                    256 * 1024 // From optimal to minimum
                 } else {
-                    (size / 2).max(256 * 1024)  // Halve but don't go below 256KB
+                    (size / 2).max(256 * 1024) // Halve but don't go below 256KB
                 };
                 PreReadStrategy::SSD { size: new_size }
             }
@@ -381,9 +397,9 @@ impl PreReadBuffer {
             PreReadStrategy::SSD { size } if size < 512 * 1024 => {
                 // For SSD, converge toward optimal 512KB
                 let new_size = if size == 256 * 1024 {
-                    512 * 1024  // From minimum to optimal
+                    512 * 1024 // From minimum to optimal
                 } else {
-                    (size * 2).min(512 * 1024)  // Double but don't exceed optimal
+                    (size * 2).min(512 * 1024) // Double but don't exceed optimal
                 };
                 PreReadStrategy::SSD { size: new_size }
             }
@@ -473,7 +489,7 @@ mod tests {
         // Start with a larger SSD strategy to test adaptation
         let mut buffer = PreReadBuffer::with_strategy(
             DeviceType::SSD,
-            PreReadStrategy::SSD { size: 1024 * 1024 } // 1MB
+            PreReadStrategy::SSD { size: 1024 * 1024 }, // 1MB
         );
         let original_size = buffer.strategy().size();
 
@@ -491,7 +507,7 @@ mod tests {
         // Test that SSD strategy converges to optimal 512KB
         let mut buffer = PreReadBuffer::with_strategy(
             DeviceType::SSD,
-            PreReadStrategy::SSD { size: 256 * 1024 } // Start below optimal
+            PreReadStrategy::SSD { size: 256 * 1024 }, // Start below optimal
         );
 
         // Simulate good performance to trigger upward adaptation
@@ -501,7 +517,9 @@ mod tests {
         // Test from above optimal
         let mut buffer = PreReadBuffer::with_strategy(
             DeviceType::SSD,
-            PreReadStrategy::SSD { size: 2 * 1024 * 1024 } // Start above optimal
+            PreReadStrategy::SSD {
+                size: 2 * 1024 * 1024,
+            }, // Start above optimal
         );
 
         // Simulate convergence back to optimal
@@ -514,7 +532,7 @@ mod tests {
         // Test that SSD doesn't go below 256KB minimum
         let mut buffer = PreReadBuffer::with_strategy(
             DeviceType::SSD,
-            PreReadStrategy::SSD { size: 256 * 1024 } // At minimum
+            PreReadStrategy::SSD { size: 256 * 1024 }, // At minimum
         );
 
         // Try to adapt down - should not change
@@ -529,22 +547,34 @@ mod tests {
 
         // Test 1: SSD default should be 512KB (optimal performance)
         let ssd_default = PreReadStrategy::for_device(DeviceType::SSD, false);
-        assert_eq!(ssd_default.size(), 512 * 1024,
-            "SSD default should be 512KB for optimal performance (387.82 MiB/s)");
+        assert_eq!(
+            ssd_default.size(),
+            512 * 1024,
+            "SSD default should be 512KB for optimal performance (387.82 MiB/s)"
+        );
 
         // Test 2: Aggressive SSD should be 1MB (not 4MB to avoid performance degradation)
         let ssd_aggressive = PreReadStrategy::for_device(DeviceType::SSD, true);
-        assert_eq!(ssd_aggressive.size(), 1024 * 1024,
-            "SSD aggressive should be 1MB, not 4MB to maintain performance");
+        assert_eq!(
+            ssd_aggressive.size(),
+            1024 * 1024,
+            "SSD aggressive should be 1MB, not 4MB to maintain performance"
+        );
 
         // Test 3: RamDisk should get larger buffers (2MB default)
         let ramdisk_default = PreReadStrategy::for_device(DeviceType::RamDisk, false);
-        assert_eq!(ramdisk_default.size(), 2 * 1024 * 1024,
-            "RamDisk should use 2MB for high-speed access");
+        assert_eq!(
+            ramdisk_default.size(),
+            2 * 1024 * 1024,
+            "RamDisk should use 2MB for high-speed access"
+        );
 
         // Test 4: Verify adaptation boundaries preserve optimal performance
         let buffer = PreReadBuffer::new(DeviceType::SSD);
-        assert_eq!(buffer.strategy().size(), 512 * 1024,
-            "New SSD buffer should start at optimal 512KB");
+        assert_eq!(
+            buffer.strategy().size(),
+            512 * 1024,
+            "New SSD buffer should start at optimal 512KB"
+        );
     }
 }

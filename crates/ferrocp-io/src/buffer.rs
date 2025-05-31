@@ -71,7 +71,9 @@ impl AdaptiveBuffer {
     /// Reserve additional capacity
     pub fn reserve(&mut self, additional: usize) {
         let current_capacity = self.buffer.capacity();
-        let new_capacity = current_capacity.saturating_add(additional).min(self.max_size);
+        let new_capacity = current_capacity
+            .saturating_add(additional)
+            .min(self.max_size);
         if new_capacity > current_capacity {
             self.buffer.reserve(new_capacity - current_capacity);
         }
@@ -445,7 +447,8 @@ impl MultiSizeBufferPool {
     /// Check if cleanup should be performed
     fn should_cleanup(&self) -> bool {
         let stats = self.memory_stats.lock().unwrap();
-        let usage_percentage = (stats.current_used as f64 / (self.max_memory_mb * 1024 * 1024) as f64) * 100.0;
+        let usage_percentage =
+            (stats.current_used as f64 / (self.max_memory_mb * 1024 * 1024) as f64) * 100.0;
         usage_percentage > self.auto_cleanup_threshold
     }
 

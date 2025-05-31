@@ -5,8 +5,8 @@
 //! requirements. This is the key component for solving small file performance issues.
 
 use ferrocp_device::DeviceOptimizer;
-use ferrocp_io::{BufferedCopyEngine, MicroFileCopyEngine, ParallelCopyEngine, CopyOptions};
-use ferrocp_types::{DeviceType, Result, Error};
+use ferrocp_io::{BufferedCopyEngine, CopyOptions, MicroFileCopyEngine, ParallelCopyEngine};
+use ferrocp_types::{DeviceType, Error, Result};
 use ferrocp_zerocopy::ZeroCopyEngineImpl;
 use std::path::Path;
 use std::sync::Arc;
@@ -18,9 +18,9 @@ use tracing::{debug, info};
 use serde::{Deserialize, Serialize};
 
 /// File size thresholds for engine selection (optimized for better small file performance)
-const MICRO_FILE_THRESHOLD: u64 = 4096;        // 4KB - use MicroFileCopyEngine (increased from 1KB)
-const SMALL_FILE_THRESHOLD: u64 = 16384;       // 16KB - use sync BufferedCopyEngine (increased from 4KB)
-const ZEROCOPY_THRESHOLD: u64 = 64 * 1024;     // 64KB - enable zero-copy for larger files
+const MICRO_FILE_THRESHOLD: u64 = 4096; // 4KB - use MicroFileCopyEngine (increased from 1KB)
+const SMALL_FILE_THRESHOLD: u64 = 16384; // 16KB - use sync BufferedCopyEngine (increased from 4KB)
+const ZEROCOPY_THRESHOLD: u64 = 64 * 1024; // 64KB - enable zero-copy for larger files
 const PARALLEL_THRESHOLD: u64 = 50 * 1024 * 1024; // 50MB - use parallel processing for very large files
 
 /// Engine selection strategy configuration
@@ -191,8 +191,9 @@ impl EngineSelectionStats {
             let count = history.sample_count as f64;
             history.avg_throughput_bps =
                 (history.avg_throughput_bps * count + throughput_bps) / (count + 1.0);
-            history.avg_copy_time_ns =
-                (history.avg_copy_time_ns * history.sample_count + copy_time_ns) / (history.sample_count + 1);
+            history.avg_copy_time_ns = (history.avg_copy_time_ns * history.sample_count
+                + copy_time_ns)
+                / (history.sample_count + 1);
             history.best_throughput_bps = history.best_throughput_bps.max(throughput_bps);
         }
 
@@ -246,26 +247,28 @@ impl EngineSelectionStats {
                 .min(8192); // Cap at 8KB
         } else if micro_vs_small_ratio < 0.8 && self.small_file_performance.sample_count >= 100 {
             // Small file sync is better, reduce micro threshold
-            new_micro_threshold = (current_micro_threshold * 3 / 4)
-                .max(1024); // Minimum 1KB
+            new_micro_threshold = (current_micro_threshold * 3 / 4).max(1024); // Minimum 1KB
         }
 
         // Adjust small threshold based on performance comparison
         if small_vs_large_ratio > 1.15 && self.small_file_performance.sample_count >= 100 {
             // Small file sync is better than large file async, expand its range
-            new_small_threshold = (current_small_threshold * 5 / 4)
-                .min(32768); // Cap at 32KB
+            new_small_threshold = (current_small_threshold * 5 / 4).min(32768); // Cap at 32KB
         } else if small_vs_large_ratio < 0.85 && self.large_file_performance.sample_count >= 100 {
             // Large file async is better, reduce small threshold
-            new_small_threshold = (current_small_threshold * 3 / 4)
-                .max(new_micro_threshold * 2); // Ensure small > micro
+            new_small_threshold = (current_small_threshold * 3 / 4).max(new_micro_threshold * 2);
+            // Ensure small > micro
         }
 
         // Only recommend changes if they're significant (>= 10% change)
         let micro_change_percent = ((new_micro_threshold as f64 - current_micro_threshold as f64)
-            / current_micro_threshold as f64).abs() * 100.0;
+            / current_micro_threshold as f64)
+            .abs()
+            * 100.0;
         let small_change_percent = ((new_small_threshold as f64 - current_small_threshold as f64)
-            / current_small_threshold as f64).abs() * 100.0;
+            / current_small_threshold as f64)
+            .abs()
+            * 100.0;
 
         if micro_change_percent >= 10.0 || small_change_percent >= 10.0 {
             Some((new_micro_threshold, new_small_threshold))
@@ -352,7 +355,7 @@ impl EngineSelector {
         destination: P,
     ) -> Result<EngineSelection> {
         let start_time = std::time::Instant::now();
-        
+
         if !self.config.enabled {
             // If intelligent selection is disabled, use default buffered engine
             return Ok(EngineSelection {
@@ -369,7 +372,7 @@ impl EngineSelector {
 
         // Get file size
         let file_size = self.get_file_size(source_path).await?;
-        
+
         // Detect device types if optimization is enabled
         let (source_device, dest_device) = if self.config.enable_device_optimization {
             (
@@ -381,17 +384,20 @@ impl EngineSelector {
         };
 
         // Select engine based on file size and device characteristics
-        let selection = self.select_engine_internal(
-            file_size,
-            source_device,
-            dest_device,
-            source_path,
-            dest_path,
-        ).await?;
+        let selection = self
+            .select_engine_internal(
+                file_size,
+                source_device,
+                dest_device,
+                source_path,
+                dest_path,
+            )
+            .await?;
 
         // Update statistics
         if self.config.enable_performance_monitoring {
-            self.update_selection_stats(&selection, start_time.elapsed()).await;
+            self.update_selection_stats(&selection, start_time.elapsed())
+                .await;
         }
 
         debug!(
@@ -446,7 +452,9 @@ impl EngineSelector {
 
         // Step 4: Large file optimization with potential zero-copy
         let zerocopy_enabled = file_size >= self.config.zerocopy_threshold
-            && self.should_use_zerocopy(source_device, dest_device, source_path, dest_path).await;
+            && self
+                .should_use_zerocopy(source_device, dest_device, source_path, dest_path)
+                .await;
 
         let engine_type = if zerocopy_enabled {
             EngineType::ZeroCopy
@@ -458,7 +466,11 @@ impl EngineSelector {
             engine_type,
             use_sync_mode: false,
             zerocopy_enabled,
-            copy_options: self.create_large_file_options(source_device, dest_device, zerocopy_enabled),
+            copy_options: self.create_large_file_options(
+                source_device,
+                dest_device,
+                zerocopy_enabled,
+            ),
             reasoning: format!(
                 "Large file optimization for {} bytes, zero-copy: {}",
                 file_size, zerocopy_enabled
@@ -472,7 +484,7 @@ impl EngineSelector {
             buffer_size: Some(1024), // Small buffer for micro files
             enable_progress: false,  // Disable progress for micro files
             progress_interval: Duration::from_millis(1000),
-            verify_copy: false,      // Skip verification for speed
+            verify_copy: false, // Skip verification for speed
             preserve_metadata: true,
             enable_zero_copy: false, // No zero-copy for micro files
             max_retries: 1,          // Minimal retries for speed
@@ -482,24 +494,32 @@ impl EngineSelector {
     }
 
     /// Create copy options for small files
-    fn create_small_file_options(&self, source_device: DeviceType, dest_device: DeviceType) -> CopyOptions {
+    fn create_small_file_options(
+        &self,
+        source_device: DeviceType,
+        dest_device: DeviceType,
+    ) -> CopyOptions {
         let buffer_size = self.calculate_small_file_buffer_size(source_device, dest_device);
 
         CopyOptions {
             buffer_size: Some(buffer_size),
-            enable_progress: false,  // Disable progress for small files
+            enable_progress: false, // Disable progress for small files
             progress_interval: Duration::from_millis(1000),
-            verify_copy: false,      // Skip verification for speed
+            verify_copy: false, // Skip verification for speed
             preserve_metadata: true,
             enable_zero_copy: false, // No zero-copy for small files
             max_retries: 2,
-            enable_preread: false,   // No pre-read for small files
+            enable_preread: false, // No pre-read for small files
             preread_strategy: None,
         }
     }
 
     /// Create copy options for parallel processing
-    fn create_parallel_file_options(&self, source_device: DeviceType, dest_device: DeviceType) -> CopyOptions {
+    fn create_parallel_file_options(
+        &self,
+        source_device: DeviceType,
+        dest_device: DeviceType,
+    ) -> CopyOptions {
         let buffer_size = self.calculate_parallel_buffer_size(source_device, dest_device);
 
         CopyOptions {
@@ -510,7 +530,7 @@ impl EngineSelector {
             preserve_metadata: true,
             enable_zero_copy: false, // Parallel engine handles its own optimization
             max_retries: 3,
-            enable_preread: false,   // Parallel engine has its own pre-read logic
+            enable_preread: false, // Parallel engine has its own pre-read logic
             preread_strategy: None,
         }
     }
@@ -537,50 +557,66 @@ impl EngineSelector {
             preserve_metadata: true,
             enable_zero_copy: zerocopy_enabled,
             max_retries: 3,
-            enable_preread: true,    // Enable pre-read for large files
-            preread_strategy: None,  // Auto-detect based on device
+            enable_preread: true,   // Enable pre-read for large files
+            preread_strategy: None, // Auto-detect based on device
         }
     }
 
     /// Calculate buffer size for small files
-    fn calculate_small_file_buffer_size(&self, source_device: DeviceType, dest_device: DeviceType) -> usize {
+    fn calculate_small_file_buffer_size(
+        &self,
+        source_device: DeviceType,
+        dest_device: DeviceType,
+    ) -> usize {
         match (source_device, dest_device) {
-            (DeviceType::SSD, DeviceType::SSD) => 16 * 1024,      // 16KB
+            (DeviceType::SSD, DeviceType::SSD) => 16 * 1024, // 16KB
             (DeviceType::RamDisk, _) | (_, DeviceType::RamDisk) => 32 * 1024, // 32KB
-            _ => 8 * 1024,                                         // 8KB default
+            _ => 8 * 1024,                                   // 8KB default
         }
     }
 
     /// Calculate buffer size for large files
-    fn calculate_large_file_buffer_size(&self, source_device: DeviceType, dest_device: DeviceType) -> usize {
+    fn calculate_large_file_buffer_size(
+        &self,
+        source_device: DeviceType,
+        dest_device: DeviceType,
+    ) -> usize {
         match (source_device, dest_device) {
-            (DeviceType::SSD, DeviceType::SSD) => 1024 * 1024,    // 1MB
+            (DeviceType::SSD, DeviceType::SSD) => 1024 * 1024, // 1MB
             (DeviceType::RamDisk, DeviceType::RamDisk) => 4 * 1024 * 1024, // 4MB
             (DeviceType::HDD, _) | (_, DeviceType::HDD) => 256 * 1024, // 256KB
             (DeviceType::Network, _) | (_, DeviceType::Network) => 128 * 1024, // 128KB
-            _ => 512 * 1024,                                       // 512KB default
+            _ => 512 * 1024,                                   // 512KB default
         }
     }
 
     /// Calculate buffer size for parallel processing
-    fn calculate_parallel_buffer_size(&self, source_device: DeviceType, dest_device: DeviceType) -> usize {
+    fn calculate_parallel_buffer_size(
+        &self,
+        source_device: DeviceType,
+        dest_device: DeviceType,
+    ) -> usize {
         // Parallel processing uses smaller individual buffers but more of them
         match (source_device, dest_device) {
-            (DeviceType::SSD, DeviceType::SSD) => 1024 * 1024,        // 1MB per chunk
+            (DeviceType::SSD, DeviceType::SSD) => 1024 * 1024, // 1MB per chunk
             (DeviceType::RamDisk, DeviceType::RamDisk) => 2 * 1024 * 1024, // 2MB per chunk
             (DeviceType::HDD, _) | (_, DeviceType::HDD) => 512 * 1024, // 512KB per chunk
             (DeviceType::Network, _) | (_, DeviceType::Network) => 256 * 1024, // 256KB per chunk
-            _ => 1024 * 1024,                                          // 1MB default
+            _ => 1024 * 1024,                                  // 1MB default
         }
     }
 
     /// Calculate buffer size for zero-copy operations
-    fn calculate_zerocopy_buffer_size(&self, source_device: DeviceType, dest_device: DeviceType) -> usize {
+    fn calculate_zerocopy_buffer_size(
+        &self,
+        source_device: DeviceType,
+        dest_device: DeviceType,
+    ) -> usize {
         // Zero-copy operations can use larger buffers
         match (source_device, dest_device) {
-            (DeviceType::SSD, DeviceType::SSD) => 2 * 1024 * 1024,    // 2MB
+            (DeviceType::SSD, DeviceType::SSD) => 2 * 1024 * 1024, // 2MB
             (DeviceType::RamDisk, DeviceType::RamDisk) => 8 * 1024 * 1024, // 8MB
-            _ => 1024 * 1024,                                          // 1MB default
+            _ => 1024 * 1024,                                      // 1MB default
         }
     }
 
@@ -601,7 +637,7 @@ impl EngineSelector {
             (DeviceType::SSD, DeviceType::SSD) => true,
             (DeviceType::RamDisk, DeviceType::RamDisk) => true,
             (DeviceType::Network, _) | (_, DeviceType::Network) => false, // Network doesn't benefit from zero-copy
-            (DeviceType::HDD, DeviceType::HDD) => true, // Can still benefit
+            (DeviceType::HDD, DeviceType::HDD) => true,                   // Can still benefit
             _ => true, // Default to enabled for unknown combinations
         }
     }
@@ -648,7 +684,7 @@ impl EngineSelector {
             }
             EngineType::Parallel => {
                 stats.async_buffered_selections += 1; // Count as async buffered for compatibility
-                // TODO: Add specific parallel engine statistics
+                                                      // TODO: Add specific parallel engine statistics
             }
             EngineType::ZeroCopy => {
                 stats.async_buffered_selections += 1; // Zero-copy uses buffered engine
@@ -714,7 +750,10 @@ impl EngineSelector {
     /// Enable or disable intelligent selection
     pub fn set_enabled(&mut self, enabled: bool) {
         self.config.enabled = enabled;
-        info!("Intelligent engine selection {}", if enabled { "enabled" } else { "disabled" });
+        info!(
+            "Intelligent engine selection {}",
+            if enabled { "enabled" } else { "disabled" }
+        );
     }
 
     /// Update performance history with copy operation results
@@ -744,8 +783,10 @@ impl EngineSelector {
                 self.config.small_file_threshold,
             ) {
                 // Only adjust if the improvement is significant
-                let micro_improvement = (new_micro as f64 - self.config.micro_file_threshold as f64)
-                    / self.config.micro_file_threshold as f64 * 100.0;
+                let micro_improvement = (new_micro as f64
+                    - self.config.micro_file_threshold as f64)
+                    / self.config.micro_file_threshold as f64
+                    * 100.0;
 
                 if micro_improvement.abs() >= self.config.performance_improvement_threshold {
                     stats.threshold_adjustments += 1;
@@ -764,14 +805,20 @@ impl EngineSelector {
     }
 
     /// Apply threshold adjustments (requires mutable access)
-    pub fn apply_threshold_adjustment(&mut self, new_micro_threshold: u64, new_small_threshold: u64) {
+    pub fn apply_threshold_adjustment(
+        &mut self,
+        new_micro_threshold: u64,
+        new_small_threshold: u64,
+    ) {
         if new_micro_threshold != self.config.micro_file_threshold
-            || new_small_threshold != self.config.small_file_threshold {
-
+            || new_small_threshold != self.config.small_file_threshold
+        {
             info!(
                 "Applying threshold adjustment: micro {} -> {}, small {} -> {}",
-                self.config.micro_file_threshold, new_micro_threshold,
-                self.config.small_file_threshold, new_small_threshold
+                self.config.micro_file_threshold,
+                new_micro_threshold,
+                self.config.small_file_threshold,
+                new_small_threshold
             );
 
             self.config.micro_file_threshold = new_micro_threshold;
@@ -811,14 +858,18 @@ impl EngineSelector {
         ) {
             // Calculate improvement potential
             let micro_improvement = ((new_micro as f64 - self.config.micro_file_threshold as f64)
-                / self.config.micro_file_threshold as f64).abs() * 100.0;
+                / self.config.micro_file_threshold as f64)
+                .abs()
+                * 100.0;
             let small_improvement = ((new_small as f64 - self.config.small_file_threshold as f64)
-                / self.config.small_file_threshold as f64).abs() * 100.0;
+                / self.config.small_file_threshold as f64)
+                .abs()
+                * 100.0;
 
             // Only apply if improvement is significant
             if micro_improvement >= self.config.performance_improvement_threshold
-                || small_improvement >= self.config.performance_improvement_threshold {
-
+                || small_improvement >= self.config.performance_improvement_threshold
+            {
                 // Drop the read lock before applying changes
                 drop(stats);
 
@@ -881,8 +932,8 @@ impl std::fmt::Debug for EngineSelector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     #[tokio::test]
     async fn test_engine_selector_creation() {
@@ -904,7 +955,10 @@ mod tests {
 
         let dest = temp_dir.path().join("dest.txt");
 
-        let selection = selector.select_optimal_engine(&source, &dest).await.unwrap();
+        let selection = selector
+            .select_optimal_engine(&source, &dest)
+            .await
+            .unwrap();
 
         assert_eq!(selection.engine_type, EngineType::MicroFile);
         assert!(selection.use_sync_mode);
@@ -923,7 +977,10 @@ mod tests {
 
         let dest = temp_dir.path().join("dest.txt");
 
-        let selection = selector.select_optimal_engine(&source, &dest).await.unwrap();
+        let selection = selector
+            .select_optimal_engine(&source, &dest)
+            .await
+            .unwrap();
 
         assert_eq!(selection.engine_type, EngineType::Buffered);
         assert!(selection.use_sync_mode);
@@ -942,10 +999,16 @@ mod tests {
 
         let dest = temp_dir.path().join("dest.txt");
 
-        let selection = selector.select_optimal_engine(&source, &dest).await.unwrap();
+        let selection = selector
+            .select_optimal_engine(&source, &dest)
+            .await
+            .unwrap();
 
         // Should select buffered or zero-copy engine
-        assert!(matches!(selection.engine_type, EngineType::Buffered | EngineType::ZeroCopy));
+        assert!(matches!(
+            selection.engine_type,
+            EngineType::Buffered | EngineType::ZeroCopy
+        ));
         assert!(!selection.use_sync_mode);
         assert!(selection.reasoning.contains("Large file optimization"));
     }
@@ -962,13 +1025,18 @@ mod tests {
 
         let dest = temp_dir.path().join("dest.txt");
 
-        let selection = selector.select_optimal_engine(&source, &dest).await.unwrap();
+        let selection = selector
+            .select_optimal_engine(&source, &dest)
+            .await
+            .unwrap();
 
         // Should select parallel engine
         assert_eq!(selection.engine_type, EngineType::Parallel);
         assert!(!selection.use_sync_mode);
         assert!(!selection.zerocopy_enabled);
-        assert!(selection.reasoning.contains("Parallel processing optimization"));
+        assert!(selection
+            .reasoning
+            .contains("Parallel processing optimization"));
     }
 
     #[tokio::test]
@@ -982,7 +1050,10 @@ mod tests {
 
         let dest = temp_dir.path().join("dest.txt");
 
-        let selection = selector.select_optimal_engine(&source, &dest).await.unwrap();
+        let selection = selector
+            .select_optimal_engine(&source, &dest)
+            .await
+            .unwrap();
 
         assert_eq!(selection.engine_type, EngineType::Buffered);
         assert!(!selection.use_sync_mode);
@@ -1005,8 +1076,14 @@ mod tests {
         let dest = temp_dir.path().join("dest.txt");
 
         // Select engines for different files
-        let _selection1 = selector.select_optimal_engine(&micro_file, &dest).await.unwrap();
-        let _selection2 = selector.select_optimal_engine(&small_file, &dest).await.unwrap();
+        let _selection1 = selector
+            .select_optimal_engine(&micro_file, &dest)
+            .await
+            .unwrap();
+        let _selection2 = selector
+            .select_optimal_engine(&small_file, &dest)
+            .await
+            .unwrap();
 
         let stats = selector.get_stats().await;
         assert_eq!(stats.total_selections, 2);
@@ -1080,11 +1157,20 @@ mod tests {
         assert!(stats.should_consider_threshold_adjustment(50));
 
         // Debug the performance values
-        println!("Micro throughput: {}", stats.micro_file_performance.avg_throughput_bps);
-        println!("Small throughput: {}", stats.small_file_performance.avg_throughput_bps);
+        println!(
+            "Micro throughput: {}",
+            stats.micro_file_performance.avg_throughput_bps
+        );
+        println!(
+            "Small throughput: {}",
+            stats.small_file_performance.avg_throughput_bps
+        );
 
         let recommendation = stats.get_threshold_adjustment_recommendation(4096, 16384);
-        assert!(recommendation.is_some(), "Should recommend threshold adjustment when micro files perform much better");
+        assert!(
+            recommendation.is_some(),
+            "Should recommend threshold adjustment when micro files perform much better"
+        );
 
         if let Some((new_micro, new_small)) = recommendation {
             assert!(new_micro > 4096); // Should increase micro threshold
@@ -1102,7 +1188,10 @@ mod tests {
         fs::write(&source_3kb, "A".repeat(3072)).unwrap();
 
         let dest = temp_dir.path().join("dest.txt");
-        let selection = selector.select_optimal_engine(&source_3kb, &dest).await.unwrap();
+        let selection = selector
+            .select_optimal_engine(&source_3kb, &dest)
+            .await
+            .unwrap();
 
         assert_eq!(selection.engine_type, EngineType::MicroFile);
         assert!(selection.reasoning.contains("Micro file optimization"));
@@ -1111,7 +1200,10 @@ mod tests {
         let source_12kb = temp_dir.path().join("12kb.txt");
         fs::write(&source_12kb, "B".repeat(12288)).unwrap();
 
-        let selection = selector.select_optimal_engine(&source_12kb, &dest).await.unwrap();
+        let selection = selector
+            .select_optimal_engine(&source_12kb, &dest)
+            .await
+            .unwrap();
 
         assert_eq!(selection.engine_type, EngineType::Buffered);
         assert!(selection.use_sync_mode);
@@ -1163,8 +1255,12 @@ mod tests {
 
         // Simulate performance data that would trigger adjustment
         for _ in 0..150 {
-            selector.update_performance_history(1024, 1024, 500_000).await; // Fast micro files
-            selector.update_performance_history(8192, 8192, 8_000_000).await; // Slower small files
+            selector
+                .update_performance_history(1024, 1024, 500_000)
+                .await; // Fast micro files
+            selector
+                .update_performance_history(8192, 8192, 8_000_000)
+                .await; // Slower small files
         }
 
         // Test auto adjustment
@@ -1182,9 +1278,15 @@ mod tests {
 
         // Add some performance data
         for _ in 0..50 {
-            selector.update_performance_history(1024, 1024, 1_000_000).await;
-            selector.update_performance_history(8192, 8192, 2_000_000).await;
-            selector.update_performance_history(100_000, 100_000, 10_000_000).await;
+            selector
+                .update_performance_history(1024, 1024, 1_000_000)
+                .await;
+            selector
+                .update_performance_history(8192, 8192, 2_000_000)
+                .await;
+            selector
+                .update_performance_history(100_000, 100_000, 10_000_000)
+                .await;
         }
 
         let summary = selector.get_performance_summary().await;

@@ -388,12 +388,18 @@ mod tests {
         assert_eq!(CompressionLevel::BEST, 22);
 
         // Test ordering
-        assert!(CompressionLevel::new(CompressionLevel::NONE).unwrap() <
-                CompressionLevel::new(CompressionLevel::FASTEST).unwrap());
-        assert!(CompressionLevel::new(CompressionLevel::FASTEST).unwrap() <
-                CompressionLevel::new(CompressionLevel::DEFAULT).unwrap());
-        assert!(CompressionLevel::new(CompressionLevel::DEFAULT).unwrap() <
-                CompressionLevel::new(CompressionLevel::BEST).unwrap());
+        assert!(
+            CompressionLevel::new(CompressionLevel::NONE).unwrap()
+                < CompressionLevel::new(CompressionLevel::FASTEST).unwrap()
+        );
+        assert!(
+            CompressionLevel::new(CompressionLevel::FASTEST).unwrap()
+                < CompressionLevel::new(CompressionLevel::DEFAULT).unwrap()
+        );
+        assert!(
+            CompressionLevel::new(CompressionLevel::DEFAULT).unwrap()
+                < CompressionLevel::new(CompressionLevel::BEST).unwrap()
+        );
     }
 
     #[test]

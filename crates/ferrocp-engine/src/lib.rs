@@ -42,5 +42,7 @@ pub use engine::{CopyEngine, EngineBuilder};
 pub use executor::{ExecutorConfig, TaskExecutor};
 pub use monitor::{ProgressMonitor, StatisticsCollector};
 pub use scheduler::{SchedulerConfig, TaskScheduler};
-pub use selector::{EngineSelector, EngineSelectionConfig, EngineSelection, EngineType, EngineSelectionStats};
+pub use selector::{
+    EngineSelection, EngineSelectionConfig, EngineSelectionStats, EngineSelector, EngineType,
+};
 pub use task::{CopyRequest, CopyResult, Task, TaskId, TaskStatus};

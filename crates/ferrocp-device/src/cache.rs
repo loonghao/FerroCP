@@ -166,7 +166,7 @@ impl DeviceCache {
             if let Some(node) = self.cache.get(&key) {
                 let age = node.entry.age();
                 let refresh_threshold = Duration::from_secs_f64(
-                    self.config.ttl.as_secs_f64() * self.config.refresh_threshold
+                    self.config.ttl.as_secs_f64() * self.config.refresh_threshold,
                 );
 
                 if age > refresh_threshold && !self.refresh_queue.contains(&key) {
@@ -192,7 +192,7 @@ impl DeviceCache {
     /// Insert or update a cache entry
     pub fn insert<P: AsRef<Path>>(&mut self, path: P, device_type: DeviceType) {
         let key = self.generate_cache_key(&path);
-        
+
         // If key already exists, update it
         if self.cache.contains_key(&key) {
             if let Some(node) = self.cache.get_mut(&key) {
@@ -213,16 +213,16 @@ impl DeviceCache {
 
         // Add to cache
         self.cache.insert(key.clone(), node);
-        
+
         // Update head pointer
         if let Some(old_head) = &self.head {
             if let Some(old_head_node) = self.cache.get_mut(old_head) {
                 old_head_node.prev = Some(key.clone());
             }
         }
-        
+
         self.head = Some(key.clone());
-        
+
         // If this is the first entry, it's also the tail
         if self.tail.is_none() {
             self.tail = Some(key);
@@ -239,7 +239,10 @@ impl DeviceCache {
             self.update_memory_usage();
         }
 
-        trace!("Inserted cache entry for key: {}", self.generate_cache_key(path));
+        trace!(
+            "Inserted cache entry for key: {}",
+            self.generate_cache_key(path)
+        );
     }
 
     /// Move a node to the head of the LRU list
@@ -250,19 +253,19 @@ impl DeviceCache {
 
         // Remove from current position
         self.remove_from_list(key);
-        
+
         // Add to head
         if let Some(node) = self.cache.get_mut(key) {
             node.prev = None;
             node.next = self.head.clone();
         }
-        
+
         if let Some(old_head) = &self.head {
             if let Some(old_head_node) = self.cache.get_mut(old_head) {
                 old_head_node.prev = Some(key.to_string());
             }
         }
-        
+
         self.head = Some(key.to_string());
     }
 
@@ -271,7 +274,7 @@ impl DeviceCache {
         if let Some(node) = self.cache.get(key) {
             let prev_key = node.prev.clone();
             let next_key = node.next.clone();
-            
+
             // Update previous node's next pointer
             if let Some(prev) = &prev_key {
                 if let Some(prev_node) = self.cache.get_mut(prev) {
@@ -281,7 +284,7 @@ impl DeviceCache {
                 // This was the head
                 self.head = next_key.clone();
             }
-            
+
             // Update next node's prev pointer
             if let Some(next) = &next_key {
                 if let Some(next_node) = self.cache.get_mut(next) {
@@ -298,7 +301,7 @@ impl DeviceCache {
     fn remove_node(&mut self, key: &str) {
         self.remove_from_list(key);
         self.cache.remove(key);
-        
+
         if self.config.enable_stats {
             self.stats.update_size(self.cache.len());
             self.update_memory_usage();
@@ -310,7 +313,7 @@ impl DeviceCache {
         if let Some(tail_key) = self.tail.clone() {
             debug!("Evicting LRU entry: {}", tail_key);
             self.remove_node(&tail_key);
-            
+
             if self.config.enable_stats {
                 self.stats.record_eviction();
             }
@@ -327,21 +330,25 @@ impl DeviceCache {
         let entry_size = std::mem::size_of::<LruNode>() + std::mem::size_of::<DeviceCacheEntry>();
         let key_size_estimate = 50; // Average path length estimate
         let total_size = self.cache.len() * (entry_size + key_size_estimate);
-        
+
         self.stats.update_memory_usage(total_size);
     }
 
     /// Clean up expired entries
     pub fn cleanup_expired(&mut self) {
         let now = SystemTime::now();
-        
+
         // Only cleanup if enough time has passed
-        if now.duration_since(self.last_cleanup).unwrap_or(Duration::ZERO) < self.config.cleanup_interval {
+        if now
+            .duration_since(self.last_cleanup)
+            .unwrap_or(Duration::ZERO)
+            < self.config.cleanup_interval
+        {
             return;
         }
 
         let mut expired_keys = Vec::new();
-        
+
         for (key, node) in &self.cache {
             if node.entry.is_expired(self.config.ttl) {
                 expired_keys.push(key.clone());
@@ -351,14 +358,14 @@ impl DeviceCache {
         for key in expired_keys {
             debug!("Removing expired cache entry: {}", key);
             self.remove_node(&key);
-            
+
             if self.config.enable_stats {
                 self.stats.record_expired_removal();
             }
         }
 
         self.last_cleanup = now;
-        
+
         if self.config.enable_stats {
             self.stats.update_size(self.cache.len());
             self.update_memory_usage();
@@ -375,8 +382,11 @@ impl DeviceCache {
         let now = SystemTime::now();
 
         // Only process refresh queue if enough time has passed
-        if now.duration_since(self.last_background_refresh).unwrap_or(Duration::ZERO)
-            < self.config.background_refresh_interval {
+        if now
+            .duration_since(self.last_background_refresh)
+            .unwrap_or(Duration::ZERO)
+            < self.config.background_refresh_interval
+        {
             return Vec::new();
         }
 
@@ -410,7 +420,8 @@ impl DeviceCache {
 
         // Check if enough time has passed since last refresh
         let now = SystemTime::now();
-        now.duration_since(self.last_background_refresh).unwrap_or(Duration::ZERO)
+        now.duration_since(self.last_background_refresh)
+            .unwrap_or(Duration::ZERO)
             >= self.config.background_refresh_interval
     }
 
@@ -689,7 +700,10 @@ mod tests {
 
         let cache = DeviceCache::with_config(config);
         assert!(cache.config.enable_background_refresh);
-        assert_eq!(cache.config.background_refresh_interval, Duration::from_secs(30));
+        assert_eq!(
+            cache.config.background_refresh_interval,
+            Duration::from_secs(30)
+        );
         assert_eq!(cache.config.refresh_threshold, 0.7);
     }
 

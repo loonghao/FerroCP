@@ -95,16 +95,16 @@ impl DeviceOptimizer {
             // High-speed device (likely SSD or RAM disk)
             // Based on performance testing: 512KB is optimal for SSD preread
             if self.aggressive_mode {
-                2 * 1024 * 1024  // Reduced from 4MB for better performance
+                2 * 1024 * 1024 // Reduced from 4MB for better performance
             } else {
-                512 * 1024  // Optimal size proven by testing (387.82 MiB/s vs 298.10 MiB/s)
+                512 * 1024 // Optimal size proven by testing (387.82 MiB/s vs 298.10 MiB/s)
             }
         } else if performance.sequential_read_speed > 200.0 {
             // Medium-speed device (likely good SSD)
             if self.aggressive_mode {
-                1024 * 1024  // Reduced from 2MB
+                1024 * 1024 // Reduced from 2MB
             } else {
-                512 * 1024  // Keep optimal 512KB
+                512 * 1024 // Keep optimal 512KB
             }
         } else {
             // Lower-speed device (likely HDD or network)
@@ -136,8 +136,8 @@ impl DeviceOptimizer {
             zero_copy_method: self.select_zero_copy_method(),
             use_memory_mapping,
             use_direct_io,
-            read_ahead_size: buffer_size,  // Match buffer_size for optimal preread (512KB for SSD)
-            write_cache_size: buffer_size * 2,  // Reduced from 4x for better memory efficiency
+            read_ahead_size: buffer_size, // Match buffer_size for optimal preread (512KB for SSD)
+            write_cache_size: buffer_size * 2, // Reduced from 4x for better memory efficiency
             io_timeout: Duration::from_secs(if performance.average_latency > 5000.0 {
                 30
             } else {

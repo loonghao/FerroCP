@@ -463,9 +463,15 @@ mod tests {
     fn test_io_error_recoverability() {
         // Test recoverable I/O errors
         let recoverable_errors = vec![
-            Error::Io { message: "Interrupted system call".to_string() },
-            Error::Io { message: "Operation would block".to_string() },
-            Error::Io { message: "Connection timed out".to_string() },
+            Error::Io {
+                message: "Interrupted system call".to_string(),
+            },
+            Error::Io {
+                message: "Operation would block".to_string(),
+            },
+            Error::Io {
+                message: "Connection timed out".to_string(),
+            },
         ];
 
         for error in recoverable_errors {
@@ -475,8 +481,12 @@ mod tests {
 
         // Test non-recoverable I/O errors
         let non_recoverable_errors = vec![
-            Error::Io { message: "No space left on device".to_string() },
-            Error::Io { message: "Invalid argument".to_string() },
+            Error::Io {
+                message: "No space left on device".to_string(),
+            },
+            Error::Io {
+                message: "Invalid argument".to_string(),
+            },
         ];
 
         for error in non_recoverable_errors {
@@ -494,7 +504,13 @@ mod tests {
 
         assert_eq!(context.operation, "file_copy");
         assert_eq!(context.details.len(), 2);
-        assert_eq!(context.details.get("source"), Some(&"/path/to/source".to_string()));
-        assert_eq!(context.details.get("destination"), Some(&"/path/to/dest".to_string()));
+        assert_eq!(
+            context.details.get("source"),
+            Some(&"/path/to/source".to_string())
+        );
+        assert_eq!(
+            context.details.get("destination"),
+            Some(&"/path/to/dest".to_string())
+        );
     }
 }

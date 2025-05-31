@@ -3,14 +3,14 @@
 //! These benchmarks measure the performance of core operations
 //! and compare against baseline implementations.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::fs;
 use tempfile::TempDir;
 use tokio::runtime::Runtime;
 
-use ferrocp_types::CompressionEngine;
 use ferrocp_compression::CompressionEngineImpl;
 use ferrocp_io::{BufferedCopyEngine, CopyEngine};
+use ferrocp_types::CompressionEngine;
 
 /// Helper function to create test data with patterns for compression testing
 fn create_compressible_data(size: usize) -> Vec<u8> {
@@ -54,8 +54,8 @@ fn benchmark_compression(c: &mut Criterion) {
 
     // Test different data sizes
     let sizes = vec![
-        64 * 1024,      // 64KB
-        1024 * 1024,    // 1MB
+        64 * 1024,   // 64KB
+        1024 * 1024, // 1MB
     ];
 
     for size in &sizes {
@@ -63,43 +63,38 @@ fn benchmark_compression(c: &mut Criterion) {
 
         group.throughput(Throughput::Bytes(*size as u64));
 
-        group.bench_with_input(
-            BenchmarkId::new("compress", size),
-            size,
-            |b, &_size| {
-                let data = test_data.clone();
-                b.iter(|| {
-                    let rt = Runtime::new().unwrap();
-                    rt.block_on(async {
-                        let compression_engine = CompressionEngineImpl::new();
-                        let result = compression_engine.compress(&data).await.unwrap();
-                        black_box(result);
-                    })
-                });
-            },
-        );
-
-        group.bench_with_input(
-            BenchmarkId::new("decompress", size),
-            size,
-            |b, &_size| {
-                let data = test_data.clone();
-                let rt_handle = rt.handle().clone();
-                let compressed_data = rt_handle.block_on(async {
+        group.bench_with_input(BenchmarkId::new("compress", size), size, |b, &_size| {
+            let data = test_data.clone();
+            b.iter(|| {
+                let rt = Runtime::new().unwrap();
+                rt.block_on(async {
                     let compression_engine = CompressionEngineImpl::new();
-                    compression_engine.compress(&data).await.unwrap()
-                });
+                    let result = compression_engine.compress(&data).await.unwrap();
+                    black_box(result);
+                })
+            });
+        });
 
-                b.iter(|| {
-                    let rt = Runtime::new().unwrap();
-                    rt.block_on(async {
-                        let compression_engine = CompressionEngineImpl::new();
-                        let result = compression_engine.decompress(&compressed_data).await.unwrap();
-                        black_box(result);
-                    })
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("decompress", size), size, |b, &_size| {
+            let data = test_data.clone();
+            let rt_handle = rt.handle().clone();
+            let compressed_data = rt_handle.block_on(async {
+                let compression_engine = CompressionEngineImpl::new();
+                compression_engine.compress(&data).await.unwrap()
+            });
+
+            b.iter(|| {
+                let rt = Runtime::new().unwrap();
+                rt.block_on(async {
+                    let compression_engine = CompressionEngineImpl::new();
+                    let result = compression_engine
+                        .decompress(&compressed_data)
+                        .await
+                        .unwrap();
+                    black_box(result);
+                })
+            });
+        });
     }
 
     group.finish();
@@ -113,9 +108,9 @@ fn benchmark_file_copy(c: &mut Criterion) {
     // Test different file sizes including new threshold boundaries
     let sizes = vec![
         (1024, "1KB"),
-        (4096, "4KB"),      // New micro file threshold
-        (8192, "8KB"),      // Mid-range small file
-        (16384, "16KB"),    // New small file threshold
+        (4096, "4KB"),   // New micro file threshold
+        (8192, "8KB"),   // Mid-range small file
+        (16384, "16KB"), // New small file threshold
         (64 * 1024, "64KB"),
         (1024 * 1024, "1MB"),
         (10 * 1024 * 1024, "10MB"),
@@ -199,11 +194,7 @@ fn benchmark_memory_usage(c: &mut Criterion) {
     let mut group = c.benchmark_group("memory_usage");
 
     // Test different buffer sizes
-    let buffer_sizes = vec![
-        (4 * 1024, "4KB"),
-        (64 * 1024, "64KB"),
-        (1024 * 1024, "1MB"),
-    ];
+    let buffer_sizes = vec![(4 * 1024, "4KB"), (64 * 1024, "64KB"), (1024 * 1024, "1MB")];
 
     let file_size = 10 * 1024 * 1024; // 10MB file
     group.throughput(Throughput::Bytes(file_size as u64));
@@ -238,10 +229,10 @@ fn benchmark_threshold_optimization(c: &mut Criterion) {
 
     // Test files at the new threshold boundaries to verify optimization
     let test_cases = vec![
-        (3072, "3KB_micro"),    // Should use MicroFileCopyEngine (< 4KB)
-        (5120, "5KB_small"),    // Should use sync BufferedCopyEngine (< 16KB)
-        (12288, "12KB_small"),  // Should use sync BufferedCopyEngine (< 16KB)
-        (20480, "20KB_large"),  // Should use async BufferedCopyEngine (> 16KB)
+        (3072, "3KB_micro"),   // Should use MicroFileCopyEngine (< 4KB)
+        (5120, "5KB_small"),   // Should use sync BufferedCopyEngine (< 16KB)
+        (12288, "12KB_small"), // Should use sync BufferedCopyEngine (< 16KB)
+        (20480, "20KB_large"), // Should use async BufferedCopyEngine (> 16KB)
     ];
 
     for (size, size_name) in &test_cases {

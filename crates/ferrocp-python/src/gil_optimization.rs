@@ -5,8 +5,8 @@
 
 use pyo3::prelude::*;
 use std::sync::Arc;
-use tokio::sync::{mpsc, oneshot};
 use std::time::Duration;
+use tokio::sync::{mpsc, oneshot};
 
 /// Progress callback that can be called without holding the GIL
 pub type GilFreeProgressCallback = Arc<dyn Fn(f64, String) + Send + Sync>;
@@ -61,7 +61,7 @@ impl GilOptimizationManager {
     {
         let start_time = std::time::Instant::now();
         let progress_tx = self.progress_tx.clone();
-        
+
         // Execute the operation without holding the GIL
         let (result_tx, mut result_rx) = oneshot::channel();
 
@@ -149,11 +149,17 @@ impl GilFreeProgressReporter {
             timestamp: std::time::Instant::now(),
         };
 
-        self.tx.send(update).map_err(|_| "Failed to send progress update".to_string())
+        self.tx
+            .send(update)
+            .map_err(|_| "Failed to send progress update".to_string())
     }
 
     /// Report progress with formatted message
-    pub fn report_progress_formatted(&self, percentage: f64, format_args: std::fmt::Arguments) -> Result<(), String> {
+    pub fn report_progress_formatted(
+        &self,
+        percentage: f64,
+        format_args: std::fmt::Arguments,
+    ) -> Result<(), String> {
         self.report_progress(percentage, format_args.to_string())
     }
 }
@@ -162,10 +168,12 @@ impl GilFreeProgressReporter {
 #[macro_export]
 macro_rules! execute_with_gil_released {
     ($manager:expr, $operation:expr) => {
-        $manager.execute_with_gil_released(move |progress_tx| async move {
-            let reporter = GilFreeProgressReporter { tx: progress_tx };
-            $operation(reporter).await
-        }).await
+        $manager
+            .execute_with_gil_released(move |progress_tx| async move {
+                let reporter = GilFreeProgressReporter { tx: progress_tx };
+                $operation(reporter).await
+            })
+            .await
     };
 }
 
@@ -178,25 +186,23 @@ where
 }
 
 /// Optimized async operation wrapper that releases GIL during computation
-pub async fn execute_async_with_gil_optimization<F, T>(
-    py: Python<'_>,
-    operation: F,
-) -> PyResult<T>
+pub async fn execute_async_with_gil_optimization<F, T>(py: Python<'_>, operation: F) -> PyResult<T>
 where
-    F: FnOnce() -> std::pin::Pin<Box<dyn std::future::Future<Output = PyResult<T>> + Send>> + Send + 'static,
+    F: FnOnce() -> std::pin::Pin<Box<dyn std::future::Future<Output = PyResult<T>> + Send>>
+        + Send
+        + 'static,
     T: Send + 'static,
 {
     // Release GIL during the async operation
     py.allow_threads(|| {
         // Create a new Tokio runtime for this operation if needed
-        let rt = tokio::runtime::Handle::try_current()
-            .unwrap_or_else(|_| {
-                tokio::runtime::Runtime::new()
-                    .expect("Failed to create Tokio runtime")
-                    .handle()
-                    .clone()
-            });
-        
+        let rt = tokio::runtime::Handle::try_current().unwrap_or_else(|_| {
+            tokio::runtime::Runtime::new()
+                .expect("Failed to create Tokio runtime")
+                .handle()
+                .clone()
+        });
+
         rt.block_on(operation())
     })
 }
@@ -209,21 +215,29 @@ mod tests {
     #[tokio::test]
     async fn test_gil_optimization_manager() {
         let manager = GilOptimizationManager::new();
-        
-        let result = manager.execute_with_gil_released(|progress_tx| async move {
-            let reporter = GilFreeProgressReporter::new(progress_tx);
-            
-            // Simulate some work with progress reporting
-            reporter.report_progress(0.0, "Starting operation".to_string()).unwrap();
-            tokio::time::sleep(Duration::from_millis(10)).await;
-            
-            reporter.report_progress(50.0, "Half way done".to_string()).unwrap();
-            tokio::time::sleep(Duration::from_millis(10)).await;
-            
-            reporter.report_progress(100.0, "Operation complete".to_string()).unwrap();
-            
-            Ok::<i32, PyErr>(42)
-        }).await;
+
+        let result = manager
+            .execute_with_gil_released(|progress_tx| async move {
+                let reporter = GilFreeProgressReporter::new(progress_tx);
+
+                // Simulate some work with progress reporting
+                reporter
+                    .report_progress(0.0, "Starting operation".to_string())
+                    .unwrap();
+                tokio::time::sleep(Duration::from_millis(10)).await;
+
+                reporter
+                    .report_progress(50.0, "Half way done".to_string())
+                    .unwrap();
+                tokio::time::sleep(Duration::from_millis(10)).await;
+
+                reporter
+                    .report_progress(100.0, "Operation complete".to_string())
+                    .unwrap();
+
+                Ok::<i32, PyErr>(42)
+            })
+            .await;
 
         assert!(result.is_ok());
         let gil_free_result = result.unwrap();
@@ -235,7 +249,7 @@ mod tests {
     fn test_progress_reporter() {
         let manager = GilOptimizationManager::new();
         let reporter = manager.create_progress_reporter();
-        
+
         let result = reporter.report_progress(50.0, "Test progress".to_string());
         assert!(result.is_ok());
     }

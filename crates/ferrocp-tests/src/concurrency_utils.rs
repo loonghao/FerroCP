@@ -46,7 +46,8 @@ impl ThreadMetrics {
     pub fn get_throughput_mbps(&self) -> f64 {
         let elapsed = self.start_time.elapsed().as_secs_f64();
         if elapsed > 0.0 {
-            let mb_processed = self.bytes_processed.load(Ordering::Relaxed) as f64 / (1024.0 * 1024.0);
+            let mb_processed =
+                self.bytes_processed.load(Ordering::Relaxed) as f64 / (1024.0 * 1024.0);
             mb_processed / elapsed
         } else {
             0.0
@@ -135,7 +136,8 @@ impl AggregatedMetrics {
             return 0.0;
         }
 
-        let operations_per_thread = self.total_operations() as f64 / self.thread_metrics.len() as f64;
+        let operations_per_thread =
+            self.total_operations() as f64 / self.thread_metrics.len() as f64;
         operations_per_thread
     }
 
@@ -144,19 +146,18 @@ impl AggregatedMetrics {
             return 1.0;
         }
 
-        let operations: Vec<f64> = self.thread_metrics
+        let operations: Vec<f64> = self
+            .thread_metrics
             .iter()
             .map(|m| m.operations_completed.load(Ordering::Relaxed) as f64)
             .collect();
 
         let mean = operations.iter().sum::<f64>() / operations.len() as f64;
-        let variance = operations
-            .iter()
-            .map(|&x| (x - mean).powi(2))
-            .sum::<f64>() / operations.len() as f64;
+        let variance =
+            operations.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / operations.len() as f64;
 
         let std_dev = variance.sqrt();
-        
+
         // Coefficient of variation (lower is better for load balance)
         if mean > 0.0 {
             1.0 - (std_dev / mean).min(1.0)
@@ -185,7 +186,7 @@ impl ContentionDetector {
 
     pub fn record_lock_attempt(&self, wait_time: Duration) {
         self.total_lock_attempts.fetch_add(1, Ordering::Relaxed);
-        
+
         if let Ok(mut times) = self.lock_wait_times.lock() {
             times.push(wait_time);
         }
@@ -199,7 +200,7 @@ impl ContentionDetector {
     pub fn contention_ratio(&self) -> f64 {
         let total = self.total_lock_attempts.load(Ordering::Relaxed);
         let contentions = self.contention_events.load(Ordering::Relaxed);
-        
+
         if total > 0 {
             contentions as f64 / total as f64
         } else {
@@ -251,11 +252,16 @@ impl MemoryTracker {
     pub fn record_allocation(&self, size: usize) {
         self.allocations.fetch_add(1, Ordering::Relaxed);
         let current = self.current_usage.fetch_add(size, Ordering::Relaxed) + size;
-        
+
         // Update peak usage
         let mut peak = self.peak_usage.load(Ordering::Relaxed);
         while current > peak {
-            match self.peak_usage.compare_exchange_weak(peak, current, Ordering::Relaxed, Ordering::Relaxed) {
+            match self.peak_usage.compare_exchange_weak(
+                peak,
+                current,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
                 Ok(_) => break,
                 Err(x) => peak = x,
             }
@@ -278,12 +284,20 @@ impl MemoryTracker {
 
     pub fn memory_efficiency(&self) -> f64 {
         let (allocs, deallocs, peak, current) = self.get_stats();
-        
+
         if allocs > 0 {
             // Efficiency based on allocation/deallocation balance and memory reuse
-            let balance_factor = if allocs > 0 { deallocs as f64 / allocs as f64 } else { 0.0 };
-            let reuse_factor = if peak > 0 { 1.0 - (current as f64 / peak as f64) } else { 1.0 };
-            
+            let balance_factor = if allocs > 0 {
+                deallocs as f64 / allocs as f64
+            } else {
+                0.0
+            };
+            let reuse_factor = if peak > 0 {
+                1.0 - (current as f64 / peak as f64)
+            } else {
+                1.0
+            };
+
             (balance_factor + reuse_factor) / 2.0
         } else {
             1.0
