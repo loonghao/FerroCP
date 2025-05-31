@@ -28,14 +28,29 @@
 
 pub mod buffer;
 pub mod copy;
+pub mod memory;
 pub mod memory_map;
+pub mod micro_copy;
+pub mod parallel;
+pub mod preread;
 pub mod reader;
 pub mod stream;
 pub mod writer;
 
-pub use buffer::{AdaptiveBuffer, BufferPool, SmartBuffer};
+// Temporarily disabled due to missing proptest dependency
+// #[cfg(test)]
+// mod property_tests;
+
+#[cfg(test)]
+mod error_tests;
+
+pub use buffer::{AdaptiveBuffer, BufferPool, MemoryStats, MultiSizeBufferPool, SmartBuffer};
 pub use copy::{BufferedCopyEngine, CopyEngine, CopyOptions};
+pub use memory::{MemoryAlert, MemoryMonitor, MemoryThresholds, MemoryUsageStats};
 pub use memory_map::{MemoryMapOptions, MemoryMappedFile};
+pub use micro_copy::{MicroFileCopyEngine, MicroCopyStats, MicroCopyStrategy};
+pub use parallel::{ParallelCopyConfig, ParallelCopyEngine, ParallelCopyStats};
+pub use preread::{PreReadBuffer, PreReadStats, PreReadStrategy};
 pub use reader::{AsyncFileReader, FileReader};
 pub use stream::{FileStream, ProgressStream};
 pub use writer::{AsyncFileWriter, FileWriter};

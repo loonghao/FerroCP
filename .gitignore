@@ -56,6 +56,25 @@ benchmarks/results/*.prof
 # CodSpeed local results
 .codspeed/
 
+# Performance analysis temporary files
+simple-*.py
+simple-*.json
+simple-*.md
+test-*.json
+test_*.py
+*-analysis-results.json
+*-performance-report.md
+*-baseline-performance.json
+performance-results/
+benchmark-artifacts/
+baseline-results/
+
+# Temporary test files and data
+temp-*
+tmp-*
+*.tmp
+*.temp
+
 # Rust build artifacts
 target/
 Cargo.lock

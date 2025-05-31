@@ -231,3 +231,190 @@ impl Default for TimeoutConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+    use std::time::Duration;
+
+    // Property tests for BufferSize
+    proptest! {
+        #[test]
+        fn test_buffer_size_power_of_two_invariant(
+            exp in 12u32..26u32  // 2^12 = 4KB to 2^26 = 64MB
+        ) {
+            let size = 1usize << exp;
+            if size >= BufferSize::MIN && size <= BufferSize::MAX {
+                let buffer_size = BufferSize::new(size).unwrap();
+                prop_assert_eq!(buffer_size.get(), size);
+                prop_assert!(buffer_size.get().is_power_of_two());
+            }
+        }
+
+        #[test]
+        fn test_buffer_size_rejects_invalid_sizes(
+            size in 1usize..BufferSize::MIN
+        ) {
+            prop_assert!(BufferSize::new(size).is_err());
+        }
+
+        #[test]
+        fn test_buffer_size_rejects_non_power_of_two(
+            base in 12u32..25u32
+        ) {
+            let size = (1usize << base) + 1; // Not a power of two
+            if size <= BufferSize::MAX {
+                prop_assert!(BufferSize::new(size).is_err());
+            }
+        }
+    }
+
+    // Property tests for ThreadCount
+    proptest! {
+        #[test]
+        fn test_thread_count_valid_range(
+            count in ThreadCount::MIN..=ThreadCount::MAX
+        ) {
+            let thread_count = ThreadCount::new(count).unwrap();
+            prop_assert_eq!(thread_count.get(), count);
+            prop_assert!(thread_count.get() >= ThreadCount::MIN);
+            prop_assert!(thread_count.get() <= ThreadCount::MAX);
+        }
+
+        #[test]
+        fn test_thread_count_rejects_invalid(
+            count in (ThreadCount::MAX + 1)..1000usize
+        ) {
+            prop_assert!(ThreadCount::new(count).is_err());
+        }
+    }
+
+    // Property tests for CompressionLevel
+    proptest! {
+        #[test]
+        fn test_compression_level_valid_range(
+            level in CompressionLevel::NONE..=CompressionLevel::BEST
+        ) {
+            let compression = CompressionLevel::new(level).unwrap();
+            prop_assert_eq!(compression.get(), level);
+            prop_assert!(compression.get() <= CompressionLevel::BEST);
+        }
+
+        #[test]
+        fn test_compression_level_rejects_invalid(
+            level in (CompressionLevel::BEST + 1)..=255u8
+        ) {
+            prop_assert!(CompressionLevel::new(level).is_err());
+        }
+
+        #[test]
+        fn test_compression_level_enabled_check(
+            level in CompressionLevel::NONE..=CompressionLevel::BEST
+        ) {
+            let compression = CompressionLevel::new(level).unwrap();
+            prop_assert_eq!(compression.is_enabled(), level > CompressionLevel::NONE);
+        }
+    }
+
+    // Property tests for RetryConfig
+    proptest! {
+        #[test]
+        fn test_retry_config_valid_creation(
+            max_retries in 0u32..100u32,
+            initial_delay_ms in 1u64..10000u64,
+            max_delay_ms in 10000u64..300000u64,
+            backoff_multiplier in 1.1f64..10.0f64
+        ) {
+            let initial_delay = Duration::from_millis(initial_delay_ms);
+            let max_delay = Duration::from_millis(max_delay_ms);
+
+            if initial_delay <= max_delay {
+                let config = RetryConfig::new(
+                    max_retries,
+                    initial_delay,
+                    max_delay,
+                    backoff_multiplier
+                ).unwrap();
+
+                prop_assert_eq!(config.max_retries, max_retries);
+                prop_assert_eq!(config.initial_delay, initial_delay);
+                prop_assert_eq!(config.max_delay, max_delay);
+                prop_assert_eq!(config.backoff_multiplier, backoff_multiplier);
+            }
+        }
+
+        #[test]
+        fn test_retry_config_delay_calculation(
+            attempt in 0u32..10u32
+        ) {
+            let config = RetryConfig::default();
+            let delay = config.delay_for_attempt(attempt);
+
+            // Delay should never exceed max_delay
+            prop_assert!(delay <= config.max_delay);
+
+            // First attempt should use initial delay
+            if attempt == 0 {
+                prop_assert_eq!(delay, config.initial_delay);
+            }
+        }
+    }
+
+    // Unit tests for edge cases
+    #[test]
+    fn test_buffer_size_constants() {
+        assert_eq!(BufferSize::MIN, 4 * 1024);
+        assert_eq!(BufferSize::MAX, 64 * 1024 * 1024);
+        assert_eq!(BufferSize::DEFAULT, 8 * 1024 * 1024);
+
+        // Default should be valid
+        let default_buffer = BufferSize::default();
+        assert_eq!(default_buffer.get(), BufferSize::DEFAULT);
+    }
+
+    #[test]
+    fn test_thread_count_optimal() {
+        let optimal = ThreadCount::optimal();
+        assert!(optimal.get() >= ThreadCount::MIN);
+        assert!(optimal.get() <= ThreadCount::MAX);
+    }
+
+    #[test]
+    fn test_compression_level_constants() {
+        assert_eq!(CompressionLevel::NONE, 0);
+        assert_eq!(CompressionLevel::FASTEST, 1);
+        assert_eq!(CompressionLevel::DEFAULT, 6);
+        assert_eq!(CompressionLevel::BEST, 22);
+
+        // Test ordering
+        assert!(CompressionLevel::new(CompressionLevel::NONE).unwrap() <
+                CompressionLevel::new(CompressionLevel::FASTEST).unwrap());
+        assert!(CompressionLevel::new(CompressionLevel::FASTEST).unwrap() <
+                CompressionLevel::new(CompressionLevel::DEFAULT).unwrap());
+        assert!(CompressionLevel::new(CompressionLevel::DEFAULT).unwrap() <
+                CompressionLevel::new(CompressionLevel::BEST).unwrap());
+    }
+
+    #[test]
+    fn test_retry_config_invalid_backoff() {
+        let result = RetryConfig::new(
+            3,
+            Duration::from_millis(100),
+            Duration::from_secs(30),
+            1.0, // Invalid: must be > 1.0
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_retry_config_invalid_delay_order() {
+        let result = RetryConfig::new(
+            3,
+            Duration::from_secs(30), // Initial > max
+            Duration::from_millis(100),
+            2.0,
+        );
+        assert!(result.is_err());
+    }
+}

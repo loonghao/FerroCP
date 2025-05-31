@@ -46,6 +46,12 @@ pub mod benchmarks;
 pub mod engine;
 pub mod streaming;
 
+#[cfg(test)]
+mod fuzz_tests;
+
+#[cfg(test)]
+mod error_tests;
+
 // Re-export main types
 pub use adaptive::{AdaptiveCompressor, CompressionStrategy};
 pub use algorithms::{Algorithm, AlgorithmImpl};

@@ -11,6 +11,7 @@ members = [
     "crates/ferrocp-engine",
     "crates/ferrocp-cli",
     "crates/ferrocp-python",
+    "crates/ferrocp-tests",
 ]
 default-members = ["crates/ferrocp-cli"]
 resolver = "2"
@@ -198,3 +199,4 @@ codegen-units = 1
 inherits = "dev"
 opt-level = 1
 debug = 1
+

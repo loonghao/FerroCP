@@ -281,3 +281,220 @@ impl From<std::io::Error> for Error {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+    use std::path::PathBuf;
+
+    // Property tests for Error severity mapping
+    proptest! {
+        #[test]
+        fn test_error_severity_consistency(
+            message in ".*"
+        ) {
+            // Test that all error variants have consistent severity mapping
+            let errors = vec![
+                Error::Io { message: message.clone() },
+                Error::Config { message: message.clone() },
+                Error::Network { message: message.clone() },
+                Error::Compression { message: message.clone() },
+                Error::DeviceDetection { message: message.clone() },
+                Error::ZeroCopy { message: message.clone() },
+                Error::Sync { message: message.clone() },
+                Error::Other { message: message.clone() },
+            ];
+
+            for error in errors {
+                let severity = error.severity();
+                let kind = error.kind();
+
+                // Verify severity is within valid range
+                prop_assert!(matches!(severity,
+                    ErrorSeverity::Low | ErrorSeverity::Medium |
+                    ErrorSeverity::High | ErrorSeverity::Critical));
+
+                // Verify kind matches error type
+                match error {
+                    Error::Io { .. } => prop_assert_eq!(kind, ErrorKind::Io),
+                    Error::Config { .. } => prop_assert_eq!(kind, ErrorKind::Config),
+                    Error::Network { .. } => prop_assert_eq!(kind, ErrorKind::Network),
+                    Error::Compression { .. } => prop_assert_eq!(kind, ErrorKind::Compression),
+                    Error::DeviceDetection { .. } => prop_assert_eq!(kind, ErrorKind::DeviceDetection),
+                    Error::ZeroCopy { .. } => prop_assert_eq!(kind, ErrorKind::ZeroCopy),
+                    Error::Sync { .. } => prop_assert_eq!(kind, ErrorKind::Sync),
+                    Error::Other { .. } => prop_assert_eq!(kind, ErrorKind::Other),
+                    _ => {}
+                }
+            }
+        }
+
+        #[test]
+        fn test_error_recoverability_logic(
+            message in ".*"
+        ) {
+            let error = Error::Io { message: message.clone() };
+            let is_recoverable = error.is_recoverable();
+            let should_retry = error.should_retry();
+
+            // If an error should retry, it must be recoverable
+            if should_retry {
+                prop_assert!(is_recoverable);
+            }
+
+            // If an error should retry, its severity must be Medium or lower
+            if should_retry {
+                prop_assert!(error.severity() <= ErrorSeverity::Medium);
+            }
+        }
+
+        #[test]
+        fn test_timeout_error_properties(
+            seconds in 1u64..3600u64
+        ) {
+            let error = Error::Timeout { seconds };
+
+            prop_assert_eq!(error.kind(), ErrorKind::Timeout);
+            prop_assert_eq!(error.severity(), ErrorSeverity::Medium);
+            prop_assert!(error.is_recoverable());
+            prop_assert!(error.should_retry());
+        }
+    }
+
+    // Property tests for ErrorContext
+    proptest! {
+        #[test]
+        fn test_error_context_creation(
+            operation in ".*",
+            key in ".*",
+            value in ".*"
+        ) {
+            let context = ErrorContext::new(operation.clone())
+                .with_detail(key.clone(), value.clone());
+
+            prop_assert_eq!(context.operation, operation);
+            prop_assert_eq!(context.details.get(&key), Some(&value));
+        }
+    }
+
+    // Unit tests for specific error behaviors
+    #[test]
+    fn test_error_severity_ordering() {
+        assert!(ErrorSeverity::Low < ErrorSeverity::Medium);
+        assert!(ErrorSeverity::Medium < ErrorSeverity::High);
+        assert!(ErrorSeverity::High < ErrorSeverity::Critical);
+    }
+
+    #[test]
+    fn test_io_error_conversion() {
+        let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "test file");
+        let ferrocp_error = Error::from(io_error);
+
+        assert_eq!(ferrocp_error.kind(), ErrorKind::Io);
+        assert_eq!(ferrocp_error.severity(), ErrorSeverity::Medium);
+        assert!(ferrocp_error.to_string().contains("test file"));
+    }
+
+    #[test]
+    fn test_file_not_found_error() {
+        let path = PathBuf::from("/nonexistent/file.txt");
+        let error = Error::FileNotFound { path: path.clone() };
+
+        assert_eq!(error.kind(), ErrorKind::Io);
+        assert_eq!(error.severity(), ErrorSeverity::High);
+        assert!(!error.is_recoverable());
+        assert!(!error.should_retry());
+        assert!(error.to_string().contains("/nonexistent/file.txt"));
+    }
+
+    #[test]
+    fn test_permission_denied_error() {
+        let path = PathBuf::from("/protected/file.txt");
+        let error = Error::PermissionDenied { path: path.clone() };
+
+        assert_eq!(error.kind(), ErrorKind::Io);
+        assert_eq!(error.severity(), ErrorSeverity::High);
+        assert!(!error.is_recoverable());
+        assert!(!error.should_retry());
+    }
+
+    #[test]
+    fn test_config_error() {
+        let error = Error::config("invalid buffer size");
+
+        assert_eq!(error.kind(), ErrorKind::Config);
+        assert_eq!(error.severity(), ErrorSeverity::High);
+        assert!(!error.is_recoverable());
+        assert!(!error.should_retry());
+    }
+
+    #[test]
+    fn test_network_error() {
+        let error = Error::network("connection refused");
+
+        assert_eq!(error.kind(), ErrorKind::Network);
+        assert_eq!(error.severity(), ErrorSeverity::Medium);
+        assert!(error.is_recoverable());
+        assert!(error.should_retry());
+    }
+
+    #[test]
+    fn test_compression_error() {
+        let error = Error::compression("invalid compression level");
+
+        assert_eq!(error.kind(), ErrorKind::Compression);
+        assert_eq!(error.severity(), ErrorSeverity::Low);
+        assert!(error.is_recoverable());
+        assert!(error.should_retry());
+    }
+
+    #[test]
+    fn test_cancelled_error() {
+        let error = Error::Cancelled;
+
+        assert_eq!(error.kind(), ErrorKind::Cancelled);
+        assert_eq!(error.severity(), ErrorSeverity::Low);
+        assert!(!error.is_recoverable());
+        assert!(!error.should_retry());
+    }
+
+    #[test]
+    fn test_io_error_recoverability() {
+        // Test recoverable I/O errors
+        let recoverable_errors = vec![
+            Error::Io { message: "Interrupted system call".to_string() },
+            Error::Io { message: "Operation would block".to_string() },
+            Error::Io { message: "Connection timed out".to_string() },
+        ];
+
+        for error in recoverable_errors {
+            assert!(error.is_recoverable());
+            assert!(error.should_retry());
+        }
+
+        // Test non-recoverable I/O errors
+        let non_recoverable_errors = vec![
+            Error::Io { message: "No space left on device".to_string() },
+            Error::Io { message: "Invalid argument".to_string() },
+        ];
+
+        for error in non_recoverable_errors {
+            assert!(!error.is_recoverable());
+            assert!(!error.should_retry());
+        }
+    }
+
+    #[test]
+    fn test_error_context_details() {
+        let mut context = ErrorContext::new("file_copy");
+        context = context
+            .with_detail("source", "/path/to/source")
+            .with_detail("destination", "/path/to/dest");
+
+        assert_eq!(context.operation, "file_copy");
+        assert_eq!(context.details.len(), 2);
+        assert_eq!(context.details.get("source"), Some(&"/path/to/source".to_string()));
+        assert_eq!(context.details.get("destination"), Some(&"/path/to/dest".to_string()));
+    }
+}

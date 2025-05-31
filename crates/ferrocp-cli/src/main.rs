@@ -7,6 +7,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use console::style;
 use ferrocp_types::{CopyMode, CopyStats, DeviceType};
+use ferrocp_engine::{CopyEngine, CopyRequest};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -261,16 +262,34 @@ async fn copy_command(
         None
     };
 
-    // TODO: Implement actual copy logic using ferrocp-engine
-    // For now, just simulate the operation
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    // Create copy engine
+    let mut engine = CopyEngine::new().await?;
+
+    // Start the engine
+    engine.start().await?;
+
+    // Create copy request using builder pattern
+    let mut request = CopyRequest::new(source, destination)
+        .with_mode(mode)
+        .preserve_metadata(true)
+        .verify_copy(false)
+        .enable_compression(compress)
+        .exclude_patterns(exclude)
+        .include_patterns(include);
+
+    // Note: threads, compression_level, zero_copy are handled by the engine internally
+    // These CLI options could be used to configure the engine in the future
 
     if let Some(pb) = &pb {
         pb.set_message("Copying files...");
     }
 
-    // Simulate copy operation
-    let stats = simulate_copy_operation().await;
+    // Execute copy operation
+    let result = engine.execute(request).await?;
+    let stats = result.stats;
+
+    // Stop the engine
+    engine.stop().await?;
 
     if let Some(pb) = pb {
         pb.finish_with_message("Copy completed");
@@ -288,7 +307,7 @@ async fn sync_command(
     source: PathBuf,
     destination: PathBuf,
     dry_run: bool,
-    delete: bool,
+    _delete: bool,
 ) -> Result<()> {
     info!("Starting sync operation");
     println!(
@@ -310,7 +329,7 @@ async fn sync_command(
     Ok(())
 }
 
-async fn verify_command(path: PathBuf, source: Option<PathBuf>) -> Result<()> {
+async fn verify_command(path: PathBuf, _source: Option<PathBuf>) -> Result<()> {
     info!("Starting verify operation");
     println!(
         "{} Verifying {}",
@@ -356,21 +375,7 @@ async fn config_command(default: bool) -> Result<()> {
     Ok(())
 }
 
-async fn simulate_copy_operation() -> CopyStats {
-    // Simulate some work
-    tokio::time::sleep(Duration::from_millis(1000)).await;
 
-    CopyStats {
-        files_copied: 42,
-        directories_created: 5,
-        bytes_copied: 1024 * 1024 * 100, // 100MB
-        files_skipped: 3,
-        errors: 0,
-        duration: Duration::from_millis(1000),
-        zerocopy_operations: 15,
-        zerocopy_bytes: 1024 * 1024 * 60, // 60MB
-    }
-}
 
 fn print_copy_stats(stats: &CopyStats) {
     println!();

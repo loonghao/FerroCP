@@ -193,8 +193,8 @@ impl ZeroCopyEngineImpl {
     /// Attempt zero-copy operation with the best available method
     async fn attempt_zero_copy<P: AsRef<Path> + Send + Sync>(
         &self,
-        source: P,
-        destination: P,
+        _source: P,
+        _destination: P,
         size: u64,
     ) -> Result<ZeroCopyResult> {
         let start_time = Instant::now();

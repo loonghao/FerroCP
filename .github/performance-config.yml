@@ -1,0 +1,176 @@
+# FerroCP Performance Benchmark Configuration
+# This file defines the configuration for performance benchmarks and regression detection
+
+# Regression detection thresholds
+regression_thresholds:
+  # Default threshold for detecting performance regressions (5%)
+  default: 0.05
+  
+  # Strict threshold for critical benchmarks (2%)
+  strict: 0.02
+  
+  # Relaxed threshold for less critical benchmarks (10%)
+  relaxed: 0.10
+
+# Benchmark categories and their thresholds
+benchmark_categories:
+  critical:
+    threshold: 0.02
+    patterns:
+      - "test_copy_*"
+      - "test_large_file_*"
+      - "test_compression_*"
+    
+  standard:
+    threshold: 0.05
+    patterns:
+      - "test_small_file_*"
+      - "test_medium_file_*"
+      - "test_sync_*"
+    
+  experimental:
+    threshold: 0.10
+    patterns:
+      - "test_experimental_*"
+      - "test_prototype_*"
+
+# Performance targets (in seconds)
+performance_targets:
+  small_file_copy: 0.001    # 1ms for small files
+  medium_file_copy: 0.010   # 10ms for medium files
+  large_file_copy: 0.100    # 100ms for large files
+  compression_zstd: 0.050   # 50ms for compression
+  decompression_zstd: 0.040 # 40ms for decompression
+
+# Benchmark execution settings
+execution:
+  # Minimum number of rounds for stable results
+  min_rounds: 3
+  
+  # Maximum number of rounds to prevent long runs
+  max_rounds: 10
+  
+  # Warmup rounds before measurement
+  warmup_rounds: 1
+  
+  # Timeout for individual benchmarks (seconds)
+  timeout: 300
+
+# Data retention settings
+retention:
+  # Keep detailed results for 90 days
+  detailed_results: 90
+  
+  # Keep summary data for 1 year
+  summary_data: 365
+  
+  # Keep baseline data indefinitely
+  baseline_data: -1
+
+# Reporting settings
+reporting:
+  # Generate charts for these benchmark types
+  chart_types:
+    - "performance_comparison"
+    - "platform_comparison"
+    - "trend_analysis"
+    - "regression_detection"
+  
+  # Chart formats to generate
+  chart_formats:
+    - "png"
+    - "html"
+    - "svg"
+  
+  # Include these metrics in reports
+  metrics:
+    - "mean"
+    - "median"
+    - "stddev"
+    - "min"
+    - "max"
+    - "percentile_95"
+    - "percentile_99"
+
+# Platform-specific settings
+platforms:
+  ubuntu-latest:
+    enabled: true
+    python_versions: ["3.9", "3.11", "3.12"]
+    rust_flags: "-C target-cpu=native -C opt-level=3"
+    
+  windows-latest:
+    enabled: true
+    python_versions: ["3.9", "3.11", "3.12"]
+    rust_flags: "-C target-cpu=native -C opt-level=3"
+    
+  macos-latest:
+    enabled: true
+    python_versions: ["3.11", "3.12"]  # Reduced for faster CI
+    rust_flags: "-C target-cpu=native -C opt-level=3"
+
+# CodSpeed integration settings
+codspeed:
+  enabled: true
+  regression_threshold: 5  # 5% threshold for CodSpeed
+  pgo_enabled: true
+  
+  # CodSpeed-specific benchmark patterns
+  benchmark_patterns:
+    - "benchmarks/test_codspeed.py"
+    - "benchmarks/test_performance.py"
+
+# Notification settings
+notifications:
+  # Notify on performance regressions
+  on_regression: true
+  
+  # Notify on significant improvements
+  on_improvement: true
+  
+  # Threshold for "significant" improvements (10% faster)
+  improvement_threshold: 0.10
+  
+  # Channels for notifications
+  channels:
+    - "github_pr_comment"
+    - "github_issue"  # Create issue for major regressions
+
+# Baseline management
+baseline:
+  # How often to update the baseline (in days)
+  update_frequency: 7
+  
+  # Minimum number of successful runs before updating baseline
+  min_runs_for_update: 3
+  
+  # Branches that can update the baseline
+  update_branches:
+    - "main"
+    - "develop"
+  
+  # Automatic baseline update on version tags
+  auto_update_on_release: true
+
+# External repository integration
+external_repositories:
+  ferrocp_benchmarks:
+    enabled: true
+    repository: "loonghao/ferrocp-benchmarks"
+    branch: "main"
+    data_organization: "YYYY/MM"  # Year/Month structure
+    auto_push_on_main: true
+    create_symlinks: true
+    file_retention_days: -1  # Keep files indefinitely
+
+    # File organization patterns
+    file_patterns:
+      data: "data/{year}/{month}/{date}-{run_number}-{type}.{ext}"
+      reports: "reports/{year}/{month}/{date}-{run_number}-{type}.{ext}"
+      charts: "charts/{year}/{month}/{date}-{run_number}-{type}.{ext}"
+      metadata: "data/{year}/{month}/{date}-{run_number}-metadata.json"
+
+    # Index generation
+    generate_indices: true
+    update_readme: true
+    create_statistics: true

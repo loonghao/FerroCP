@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FerroCP Performance Benchmarks</title>
+    <meta name="description" content="Real-time performance monitoring and benchmark results for FerroCP">
+    
+    <!-- CSS -->
+    <link rel="stylesheet" href="assets/css/style.css">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    
+    <!-- Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo">
+                    <h1><i class="fas fa-chart-line"></i> FerroCP Benchmarks</h1>
+                    <p>Performance Monitoring Dashboard</p>
+                </div>
+                <nav class="nav">
+                    <a href="#overview" class="nav-link active" data-section="overview">
+                        <i class="fas fa-tachometer-alt"></i> Overview
+                    </a>
+                    <a href="#trends" class="nav-link" data-section="trends">
+                        <i class="fas fa-chart-area"></i> Trends
+                    </a>
+                    <a href="#platforms" class="nav-link" data-section="platforms">
+                        <i class="fas fa-server"></i> Platforms
+                    </a>
+                    <a href="#reports" class="nav-link" data-section="reports">
+                        <i class="fas fa-file-alt"></i> Reports
+                    </a>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+        <div class="container">
+            <!-- Loading Indicator -->
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                <p>Loading benchmark data...</p>
+            </div>
+
+            <!-- Error Message -->
+            <div id="error" class="error hidden">
+                <div class="error-content">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <h3>Failed to Load Data</h3>
+                    <p id="error-message">Unable to fetch benchmark data. Please try again later.</p>
+                    <button onclick="location.reload()" class="btn btn-primary">
+                        <i class="fas fa-redo"></i> Retry
+                    </button>
+                </div>
+            </div>
+
+            <!-- Overview Section -->
+            <section id="overview-section" class="section active">
+                <div class="section-header">
+                    <h2><i class="fas fa-tachometer-alt"></i> Performance Overview</h2>
+                    <div class="controls">
+                        <div class="filter-group">
+                            <label for="time-range">Time Range:</label>
+                            <select id="time-range" class="select">
+                                <option value="7">Last 7 days</option>
+                                <option value="30" selected>Last 30 days</option>
+                                <option value="90">Last 90 days</option>
+                                <option value="all">All time</option>
+                            </select>
+                        </div>
+                        <button id="refresh-btn" class="btn btn-secondary">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stats Cards -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-play-circle"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="total-runs">-</h3>
+                            <p>Total Runs</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="latest-run">-</h3>
+                            <p>Latest Run</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-server"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="platforms-count">-</h3>
+                            <p>Platforms</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="avg-performance">-</h3>
+                            <p>Avg Performance</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Grid -->
+                <div class="charts-grid">
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h3>Performance Overview</h3>
+                            <div class="chart-controls">
+                                <button class="btn btn-sm" onclick="downloadChart('overview-chart')">
+                                    <i class="fas fa-download"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <canvas id="overview-chart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h3>Platform Comparison</h3>
+                            <div class="chart-controls">
+                                <button class="btn btn-sm" onclick="downloadChart('platform-chart')">
+                                    <i class="fas fa-download"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <canvas id="platform-chart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Interactive Chart -->
+                <div class="chart-container full-width">
+                    <div class="chart-header">
+                        <h3>Interactive Performance Timeline</h3>
+                        <div class="chart-controls">
+                            <select id="benchmark-filter" class="select">
+                                <option value="all">All Benchmarks</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="timeline-chart" class="plotly-chart"></div>
+                </div>
+            </section>
+
+            <!-- Trends Section -->
+            <section id="trends-section" class="section">
+                <div class="section-header">
+                    <h2><i class="fas fa-chart-area"></i> Performance Trends</h2>
+                </div>
+                <div class="trends-content">
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h3>Performance Trend Analysis</h3>
+                        </div>
+                        <div id="trends-chart" class="plotly-chart"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Platforms Section -->
+            <section id="platforms-section" class="section">
+                <div class="section-header">
+                    <h2><i class="fas fa-server"></i> Platform Analysis</h2>
+                </div>
+                <div class="platforms-content">
+                    <div class="platform-grid">
+                        <div class="platform-card">
+                            <h3><i class="fab fa-ubuntu"></i> Ubuntu</h3>
+                            <div id="ubuntu-stats" class="platform-stats"></div>
+                        </div>
+                        <div class="platform-card">
+                            <h3><i class="fab fa-windows"></i> Windows</h3>
+                            <div id="windows-stats" class="platform-stats"></div>
+                        </div>
+                        <div class="platform-card">
+                            <h3><i class="fab fa-apple"></i> macOS</h3>
+                            <div id="macos-stats" class="platform-stats"></div>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h3>Cross-Platform Performance Comparison</h3>
+                        </div>
+                        <div id="platform-comparison-chart" class="plotly-chart"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Reports Section -->
+            <section id="reports-section" class="section">
+                <div class="section-header">
+                    <h2><i class="fas fa-file-alt"></i> Benchmark Reports</h2>
+                    <div class="controls">
+                        <input type="text" id="search-reports" placeholder="Search reports..." class="input">
+                    </div>
+                </div>
+                <div class="reports-content">
+                    <div id="reports-list" class="reports-list">
+                        <!-- Reports will be loaded dynamically -->
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-info">
+                    <p>&copy; 2024 FerroCP Project. Performance data updated automatically.</p>
+                    <p>Last updated: <span id="last-updated">-</span></p>
+                </div>
+                <div class="footer-links">
+                    <a href="https://github.com/loonghao/py-eacopy" target="_blank">
+                        <i class="fab fa-github"></i> Source Code
+                    </a>
+                    <a href="https://github.com/loonghao/ferrocp-benchmarks" target="_blank">
+                        <i class="fas fa-database"></i> Data Repository
+                    </a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="assets/js/data-loader.js"></script>
+    <script src="assets/js/charts.js"></script>
+    <script src="assets/js/app.js"></script>
+</body>
+</html>

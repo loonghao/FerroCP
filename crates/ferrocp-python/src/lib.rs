@@ -41,18 +41,23 @@
 use pyo3::prelude::*;
 
 pub mod async_support;
+pub mod batch_operations;
 pub mod config;
 pub mod copy;
 pub mod error;
+pub mod gil_optimization;
 pub mod network;
+pub mod object_cache;
 pub mod progress;
 pub mod sync;
 
 use async_support::*;
+use batch_operations::*;
 use config::*;
 use copy::*;
 use error::*;
 use network::*;
+use object_cache::*;
 use progress::*;
 use sync::*;
 
@@ -75,6 +80,15 @@ fn _ferrocp(py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<PyAsyncOperation>()?;
     m.add_class::<PyAsyncManager>()?;
 
+    // Add batch operation classes
+    m.add_class::<PyBatchCopyRequest>()?;
+    m.add_class::<PyBatchCopyResult>()?;
+    m.add_class::<PyBatchCopyEngine>()?;
+
+    // Add cache classes
+    m.add_class::<PyCacheStats>()?;
+    m.add_class::<PyCacheConfig>()?;
+
     // Add exceptions
     m.add("FerrocpError", py.get_type::<PyFerrocpError>())?;
     m.add("IoError", py.get_type::<PyIoError>())?;
@@ -92,6 +106,15 @@ fn _ferrocp(py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(create_async_manager, m)?)?;
     m.add_function(wrap_pyfunction!(sync_directories, m)?)?;
     m.add_function(wrap_pyfunction!(get_version, m)?)?;
+
+    // Add batch operation functions
+    m.add_function(wrap_pyfunction!(copy_files_batch, m)?)?;
+    m.add_function(wrap_pyfunction!(create_batch_requests, m)?)?;
+
+    // Add cache functions
+    m.add_function(wrap_pyfunction!(get_cache_stats, m)?)?;
+    m.add_function(wrap_pyfunction!(clear_cache, m)?)?;
+    m.add_function(wrap_pyfunction!(configure_cache, m)?)?;
 
     Ok(())
 }
