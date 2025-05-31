@@ -1,0 +1,259 @@
+# GoReleaser configuration for FerroCP
+# See: https://goreleaser.com/customization/
+
+version: 2
+
+# Project metadata
+project_name: ferrocp
+
+# Environment variables
+env:
+  - GO111MODULE=off  # Disable Go modules since this is a Rust project
+
+# Before hooks - run before building
+before:
+  hooks:
+    # Ensure we have the latest Rust toolchain
+    - rustup update stable
+    # Install cross-compilation targets
+    - rustup target add x86_64-unknown-linux-gnu
+    - rustup target add aarch64-unknown-linux-gnu
+    - rustup target add x86_64-apple-darwin
+    - rustup target add aarch64-apple-darwin
+    - rustup target add x86_64-pc-windows-gnu
+    # Clean previous builds
+    - cargo clean
+    # Run tests to ensure everything works
+    - cargo test --workspace --exclude ferrocp-python --release
+    # Build all targets
+    - chmod +x scripts/build-all-targets.sh
+    - ./scripts/build-all-targets.sh
+
+# Build configuration for Rust binaries
+builds:
+  - id: ferrocp-linux-amd64
+    binary: ferrocp
+    builder: prebuilt
+    prebuilt:
+      path: target/x86_64-unknown-linux-gnu/release/ferrocp
+    goos: [linux]
+    goarch: [amd64]
+
+  - id: ferrocp-linux-arm64
+    binary: ferrocp
+    builder: prebuilt
+    prebuilt:
+      path: target/aarch64-unknown-linux-gnu/release/ferrocp
+    goos: [linux]
+    goarch: [arm64]
+
+  - id: ferrocp-darwin-amd64
+    binary: ferrocp
+    builder: prebuilt
+    prebuilt:
+      path: target/x86_64-apple-darwin/release/ferrocp
+    goos: [darwin]
+    goarch: [amd64]
+
+  - id: ferrocp-darwin-arm64
+    binary: ferrocp
+    builder: prebuilt
+    prebuilt:
+      path: target/aarch64-apple-darwin/release/ferrocp
+    goos: [darwin]
+    goarch: [arm64]
+
+  - id: ferrocp-windows-amd64
+    binary: ferrocp
+    builder: prebuilt
+    prebuilt:
+      path: target/x86_64-pc-windows-gnu/release/ferrocp.exe
+    goos: [windows]
+    goarch: [amd64]
+
+
+
+# Archive configuration
+archives:
+  - id: ferrocp-archives
+    builds:
+      - ferrocp-linux-amd64
+      - ferrocp-linux-arm64
+      - ferrocp-darwin-amd64
+      - ferrocp-darwin-arm64
+      - ferrocp-windows-amd64
+    name_template: "{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE*
+      - CHANGELOG.md
+
+# Checksum configuration
+checksum:
+  name_template: "{{ .ProjectName }}-{{ .Version }}-checksums.txt"
+  algorithm: sha256
+
+# Snapshot configuration (for non-tag builds)
+snapshot:
+  name_template: "{{ .Version }}-next"
+
+# Changelog configuration
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+      - "^style:"
+      - "^refactor:"
+      - "merge conflict"
+      - Merge pull request
+      - Merge remote-tracking branch
+      - Merge branch
+  groups:
+    - title: "🚀 Features"
+      regexp: "^.*feat[(\\w)]*:+.*$"
+      order: 0
+    - title: "🐛 Bug Fixes"
+      regexp: "^.*fix[(\\w)]*:+.*$"
+      order: 1
+    - title: "🔒 Security"
+      regexp: "^.*security[(\\w)]*:+.*$"
+      order: 2
+    - title: "📚 Documentation"
+      regexp: "^.*docs[(\\w)]*:+.*$"
+      order: 3
+    - title: "⚡ Performance"
+      regexp: "^.*perf[(\\w)]*:+.*$"
+      order: 4
+    - title: "🧹 Maintenance"
+      regexp: "^.*chore[(\\w)]*:+.*$"
+      order: 5
+
+# GitHub Release configuration
+release:
+  github:
+    owner: loonghao
+    name: FerroCP
+  
+  # Release name template
+  name_template: "FerroCP {{ .Version }}"
+  
+  # Pre-release detection
+  prerelease: auto
+  
+  # Release notes
+  header: |
+    ## FerroCP {{ .Version }}
+    
+    High-performance file copying tool built with Rust.
+    
+    ### Installation
+    
+    #### Quick Install (Linux/macOS)
+    ```bash
+    # Download and install the latest version
+    curl -sSL https://github.com/loonghao/FerroCP/releases/download/{{ .Version }}/ferrocp-{{ .Version }}-linux-amd64.tar.gz | tar -xz
+    sudo mv ferrocp /usr/local/bin/
+    ```
+    
+    #### Manual Installation
+    1. Download the appropriate binary for your platform below
+    2. Extract the archive (if applicable)
+    3. Make the binary executable: `chmod +x ferrocp` (Linux/macOS)
+    4. Move to a directory in your PATH: `sudo mv ferrocp /usr/local/bin/`
+    
+    #### Verification
+    All binaries are signed and checksums are provided for verification:
+    ```bash
+    # Verify checksum (Linux/macOS)
+    sha256sum -c ferrocp-{{ .Version }}-checksums.txt
+    
+    # Verify checksum (Windows)
+    certutil -hashfile ferrocp.exe SHA256
+    ```
+  
+  footer: |
+    ---
+    
+    **Full Changelog**: https://github.com/loonghao/FerroCP/compare/{{ .PreviousTag }}...{{ .Tag }}
+    
+    ### Support
+    - 📖 [Documentation](https://loonghao.github.io/ferrocp)
+    - 🐛 [Report Issues](https://github.com/loonghao/FerroCP/issues)
+    - 💬 [Discussions](https://github.com/loonghao/FerroCP/discussions)
+
+# Homebrew tap (for macOS users)
+brews:
+  - name: ferrocp
+    repository:
+      owner: loonghao
+      name: homebrew-tap
+    
+    # Brew formula details
+    description: "High-performance file copying tool built with Rust"
+    homepage: "https://github.com/loonghao/FerroCP"
+    license: "Apache-2.0"
+    
+    # Installation test
+    test: |
+      system "#{bin}/ferrocp", "--version"
+    
+    # Dependencies
+    dependencies:
+      - name: rust
+        type: build
+
+# Scoop bucket (for Windows users)
+scoops:
+  - name: ferrocp
+    repository:
+      owner: loonghao
+      name: scoop-bucket
+    
+    description: "High-performance file copying tool built with Rust"
+    homepage: "https://github.com/loonghao/FerroCP"
+    license: "Apache-2.0"
+
+# Docker images
+dockers:
+  - image_templates:
+      - "ghcr.io/loonghao/ferrocp:{{ .Version }}-amd64"
+      - "ghcr.io/loonghao/ferrocp:latest-amd64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description=High-performance file copying tool"
+      - "--label=org.opencontainers.image.url=https://github.com/loonghao/FerroCP"
+      - "--label=org.opencontainers.image.source=https://github.com/loonghao/FerroCP"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.licenses=Apache-2.0"
+
+# Announce to various platforms
+announce:
+  # Discord webhook (optional)
+  discord:
+    enabled: false
+    message_template: "FerroCP {{ .Version }} is out! Check it out: {{ .ReleaseURL }}"
+  
+  # Twitter (optional)
+  twitter:
+    enabled: false
+    message_template: "FerroCP {{ .Version }} is out! High-performance file copying tool built with Rust. {{ .ReleaseURL }}"
+
+# Validation
+validate:
+  # Ensure we have a clean git state
+  git:
+    clean: true

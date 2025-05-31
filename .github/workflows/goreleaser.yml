@@ -1,0 +1,141 @@
+name: GoReleaser
+
+# Permissions needed for this workflow
+permissions:
+  contents: write    # For creating releases
+  packages: write    # For publishing Docker images
+  id-token: write    # For signing artifacts
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'Run in dry-run mode (no release created)'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: goreleaser
+
+      # Install cross-compilation tools for Linux
+      - name: Install cross-compilation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-aarch64-linux-gnu \
+            gcc-mingw-w64-x86-64 \
+            libc6-dev-arm64-cross
+          
+          # Verify tools are installed
+          aarch64-linux-gnu-gcc --version
+          x86_64-w64-mingw32-gcc --version
+
+      # Set up Go (required by GoReleaser)
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      # Install GoReleaser
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          install-only: true
+
+      # Make scripts executable
+      - name: Make scripts executable
+        run: |
+          chmod +x scripts/build-all-targets.sh
+          chmod +x scripts/build-cross.sh
+
+      # Run GoReleaser
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean ${{ github.event.inputs.dry-run == 'true' && '--snapshot' || '' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Upload artifacts for dry-run
+      - name: Upload artifacts (dry-run)
+        if: github.event.inputs.dry-run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: goreleaser-artifacts
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*checksums.txt
+          if-no-files-found: error
+
+  # Test the released binaries
+  test-binaries:
+    needs: goreleaser
+    if: github.event.inputs.dry-run != 'true'
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Download release assets
+        run: |
+          # Get the latest release
+          RELEASE_TAG=${GITHUB_REF#refs/tags/}
+          
+          # Determine the correct binary name for this OS
+          case "${{ matrix.os }}" in
+            ubuntu-latest)
+              BINARY_NAME="ferrocp-${RELEASE_TAG#v}-linux-amd64.tar.gz"
+              EXTRACT_CMD="tar -xzf"
+              BINARY_FILE="ferrocp"
+              ;;
+            windows-latest)
+              BINARY_NAME="ferrocp-${RELEASE_TAG#v}-windows-amd64.zip"
+              EXTRACT_CMD="unzip"
+              BINARY_FILE="ferrocp.exe"
+              ;;
+            macos-latest)
+              BINARY_NAME="ferrocp-${RELEASE_TAG#v}-darwin-amd64.tar.gz"
+              EXTRACT_CMD="tar -xzf"
+              BINARY_FILE="ferrocp"
+              ;;
+          esac
+          
+          # Download and extract
+          curl -L -o "$BINARY_NAME" "https://github.com/loonghao/FerroCP/releases/download/$RELEASE_TAG/$BINARY_NAME"
+          $EXTRACT_CMD "$BINARY_NAME"
+          
+          # Make executable (Unix systems)
+          if [[ "${{ matrix.os }}" != "windows-latest" ]]; then
+            chmod +x "$BINARY_FILE"
+          fi
+          
+          # Test the binary
+          ./"$BINARY_FILE" --version
+          ./"$BINARY_FILE" --help | head -10
+        shell: bash
