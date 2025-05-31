@@ -321,8 +321,6 @@ pub fn create_batch_requests(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use tempfile::TempDir;
 
     #[tokio::test]
     async fn test_batch_copy_engine_creation() {

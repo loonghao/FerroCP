@@ -3,8 +3,8 @@
 use crate::buffer::{AdaptiveBuffer, BufferPool};
 use crate::memory_map::MemoryMappedFile;
 use crate::reader::{AsyncFileReader, FileReader};
-use crate::writer::{AsyncFileWriter, FileWriter};
-use ferrocp_types::{DeviceType, Error, ErrorKind};
+use crate::writer::AsyncFileWriter;
+use ferrocp_types::{DeviceType, ErrorKind};
 use std::fs;
 use std::io::Write;
 use std::path::Path;

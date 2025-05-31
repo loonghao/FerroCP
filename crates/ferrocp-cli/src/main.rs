@@ -225,10 +225,10 @@ async fn copy_command(
     source: PathBuf,
     destination: PathBuf,
     mode: CopyMode,
-    threads: Option<usize>,
+    _threads: Option<usize>,
     compress: bool,
-    compression_level: u8,
-    zero_copy: bool,
+    _compression_level: u8,
+    _zero_copy: bool,
     exclude: Vec<String>,
     include: Vec<String>,
     quiet: bool,
@@ -269,7 +269,7 @@ async fn copy_command(
     engine.start().await?;
 
     // Create copy request using builder pattern
-    let mut request = CopyRequest::new(source, destination)
+    let request = CopyRequest::new(source, destination)
         .with_mode(mode)
         .preserve_metadata(true)
         .verify_copy(false)

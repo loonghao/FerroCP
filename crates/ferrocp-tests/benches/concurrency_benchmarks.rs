@@ -108,7 +108,7 @@ impl ResourceContentionSimulator {
 
             let handle = thread::spawn(move || {
                 for _ in 0..operations_per_thread {
-                    let start = Instant::now();
+                    let _start = Instant::now();
 
                     // Simulate lock contention
                     match resource.try_lock() {

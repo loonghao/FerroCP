@@ -2,7 +2,6 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use ferrocp_engine::selector::{EngineSelectionConfig, EngineSelector};
-use std::time::Duration;
 use tempfile::TempDir;
 
 fn bench_engine_selection_performance(c: &mut Criterion) {

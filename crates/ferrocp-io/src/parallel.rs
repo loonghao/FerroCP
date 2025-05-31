@@ -313,8 +313,8 @@ impl ParallelCopyEngine {
             let mut total_read = 0u64;
 
             // Read-ahead buffer for pipeline optimization
-            let mut read_ahead_buffer: Option<Vec<u8>> = None;
-            let mut read_ahead_size = 0usize;
+            let _read_ahead_buffer: Option<Vec<u8>> = None;
+            let _read_ahead_size = 0usize;
 
             while total_read < file_size {
                 // Acquire semaphore permit for memory control
@@ -335,7 +335,7 @@ impl ParallelCopyEngine {
                 let current_chunk_size = std::cmp::min(chunk_size, remaining as usize);
 
                 // Implement read-ahead optimization
-                let effective_read_size =
+                let _effective_read_size =
                     if enable_read_ahead && remaining > current_chunk_size as u64 {
                         // Read ahead for better pipeline performance
                         let read_ahead_size = current_chunk_size * read_ahead_multiplier;
