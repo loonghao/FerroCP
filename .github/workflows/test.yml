@@ -58,17 +58,14 @@ jobs:
     - name: Run clippy
       run: cargo clippy --workspace --all-targets --all-features -- -D clippy::correctness -D clippy::suspicious -D clippy::complexity -W clippy::perf -W clippy::style
 
-    - name: Build workspace
-      run: cargo build --workspace --all-features
-    
     - name: Run tests (excluding ferrocp-python)
       run: |
         cargo test --workspace --all-features --exclude ferrocp-python
-    
+
     - name: Build ferrocp-python (without tests)
       run: |
         cargo build -p ferrocp-python
-    
+
     - name: Run doctests
       run: cargo test --workspace --doc --exclude ferrocp-python
 
