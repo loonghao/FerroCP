@@ -272,17 +272,17 @@ fn benchmark_file_io_syscall_patterns(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::new("read_pattern", pattern_name),
             &(total_size, num_operations, chunk_size),
-            |b, &(total_size, num_operations, chunk_size)| {
+            |b, &(total_size, num_operations, _chunk_size)| {
                 b.iter(|| {
                     let temp_dir = TempDir::new().unwrap();
-                    let source = create_test_file(&temp_dir, "source.txt", total_size);
+                    let source = create_test_file(&temp_dir, "source.txt", *total_size);
                     let tracker = SyscallTracker::new();
 
                     rt.block_on(async {
                         tracker.track_open();
-                        let mut reader = AsyncFileReader::open(&source).await.unwrap();
+                        let reader = AsyncFileReader::open(&source).await.unwrap();
 
-                        for _ in 0..num_operations {
+                        for _ in 0..*num_operations {
                             tracker.track_read();
                             // Simulate reading chunk_size bytes
                             // In real implementation, this would be actual read operations
@@ -299,7 +299,7 @@ fn benchmark_file_io_syscall_patterns(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::new("write_pattern", pattern_name),
             &(total_size, num_operations, chunk_size),
-            |b, &(total_size, num_operations, chunk_size)| {
+            |b, &(_total_size, num_operations, _chunk_size)| {
                 b.iter(|| {
                     let temp_dir = TempDir::new().unwrap();
                     let dest = temp_dir.path().join("dest.txt");
@@ -310,7 +310,7 @@ fn benchmark_file_io_syscall_patterns(c: &mut Criterion) {
                         tracker.track_open();
                         let mut writer = AsyncFileWriter::create(&dest).await.unwrap();
 
-                        for _ in 0..num_operations {
+                        for _ in 0..*num_operations {
                             tracker.track_write();
                             // Simulate writing chunk_size bytes
                             let _ = writer.write_all(&data).await;

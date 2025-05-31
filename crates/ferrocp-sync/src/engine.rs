@@ -597,7 +597,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_sync_engine_creation() {
-        let engine = SyncEngine::new().await.unwrap();
+        let _engine = SyncEngine::new().await.unwrap();
         // Just test that it can be created without errors
         assert!(true);
     }

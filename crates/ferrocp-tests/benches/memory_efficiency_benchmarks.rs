@@ -112,9 +112,8 @@ fn benchmark_buffer_pool_efficiency(c: &mut Criterion) {
                     let mut buffers = Vec::new();
                     for _ in 0..pool_size {
                         tracker.track_allocation(buffer_size);
-                        if let Some(buffer) = pool.get_buffer() {
-                            buffers.push(buffer);
-                        }
+                        let buffer = pool.get_buffer();
+                        buffers.push(buffer);
                     }
 
                     // Return buffers
@@ -135,7 +134,7 @@ fn benchmark_buffer_pool_efficiency(c: &mut Criterion) {
             |b, &pool_size| {
                 b.iter(|| {
                     let tracker = AllocationTracker::new();
-                    let pool = MultiSizeBufferPool::new();
+                    let pool = MultiSizeBufferPool::new(1024);
 
                     // Test different buffer sizes
                     let sizes = vec![1024, 4096, 16384, 65536];
@@ -144,16 +143,15 @@ fn benchmark_buffer_pool_efficiency(c: &mut Criterion) {
                     for &size in &sizes {
                         for _ in 0..(pool_size / 4) {
                             tracker.track_allocation(size);
-                            if let Some(buffer) = pool.get_buffer(size) {
-                                buffers.push((buffer, size));
-                            }
+                            let buffer = pool.get_buffer(size);
+                            buffers.push((buffer, size));
                         }
                     }
 
                     // Return buffers
-                    for (buffer, size) in buffers {
-                        tracker.track_deallocation(size);
-                        pool.return_buffer(buffer, size);
+                    for (buffer, _size) in buffers {
+                        tracker.track_deallocation(_size);
+                        pool.return_buffer(buffer);
                     }
 
                     black_box(tracker.get_stats());
@@ -189,11 +187,13 @@ fn benchmark_adaptive_buffer_memory(c: &mut Criterion) {
                     // Simulate adaptation cycles
                     for size in [1024, 4096, 16384, 65536, 262144] {
                         tracker.track_allocation(size);
-                        buffer.resize(size);
+                        buffer.reserve(size);
 
                         // Simulate usage
-                        let data = vec![0u8; size];
-                        buffer.as_mut().copy_from_slice(&data);
+                        let data = vec![0u8; size.min(buffer.capacity())];
+                        if !data.is_empty() {
+                            buffer.as_mut().extend_from_slice(&data);
+                        }
                         buffer.clear();
 
                         tracker.track_deallocation(size);

@@ -177,7 +177,7 @@ fn benchmark_file_io_operations(c: &mut Criterion) {
 
 /// Benchmark pre-read operations
 fn benchmark_preread_operations(c: &mut Criterion) {
-    let rt = Runtime::new().unwrap();
+    let _rt = Runtime::new().unwrap();
     let mut group = c.benchmark_group("preread_operations");
 
     let strategies = vec![
