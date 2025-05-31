@@ -8,13 +8,14 @@
 .github/
 └── workflows/            # GitHub Actions 工作流
     ├── test.yml          # 主测试工作流（包含代码覆盖率）
-    ├── release.yml       # 发布工作流（标签触发）
+    ├── goreleaser.yml    # GoReleaser 自动化发布工作流
     ├── benchmark.yml     # 性能基准测试工作流（Python + Rust）
     ├── codspeed.yml      # CodSpeed 性能监控工作流
     ├── test-pgo.yml      # PGO 优化测试工作流
     ├── bumpversion.yml   # 版本更新工作流
     ├── docs.yml          # 文档构建工作流
-    └── issue-translator.yml # 问题翻译工作流
+    ├── issue-translator.yml # 问题翻译工作流
+    └── shared-setup.yml  # 共享的 Rust 环境设置组件
 ```
 
 ## 工作流说明
@@ -24,20 +25,20 @@
 主测试工作流在代码推送和 Pull Request 时自动运行，执行以下任务：
 
 - **代码质量检查**: 运行 Rust 代码格式化检查和 Clippy 静态分析
-- **构建测试**: 在多平台上构建 Rust 工作空间和 Python 扩展
-- **单元测试**: 运行 Rust 和 Python 测试套件
+- **单元测试**: 运行 Rust 和 Python 测试套件（不包含构建步骤）
 - **代码覆盖率**: 收集 Python 和 Rust 代码覆盖率并上传到 Codecov
 - **安全审计**: 运行 cargo audit 检查安全漏洞
 
-### 发布工作流 (`release.yml`)
+### GoReleaser 自动化发布工作流 (`goreleaser.yml`)
 
-发布工作流在创建标签时自动运行，执行以下任务：
+GoReleaser 工作流在创建版本标签时自动运行，提供完整的发布自动化：
 
-- **多平台构建**: 在 Ubuntu、macOS、Windows 上构建可执行文件
-- **Python 包构建**: 构建 Python wheels 和源码分发包
-- **质量检查**: 运行完整的测试套件和代码检查
-- **自动发布**: 发布到 PyPI 和 GitHub Releases
-- **资产上传**: 上传跨平台可执行文件
+- **交叉编译**: 自动构建多平台二进制文件（Linux x86_64/ARM64, macOS x86_64/ARM64, Windows x86_64）
+- **包管理器集成**: 自动更新 Homebrew tap 和 Scoop bucket
+- **Docker 镜像**: 自动构建和发布 Docker 镜像到 GitHub Container Registry
+- **GitHub Release**: 自动创建 GitHub Release 并上传所有资产
+- **校验和生成**: 自动生成 SHA256 校验和文件
+- **变更日志**: 自动生成结构化的变更日志
 
 ### 性能基准测试工作流 (`benchmark.yml`)
 
@@ -124,9 +125,14 @@ Profile-Guided Optimization 测试工作流：
 - **代码覆盖率**: 每次 push 和 PR 都会自动收集和报告代码覆盖率
 
 ### 发布流程
-- **发布新版本**: 创建以数字开头的新标签（如 v1.0.0）
-- **自动构建**: 标签推送时自动构建多平台可执行文件和 Python 包
-- **自动发布**: 自动发布到 PyPI 和 GitHub Releases
+- **发布新版本**: 创建版本标签（如 v1.0.0）并推送到远端
+- **自动化发布**: GoReleaser 自动处理整个发布流程
+  - 交叉编译所有平台的二进制文件
+  - 创建压缩包和校验和
+  - 生成变更日志
+  - 创建 GitHub Release
+  - 更新包管理器（Homebrew, Scoop）
+  - 构建和发布 Docker 镜像
 
 ### 性能监控
 - **定期基准测试**: 每周自动运行完整的性能基准测试
@@ -209,13 +215,15 @@ Profile-Guided Optimization 测试工作流：
 
 当前项目包含 **9 个** GitHub Actions 工作流文件：
 
-- 3 个核心工作流（测试、发布、基准测试）
+- 3 个核心工作流（测试、GoReleaser发布、基准测试）
 - 3 个专业工作流（CodSpeed、PGO、文档）
-- 3 个辅助工作流（版本管理、问题翻译、其他）
+- 3 个辅助工作流（版本管理、问题翻译、共享组件）
 
 ## 最近更新
 
+- **2024年12月**: 使用 GoReleaser 替换复杂的手动发布工作流
+- **2024年12月**: 简化测试工作流，移除重复的构建步骤
+- **2024年12月**: 添加共享的 Rust 环境设置组件
 - **2024年12月**: 整合代码覆盖率功能到主测试工作流
 - **2024年12月**: 整合 Python 和 Rust 基准测试到统一工作流
 - **2024年12月**: 添加 macOS ring 库编译修复
-- **2024年12月**: 优化工作流结构，减少重复配置
