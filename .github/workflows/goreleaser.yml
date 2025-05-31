@@ -4,7 +4,7 @@ name: GoReleaser
 permissions:
   contents: write    # For creating releases
   packages: write    # For publishing Docker images
-  id-token: write    # For signing artifacts
+  id-token: write    # For PyPI Trusted Publishing and signing artifacts
 
 on:
   push:
@@ -92,7 +92,7 @@ jobs:
           args: release --clean ${{ github.event.inputs.dry-run == 'true' && '--snapshot' || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
       # Upload artifacts for dry-run
       - name: Upload artifacts (dry-run)
