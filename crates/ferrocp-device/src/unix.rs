@@ -65,6 +65,7 @@ impl DeviceDetector {
                 let is_network = self.is_network_filesystem(&fs_type);
                 let is_ram_disk = self.is_ram_filesystem(&fs_type);
 
+                best_match_len = mount_point.len();
                 best_match = Some(MountInfo {
                     device,
                     mount_point,
@@ -73,7 +74,6 @@ impl DeviceDetector {
                     is_network,
                     is_ram_disk,
                 });
-                best_match_len = mount_point.len();
             }
         }
 
