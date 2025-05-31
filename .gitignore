@@ -81,3 +81,8 @@ Cargo.lock
 
 # Wheel build artifacts
 wheelhouse/
+
+# FerroCP specific cache and temporary directories
+.ferrocp_cache/
+pgo-data/
+.benchmarks/
