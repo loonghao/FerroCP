@@ -38,25 +38,48 @@ jobs:
         with:
           key: goreleaser
 
-      # Install cross-compilation tools for Linux
-      - name: Install cross-compilation tools
+      # Install complete build toolchain for cross-compilation
+      - name: Install complete build toolchain
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            build-essential \
+            gcc-multilib \
             gcc-aarch64-linux-gnu \
             gcc-mingw-w64-x86-64 \
             libc6-dev-arm64-cross \
+            binutils \
+            binutils-aarch64-linux-gnu \
+            binutils-mingw-w64-x86-64 \
+            binutils-multiarch \
             lld \
             clang \
-            build-essential \
             pkg-config \
             libssl-dev
 
-          # Verify tools are installed
-          aarch64-linux-gnu-gcc --version
-          x86_64-w64-mingw32-gcc --version
-          lld --version
-          clang --version
+          # Ensure linker is available in all standard locations
+          sudo ln -sf /usr/bin/ld.bfd /usr/bin/ld || true
+          sudo ln -sf /usr/bin/ld.bfd /usr/local/bin/ld || true
+          sudo ln -sf /usr/bin/ld.bfd /usr/local/bin/ld.bfd || true
+          sudo ln -sf /usr/bin/ld.gold /usr/local/bin/ld.gold || true
+
+          # Ensure gcc can find the linker
+          sudo ln -sf /usr/bin/ld.bfd /usr/lib/gcc/x86_64-linux-gnu/*/ld || true
+
+          # Verify complete toolchain installation
+          echo "=== Verifying build toolchain ==="
+          which ld && ld --version | head -1
+          which gcc && gcc --version | head -1
+          which clang && clang --version | head -1
+          which lld && lld --version | head -1
+
+          echo "=== Verifying cross-compilation tools ==="
+          aarch64-linux-gnu-gcc --version | head -1
+          x86_64-w64-mingw32-gcc --version | head -1
+
+          echo "=== Testing basic linking capability ==="
+          echo 'int main(){return 0;}' | gcc -x c - -o /tmp/test_link && echo "✅ Basic linking test passed" || echo "❌ Basic linking test failed"
+          rm -f /tmp/test_link
 
       # Set up Go (required by GoReleaser)
       - name: Set up Go
@@ -77,20 +100,51 @@ jobs:
         with:
           python-version: '3.11'
 
-      # Install Python dependencies
+      # Install Python dependencies with proper environment setup
       - name: Install Python dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install maturin twine build
+          python -m pip install --upgrade pip setuptools wheel
+          pip install maturin[patchelf] twine build
+
+          # Configure environment for maturin
+          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
+          echo "RUSTFLAGS=-C linker=clang -C link-arg=-fuse-ld=lld" >> $GITHUB_ENV
+          echo "CC=clang" >> $GITHUB_ENV
+          echo "CXX=clang++" >> $GITHUB_ENV
+
+      # Build Python wheels using maturin-action with clang toolchain
+      - name: Build Python wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          args: --release --out dist --interpreter python3.11
+          rust-toolchain: stable
+          manylinux: auto
+          before-script-linux: |
+            # Install clang toolchain in manylinux container
+            yum install -y clang lld || (apt-get update && apt-get install -y clang lld)
+
+            # Verify clang installation
+            which clang && clang --version | head -1
+            which lld && lld --version | head -1
+
+            # Set up clang environment in container
+            export CC=clang
+            export CXX=clang++
+            export RUSTFLAGS="-C linker=clang -C link-arg=-fuse-ld=lld"
+
+            echo "✅ Clang toolchain configured in container"
+          docker-options: -e CC=clang -e CXX=clang++ -e RUSTFLAGS="-C linker=clang -C link-arg=-fuse-ld=lld"
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: true
 
       # Make scripts executable
       - name: Make scripts executable
         run: |
           chmod +x scripts/build-all-targets.sh
           chmod +x scripts/build-cross.sh
-          chmod +x scripts/build-python-wheels.sh
 
-      # Run GoReleaser
+      # Run GoReleaser (excluding Python wheels)
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -101,6 +155,23 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
+      # Verify built artifacts
+      - name: Verify built artifacts
+        run: |
+          echo "=== Verifying GoReleaser artifacts ==="
+          ls -la dist/ || echo "No dist directory found"
+
+          echo "=== Verifying Python wheels ==="
+          ls -la dist/*.whl || echo "No Python wheels found"
+
+          echo "=== Testing Python wheel import ==="
+          if ls dist/*.whl 1> /dev/null 2>&1; then
+            pip install dist/*.whl
+            python -c "import ferrocp; print(f'FerroCP version: {ferrocp.__version__}')"
+          else
+            echo "No Python wheels to test"
+          fi
+
       # Upload artifacts for dry-run
       - name: Upload artifacts (dry-run)
         if: github.event.inputs.dry-run == 'true'
@@ -110,6 +181,7 @@ jobs:
           path: |
             dist/*.tar.gz
             dist/*.zip
+            dist/*.whl
             dist/*checksums.txt
           if-no-files-found: error
 
