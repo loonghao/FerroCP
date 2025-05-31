@@ -169,6 +169,97 @@ def codspeed_all(session):
 
 
 @nox.session(python=DEFAULT_PYTHON)
+def rust_coverage(session):
+    """Run Rust code coverage analysis using cargo-tarpaulin (fallback to basic test coverage)."""
+    session.log("Attempting to run Rust coverage analysis...")
+
+    # Ensure coverage directory exists
+    os.makedirs("coverage", exist_ok=True)
+
+    # Try cargo-tarpaulin first (if available and working)
+    try:
+        session.log("Trying cargo-tarpaulin...")
+        session.run("cargo", "tarpaulin", "--version", external=True)
+
+        session.log("Running cargo-tarpaulin...")
+        session.run(
+            "cargo", "tarpaulin",
+            "--workspace",
+            "--all-features",
+            "--out", "xml", "html", "lcov",
+            "--output-dir", "coverage/",
+            "--timeout", "120",
+            "--skip-clean",
+            external=True
+        )
+
+        session.log("Tarpaulin coverage report generated successfully")
+
+    except Exception as e:
+        session.log(f"Tarpaulin failed: {e}")
+        session.log("Falling back to basic test coverage analysis...")
+
+        # Use our custom coverage script
+        session.run("python", "scripts/generate_rust_coverage.py", external=True)
+        session.log("Basic coverage report generated using fallback script")
+
+    # Display coverage summary
+    coverage_xml = Path("coverage/cobertura.xml")
+    coverage_html = Path("coverage/index.html")
+
+    if coverage_xml.exists():
+        session.log("Coverage report files:")
+        session.log(f"  - XML: {coverage_xml}")
+        if coverage_html.exists():
+            session.log(f"  - HTML: {coverage_html}")
+        if Path("coverage/lcov.info").exists():
+            session.log(f"  - LCOV: coverage/lcov.info")
+    else:
+        session.log("Warning: No coverage files generated")
+
+
+@nox.session(python=DEFAULT_PYTHON)
+def coverage_all(session):
+    """Run comprehensive coverage analysis for both Python and Rust code."""
+    session.log("Running comprehensive coverage analysis...")
+
+    # Run Python coverage first
+    session.log("=== Running Python Coverage ===")
+    install_with_groups(session, "testing")
+
+    # Build the project first
+    session.log("Building project with maturin...")
+    session.run("maturin", "develop", "--release")
+
+    session.log("Running Python tests with coverage...")
+    session.run(
+        "pytest",
+        "tests/",
+        "--cov=ferrocp",
+        "--cov-report=xml:coverage/python-coverage.xml",
+        "--cov-report=term-missing",
+        "--cov-report=html:coverage/python-htmlcov",
+    )
+
+    # Run Rust coverage
+    session.log("=== Running Rust Coverage ===")
+
+    # Call the rust_coverage session
+    session.run("nox", "-s", "rust_coverage", external=True)
+
+    # Generate combined coverage summary
+    session.log("=== Coverage Summary ===")
+    session.log("Coverage reports generated:")
+    session.log("  Python:")
+    session.log("    - XML: coverage/python-coverage.xml")
+    session.log("    - HTML: coverage/python-htmlcov/")
+    session.log("  Rust:")
+    session.log("    - XML: coverage/cobertura.xml")
+    session.log("    - HTML: coverage/tarpaulin-report.html")
+    session.log("    - LCOV: coverage/lcov.info")
+
+
+@nox.session(python=DEFAULT_PYTHON)
 def docs(session):
     """Build documentation."""
     install_with_groups(session, "docs")

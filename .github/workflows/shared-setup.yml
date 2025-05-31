@@ -1,0 +1,66 @@
+# Shared setup steps for Rust workflows
+# This file contains reusable workflow components to reduce duplication
+
+name: Shared Rust Setup
+
+on:
+  workflow_call:
+    inputs:
+      rust-toolchain:
+        description: 'Rust toolchain to use'
+        required: false
+        default: 'stable'
+        type: string
+      cache-key-suffix:
+        description: 'Additional suffix for cache key'
+        required: false
+        default: ''
+        type: string
+      install-clippy:
+        description: 'Whether to install clippy component'
+        required: false
+        default: true
+        type: boolean
+      install-rustfmt:
+        description: 'Whether to install rustfmt component'
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  setup:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    
+    steps:
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ inputs.rust-toolchain }}
+          components: >-
+            ${{ inputs.install-rustfmt && 'rustfmt' || '' }}
+            ${{ inputs.install-clippy && 'clippy' || '' }}
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}-${{ inputs.rust-toolchain }}${{ inputs.cache-key-suffix }}
+
+      # Clean build cache on macOS to avoid ring compilation issues
+      - name: Clean build cache (macOS)
+        if: matrix.os == 'macos-latest'
+        run: cargo clean
+
+      # Set macOS-specific environment variables for ring compilation
+      - name: Set macOS build environment
+        if: matrix.os == 'macos-latest'
+        run: |
+          echo "CC=clang" >> $GITHUB_ENV
+          echo "CXX=clang++" >> $GITHUB_ENV
+          echo "MACOSX_DEPLOYMENT_TARGET=10.15" >> $GITHUB_ENV
+          # Force ring to use precompiled assembly
+          echo "RING_PREGENERATE_ASM=1" >> $GITHUB_ENV
+          # Disable CPU feature detection for ring
+          echo "CARGO_CFG_TARGET_FEATURE=" >> $GITHUB_ENV

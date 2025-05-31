@@ -55,6 +55,18 @@ jobs:
       with:
         components: rustfmt, clippy
 
+    # Set macOS-specific environment variables for ring compilation
+    - name: Set macOS build environment
+      if: matrix.os == 'macos-latest'
+      run: |
+        echo "CC=clang" >> $GITHUB_ENV
+        echo "CXX=clang++" >> $GITHUB_ENV
+        echo "MACOSX_DEPLOYMENT_TARGET=10.15" >> $GITHUB_ENV
+        # Force ring to use precompiled assembly
+        echo "RING_PREGENERATE_ASM=1" >> $GITHUB_ENV
+        # Disable CPU feature detection for ring
+        echo "CARGO_CFG_TARGET_FEATURE=" >> $GITHUB_ENV
+
     - name: Install system tools
       shell: bash
       run: |
@@ -125,7 +137,53 @@ jobs:
     - name: Run Rust benchmarks
       if: inputs.benchmark_type == 'rust' || inputs.benchmark_type == 'all'
       run: |
+        mkdir -p benchmarks/results/rust
+        # Run integration tests first to ensure everything works
+        cargo test --test integration_tests --release
+
+        # Run performance benchmarks with appropriate settings
+        if [ "${{ inputs.benchmark_type }}" = "quick" ]; then
+          cargo bench --bench performance_benchmarks -- --measurement-time 10 --sample-size 50
+        else
+          cargo bench --bench performance_benchmarks
+        fi
+
+        # Also run the copy benchmarks
         cargo bench --bench copy_benchmarks
+
+    - name: Generate Rust benchmark report
+      if: inputs.benchmark_type == 'rust' || inputs.benchmark_type == 'all'
+      shell: bash
+      run: |
+        # Create a summary of Rust benchmark results
+        mkdir -p benchmarks/results/rust
+        echo "# Rust Performance Benchmark Results" > benchmarks/results/rust/summary.md
+        echo "Generated: $(date)" >> benchmarks/results/rust/summary.md
+        echo "OS: ${{ matrix.os }}" >> benchmarks/results/rust/summary.md
+        echo "Python Version: ${{ matrix.python-version }}" >> benchmarks/results/rust/summary.md
+        echo "Rust Version: $(rustc --version)" >> benchmarks/results/rust/summary.md
+        echo "" >> benchmarks/results/rust/summary.md
+
+        # Add system information
+        echo "## System Information" >> benchmarks/results/rust/summary.md
+        if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+          echo "CPU: $(lscpu | grep 'Model name' | cut -d: -f2 | xargs)" >> benchmarks/results/rust/summary.md
+          echo "Memory: $(free -h | grep Mem | awk '{print $2}')" >> benchmarks/results/rust/summary.md
+        elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+          echo "CPU: $(sysctl -n machdep.cpu.brand_string)" >> benchmarks/results/rust/summary.md
+          echo "Memory: $(sysctl -n hw.memsize | awk '{print $1/1024/1024/1024 " GB"}')" >> benchmarks/results/rust/summary.md
+        elif [ "${{ matrix.os }}" = "windows-latest" ]; then
+          echo "CPU: $(wmic cpu get name /value | grep Name | cut -d= -f2)" >> benchmarks/results/rust/summary.md
+          echo "Memory: $(wmic computersystem get TotalPhysicalMemory /value | grep TotalPhysicalMemory | cut -d= -f2)" >> benchmarks/results/rust/summary.md
+        fi
+        echo "" >> benchmarks/results/rust/summary.md
+
+        # Copy criterion results if they exist
+        if [ -d "target/criterion" ]; then
+          cp -r target/criterion benchmarks/results/rust/
+          echo "## Criterion Results" >> benchmarks/results/rust/summary.md
+          echo "Detailed benchmark results are available in the criterion directory." >> benchmarks/results/rust/summary.md
+        fi
 
     - name: Upload benchmark results
       uses: actions/upload-artifact@v4
@@ -133,6 +191,7 @@ jobs:
         name: benchmark-results-${{ matrix.os }}-py${{ matrix.python-version }}
         path: |
           benchmarks/results/*.json
+          benchmarks/results/rust/
           target/criterion/
         retention-days: 30
 
@@ -164,75 +223,300 @@ jobs:
 
     - name: Install analysis dependencies
       run: |
-        pip install pytest-benchmark pandas matplotlib seaborn
+        pip install pytest-benchmark pandas matplotlib seaborn plotly kaleido pyyaml
 
-    - name: Analyze benchmark results
+    - name: Run performance analysis
       run: |
-        python -c "
-        import json
-        import os
-        import pandas as pd
-        from pathlib import Path
+        python scripts/performance_analyzer.py --data-dir benchmark-artifacts --output-dir .
 
-        results = []
-        for root, dirs, files in os.walk('benchmark-artifacts'):
-            for file in files:
-                if file.endswith('.json'):
-                    with open(os.path.join(root, file)) as f:
-                        data = json.load(f)
-                        for benchmark in data.get('benchmarks', []):
-                            results.append({
-                                'name': benchmark['name'],
-                                'mean': benchmark['stats']['mean'],
-                                'stddev': benchmark['stats']['stddev'],
-                                'min': benchmark['stats']['min'],
-                                'max': benchmark['stats']['max'],
-                                'file': file
-                            })
+    - name: Generate Rust benchmark summary
+      run: |
+        echo "# Rust Benchmark Summary" > rust-benchmark-summary.md
+        echo "Generated: $(date)" >> rust-benchmark-summary.md
+        echo "" >> rust-benchmark-summary.md
 
-        if results:
-            df = pd.DataFrame(results)
-            print('Benchmark Summary:')
-            print(df.groupby('name')['mean'].agg(['mean', 'std', 'min', 'max']))
+        # Find and summarize Rust benchmark results
+        if find benchmark-artifacts -name "summary.md" -path "*/rust/*" | head -1 > /dev/null; then
+          echo "## Rust Performance Results" >> rust-benchmark-summary.md
+          echo "" >> rust-benchmark-summary.md
 
-            # Save summary
-            df.to_csv('benchmark-summary.csv', index=False)
-        else:
-            print('No benchmark results found')
-        "
+          # Combine all Rust summaries
+          for summary_file in $(find benchmark-artifacts -name "summary.md" -path "*/rust/*"); do
+            echo "### $(dirname "$summary_file" | sed 's/.*benchmark-results-//' | sed 's/-py.*//')" >> rust-benchmark-summary.md
+            cat "$summary_file" >> rust-benchmark-summary.md
+            echo "" >> rust-benchmark-summary.md
+          done
+        else
+          echo "No Rust benchmark results found." >> rust-benchmark-summary.md
+        fi
 
-    - name: Upload benchmark summary
+    - name: Upload comprehensive benchmark results
       uses: actions/upload-artifact@v4
       with:
-        name: benchmark-summary
-        path: benchmark-summary.csv
+        name: benchmark-analysis-${{ github.run_number }}
+        path: |
+          benchmark-detailed.csv
+          performance-report.md
+          performance-charts.png
+          performance-interactive.html
+          baseline-performance.json
+          rust-benchmark-summary.md
         retention-days: 90
 
-  performance-comment:
-    needs: benchmark
+    - name: Upload to GitHub Pages (if main branch)
+      if: github.ref == 'refs/heads/main'
+      uses: peaceiris/actions-gh-pages@v4
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: .
+        destination_dir: performance-reports/${{ github.run_number }}
+        keep_files: true
+        user_name: 'github-actions[bot]'
+        user_email: 'github-actions[bot]@users.noreply.github.com'
+        commit_message: 'Deploy performance report for run #${{ github.run_number }}'
+
+    - name: Push results to ferrocp-benchmarks repository (if main branch)
+      if: github.ref == 'refs/heads/main'
+      run: |
+        echo "🚀 Pushing benchmark results to ferrocp-benchmarks repository..."
+        python scripts/benchmark/data_pusher.py --repo loonghao/ferrocp-benchmarks
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  performance-regression:
+    needs: [benchmark, benchmark-summary]
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
 
     steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        pip install pandas numpy scipy
+
+    - name: Download current benchmark results
+      uses: actions/download-artifact@v4
+      with:
+        name: benchmark-analysis-${{ github.run_number }}
+        path: current-results
+
+    - name: Download baseline from main branch
+      continue-on-error: true
+      run: |
+        # Try to download baseline from main branch artifacts
+        gh run list --branch main --workflow benchmark.yml --limit 5 --json databaseId,conclusion | \
+        jq -r '.[] | select(.conclusion == "success") | .databaseId' | head -1 | \
+        xargs -I {} gh run download {} --name benchmark-analysis-* --dir baseline-results || \
+        echo "No baseline found, will create one"
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Create regression analysis script
+      run: |
+        cat > regression_analysis.py << 'EOF'
+        import json
+        import pandas as pd
+        import numpy as np
+        from pathlib import Path
+        import os
+
+        def load_baseline():
+            """Load baseline performance data"""
+            baseline_files = list(Path('baseline-results').glob('**/baseline-performance.json'))
+            if not baseline_files:
+                return None
+
+            with open(baseline_files[0]) as f:
+                return json.load(f)
+
+        def load_current():
+            """Load current performance data"""
+            current_files = list(Path('current-results').glob('baseline-performance.json'))
+            if not current_files:
+                return None
+
+            with open(current_files[0]) as f:
+                return json.load(f)
+
+        def detect_regressions(baseline_df, current_df, threshold=0.05):
+            """Detect performance regressions"""
+            regressions = []
+            improvements = []
+
+            for name in current_df['name'].unique():
+                if name not in baseline_df['name'].values:
+                    continue
+
+                baseline_mean = baseline_df[baseline_df['name'] == name]['mean'].mean()
+                current_mean = current_df[current_df['name'] == name]['mean'].mean()
+
+                change_ratio = (current_mean - baseline_mean) / baseline_mean
+
+                if change_ratio > threshold:
+                    regressions.append({
+                        'name': name,
+                        'baseline': baseline_mean,
+                        'current': current_mean,
+                        'change_ratio': change_ratio,
+                        'change_percent': change_ratio * 100
+                    })
+                elif change_ratio < -threshold:
+                    improvements.append({
+                        'name': name,
+                        'baseline': baseline_mean,
+                        'current': current_mean,
+                        'change_ratio': change_ratio,
+                        'change_percent': change_ratio * 100
+                    })
+
+            return regressions, improvements
+
+        def generate_regression_report(regressions, improvements, threshold):
+            """Generate regression analysis report"""
+            report = []
+            report.append("# 🔍 Performance Regression Analysis")
+            report.append(f"**Threshold:** ±{threshold*100:.1f}%")
+            report.append("")
+
+            if regressions:
+                report.append("## ⚠️ Performance Regressions Detected")
+                for reg in regressions:
+                    report.append(f"### {reg['name']}")
+                    report.append(f"- **Baseline:** {reg['baseline']:.6f}s")
+                    report.append(f"- **Current:** {reg['current']:.6f}s")
+                    report.append(f"- **Change:** +{reg['change_percent']:.2f}% (slower)")
+                    report.append("")
+            else:
+                report.append("## ✅ No Performance Regressions Detected")
+                report.append("")
+
+            if improvements:
+                report.append("## 🚀 Performance Improvements")
+                for imp in improvements:
+                    report.append(f"### {imp['name']}")
+                    report.append(f"- **Baseline:** {imp['baseline']:.6f}s")
+                    report.append(f"- **Current:** {imp['current']:.6f}s")
+                    report.append(f"- **Change:** {imp['change_percent']:.2f}% (faster)")
+                    report.append("")
+
+            return "\n".join(report)
+
+        # Main execution
+        baseline_data = load_baseline()
+        current_data = load_current()
+
+        if not baseline_data or not current_data:
+            print("❌ Missing baseline or current data")
+            with open('regression-report.md', 'w') as f:
+                f.write("# Performance Regression Analysis\n\n❌ Insufficient data for comparison")
+            exit(0)
+
+        baseline_df = pd.DataFrame(baseline_data['benchmarks'])
+        current_df = pd.DataFrame(current_data['benchmarks'])
+
+        regressions, improvements = detect_regressions(baseline_df, current_df, threshold=0.05)
+
+        report = generate_regression_report(regressions, improvements, 0.05)
+        with open('regression-report.md', 'w') as f:
+            f.write(report)
+
+        # Set output for GitHub Actions
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+            f.write(f"has_regressions={'true' if regressions else 'false'}\n")
+            f.write(f"regression_count={len(regressions)}\n")
+            f.write(f"improvement_count={len(improvements)}\n")
+
+        print(f"✅ Analysis complete: {len(regressions)} regressions, {len(improvements)} improvements")
+        EOF
+
+    - name: Run regression analysis
+      id: regression
+      run: |
+        python regression_analysis.py
+
+    - name: Upload regression analysis
+      uses: actions/upload-artifact@v4
+      with:
+        name: regression-analysis-${{ github.run_number }}
+        path: regression-report.md
+        retention-days: 30
+
+  performance-comment:
+    needs: [benchmark, benchmark-summary, performance-regression]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && always()
+
+    steps:
+    - name: Download performance report
+      uses: actions/download-artifact@v4
+      with:
+        name: benchmark-analysis-${{ github.run_number }}
+        path: performance-results
+
+    - name: Download regression analysis
+      continue-on-error: true
+      uses: actions/download-artifact@v4
+      with:
+        name: regression-analysis-${{ github.run_number }}
+        path: regression-results
+
     - name: Comment PR with performance results
       uses: actions/github-script@v7
       with:
         script: |
+          const fs = require('fs');
+
+          // Read performance report
+          let performanceReport = '';
+          try {
+            performanceReport = fs.readFileSync('performance-results/performance-report.md', 'utf8');
+          } catch (e) {
+            performanceReport = 'Performance report not available';
+          }
+
+          // Read Rust benchmark summary
+          let rustBenchmarkReport = '';
+          try {
+            rustBenchmarkReport = fs.readFileSync('performance-results/rust-benchmark-summary.md', 'utf8');
+          } catch (e) {
+            rustBenchmarkReport = 'Rust benchmark results not available';
+          }
+
+          // Read regression analysis
+          let regressionReport = '';
+          try {
+            regressionReport = fs.readFileSync('regression-results/regression-report.md', 'utf8');
+          } catch (e) {
+            regressionReport = 'Regression analysis not available';
+          }
+
           const comment = `
           ## 🚀 Performance Benchmark Results
 
-          Benchmarks have been run for this PR. Here's a summary:
+          ${performanceReport}
 
-          - ✅ Quick benchmarks completed
-          - 📊 Detailed results available in artifacts
-          - 🔍 Check for any performance regressions
+          ---
 
-          **Next Steps:**
-          1. Download benchmark artifacts to view detailed results
-          2. Compare with baseline performance
-          3. Investigate any significant performance changes
+          ${rustBenchmarkReport}
 
-          *Benchmarks run on: Ubuntu, Windows, macOS with Python 3.9, 3.11, 3.12*
+          ---
+
+          ${regressionReport}
+
+          ---
+
+          **📊 Artifacts Available:**
+          - [Detailed Results](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+          - [Interactive Charts](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+          - [Raw Data (CSV)](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+
+          *Benchmarks run on: Ubuntu, Windows, macOS with Python 3.9, 3.11, 3.12 (Python + Rust)*
           `;
 
           github.rest.issues.createComment({

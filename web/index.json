@@ -1,0 +1,63 @@
+{
+  "last_updated": "2024-01-15T10:30:00Z",
+  "total_runs": 42,
+  "latest_run": {
+    "run_number": "42",
+    "commit_sha": "abc123456789",
+    "ref_name": "main",
+    "timestamp": "2024-01-15T10:30:00Z",
+    "date": {
+      "year": "2024",
+      "month": "01",
+      "day": "15"
+    },
+    "files": {
+      "benchmark-detailed.csv": "data/2024/01/20240115-42-detailed.csv",
+      "performance-report.md": "reports/2024/01/20240115-42-report.md",
+      "performance-charts.png": "charts/2024/01/20240115-42-charts.png",
+      "baseline-performance.json": "data/2024/01/20240115-42-baseline.json"
+    },
+    "metadata_file": "data/2024/01/20240115-42-metadata.json"
+  },
+  "runs": [
+    {
+      "run_number": "42",
+      "commit_sha": "abc123456789",
+      "ref_name": "main",
+      "timestamp": "2024-01-15T10:30:00Z",
+      "date": {
+        "year": "2024",
+        "month": "01",
+        "day": "15"
+      },
+      "files": ["benchmark-detailed.csv", "performance-report.md", "performance-charts.png", "baseline-performance.json"],
+      "metadata_file": "data/2024/01/20240115-42-metadata.json"
+    },
+    {
+      "run_number": "41",
+      "commit_sha": "def987654321",
+      "ref_name": "main",
+      "timestamp": "2024-01-14T15:20:00Z",
+      "date": {
+        "year": "2024",
+        "month": "01",
+        "day": "14"
+      },
+      "files": ["benchmark-detailed.csv", "performance-report.md", "performance-charts.png", "baseline-performance.json"],
+      "metadata_file": "data/2024/01/20240114-41-metadata.json"
+    },
+    {
+      "run_number": "40",
+      "commit_sha": "ghi456789012",
+      "ref_name": "main",
+      "timestamp": "2024-01-13T09:45:00Z",
+      "date": {
+        "year": "2024",
+        "month": "01",
+        "day": "13"
+      },
+      "files": ["benchmark-detailed.csv", "performance-report.md", "performance-charts.png", "baseline-performance.json"],
+      "metadata_file": "data/2024/01/20240113-40-metadata.json"
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+[package]
+name = "ferrocp-device"
+description = "Intelligent device detection and optimization for FerroCP"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
+
+[lints.rust]
+# Allow unsafe code for platform-specific device detection APIs
+unsafe_code = "allow"
+missing_docs = "warn"
+unused_imports = "warn"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+module_name_repetitions = "allow"
+
+[dependencies]
+ferrocp-types = { path = "../ferrocp-types", features = ["async"] }
+tokio = { workspace = true, features = ["fs", "process"] }
+tracing = { workspace = true }
+serde = { workspace = true, features = ["derive"], optional = true }
+uuid = { workspace = true }
+async-trait = { workspace = true }
+
+# Platform-specific dependencies
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = [
+    "winbase", "fileapi", "winioctl", "ioapiset", "minwinbase",
+    "winnt", "handleapi", "errhandlingapi", "winerror"
+] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+nix = { version = "0.27", features = ["fs"] }
+
+[features]
+default = ["serde"]
+serde = ["dep:serde", "ferrocp-types/serde"]
+
+[dev-dependencies]
+tokio-test = { workspace = true }
+rstest = { workspace = true }
+tempfile = { workspace = true }
+criterion = { version = "0.5", features = ["html_reports", "async_tokio"] }
+
+[[bench]]
+name = "cache_performance"
+harness = false

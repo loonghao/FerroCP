@@ -1,0 +1,47 @@
+[package]
+name = "ferrocp-types"
+description = "Core type system and error handling for FerroCP"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Error handling
+thiserror = { workspace = true }
+eyre = { workspace = true }
+
+# Serialization
+serde = { workspace = true, features = ["derive"], optional = true }
+
+# Utilities
+uuid = { workspace = true }
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# Async traits
+async-trait = { workspace = true, optional = true }
+
+# Optional features
+tokio = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio-test = { workspace = true }
+rstest = { workspace = true }
+proptest = { workspace = true }
+
+[features]
+default = ["std"]
+std = []
+async = ["tokio", "async-trait"]
+serde = ["dep:serde", "chrono/serde", "uuid/serde"]

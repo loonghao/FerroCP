@@ -1,0 +1,14 @@
+{
+  "sample_size": 100,
+  "measurement_time": {
+    "secs": 10,
+    "nanos": 0
+  },
+  "warm_up_time": {
+    "secs": 3,
+    "nanos": 0
+  },
+  "enable_profiling": false,
+  "output_dir": "target/criterion",
+  "baseline_file": null
+}

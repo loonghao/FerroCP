@@ -1,6 +1,6 @@
 # Makefile for ferrocp development and benchmarking
 
-.PHONY: help install test benchmark profile clean docs build
+.PHONY: help install test benchmark profile clean docs build rust-lint rust-fix
 
 # Default target
 help:
@@ -8,6 +8,8 @@ help:
 	@echo "  install          - Install development dependencies"
 	@echo "  test             - Run unit tests"
 	@echo "  lint             - Run code quality checks"
+	@echo "  rust-lint        - Run Rust code quality checks"
+	@echo "  rust-fix         - Fix Rust code issues automatically"
 	@echo "  benchmark        - Run all performance benchmarks"
 	@echo "  benchmark-quick  - Run quick benchmarks (small files only)"
 	@echo "  benchmark-compare - Run comparison benchmarks vs standard tools"
@@ -34,6 +36,15 @@ lint:
 # Fix linting issues
 lint-fix:
 	uv run nox -s lint_fix
+
+# Rust code quality
+rust-lint:
+	cargo dev-clippy
+
+rust-fix:
+	cargo dev-fmt
+	cargo fix --workspace --allow-dirty --allow-staged
+	cargo dev-clippy
 
 # Run all benchmarks
 benchmark:

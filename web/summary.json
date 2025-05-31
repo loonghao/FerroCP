@@ -1,0 +1,16 @@
+{
+  "total_runs": 42,
+  "latest_run": {
+    "run_number": "42",
+    "commit_sha": "abc123456789",
+    "ref_name": "main",
+    "timestamp": "2024-01-15T10:30:00Z",
+    "files": {
+      "benchmark-detailed.csv": "latest/latest-detailed.csv",
+      "performance-report.md": "latest/latest-report.md",
+      "performance-charts.png": "latest/latest-charts.png"
+    }
+  },
+  "last_updated": "2024-01-15T10:30:00Z",
+  "available_years": ["2024"]
+}

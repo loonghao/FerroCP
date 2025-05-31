@@ -110,7 +110,27 @@ jobs:
         # Set performance regression threshold (5% by default)
         CODSPEED_REGRESSION_THRESHOLD: ${{ env.CODSPEED_REGRESSION_THRESHOLD }}
         # Additional Rust performance flags
-        RUSTFLAGS: "-C target-cpu=native"
+        RUSTFLAGS: "-C target-cpu=native -C opt-level=3"
+
+    - name: Save CodSpeed results
+      if: always()
+      run: |
+        # Create CodSpeed results summary
+        echo "# CodSpeed Performance Results" > codspeed-summary.md
+        echo "**Run ID:** ${{ github.run_id }}" >> codspeed-summary.md
+        echo "**Commit:** ${{ github.sha }}" >> codspeed-summary.md
+        echo "**Branch:** ${{ github.ref_name }}" >> codspeed-summary.md
+        echo "**Timestamp:** $(date -u)" >> codspeed-summary.md
+        echo "" >> codspeed-summary.md
+        echo "CodSpeed benchmarks completed. Check the CodSpeed dashboard for detailed results." >> codspeed-summary.md
+
+    - name: Upload CodSpeed summary
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: codspeed-summary-${{ github.run_number }}
+        path: codspeed-summary.md
+        retention-days: 30
 
   # Additional job for comprehensive benchmarks (optional)
   comprehensive-benchmarks:
