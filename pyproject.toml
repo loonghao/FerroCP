@@ -197,18 +197,13 @@ known_first_party = ["ferrocp"]
 
 [tool.maturin]
 python-source = "python"
-module-name = "ferrocp._ferrocp_binding"
+module-name = "ferrocp._ferrocp"
 bindings = "pyo3"
-features = ["python", "pyo3/extension-module"]
+manifest-path = "crates/ferrocp-python/Cargo.toml"
 # Compatibility settings
 abi3 = true
-abi3-py39 = true
 # Strip debug symbols in release
 strip = true
-# Windows-specific settings to handle DLL dependencies
-[tool.maturin.windows]
-# Skip tests during build on Windows to avoid DLL dependency issues
-skip-tests = true
 
 [tool.semantic_release]
 version_variable = [
