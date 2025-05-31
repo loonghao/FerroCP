@@ -13,7 +13,7 @@ categories.workspace = true
 rust-version.workspace = true
 
 [lib]
-name = "ferrocp_python"
+name = "_ferrocp"
 crate-type = ["cdylib"]
 
 # Disable doctests for Python extension modules
