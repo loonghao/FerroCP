@@ -47,6 +47,10 @@ jobs:
         echo "CC=clang" >> $GITHUB_ENV
         echo "CXX=clang++" >> $GITHUB_ENV
         echo "MACOSX_DEPLOYMENT_TARGET=10.15" >> $GITHUB_ENV
+        # Force ring to use precompiled assembly
+        echo "RING_PREGENERATE_ASM=1" >> $GITHUB_ENV
+        # Disable CPU feature detection for ring
+        echo "CARGO_CFG_TARGET_FEATURE=" >> $GITHUB_ENV
 
     - name: Check formatting
       run: cargo fmt --all -- --check
