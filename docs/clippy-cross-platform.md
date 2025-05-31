@@ -8,6 +8,8 @@ Clippy 在不同平台上可能产生不同的警告，主要原因包括：
 2. **条件编译差异** - 不同平台激活不同的 feature flags
 3. **依赖项差异** - 某些 crate 在不同平台有不同实现
 4. **Clippy 版本差异** - CI 和本地环境可能使用不同版本
+5. **Rust 版本不兼容** - 不同环境使用不同的 Rust 版本导致依赖编译失败
+6. **配置项差异** - `.clippy.toml` 中的某些配置项在不同版本中可能无效
 
 ## 解决方案
 
@@ -30,6 +32,13 @@ wildcard_imports = "allow"
 ### 2. 使用 .clippy.toml 配置文件
 
 项目根目录的 `.clippy.toml` 文件提供了额外的跨平台配置。
+
+**注意**：某些配置项在不同 Clippy 版本中可能无效，常见错误包括：
+- `missing-docs-in-private-items` → 应使用 `missing-docs-in-crate-items`
+- `avoid-breaking-exported-api` → 在某些版本中不存在
+- `disallowed-names = []` → 可能导致警告
+
+我们的 `.clippy.toml` 已经移除了这些有问题的配置项。
 
 ### 3. 使用专用脚本
 

@@ -158,11 +158,11 @@ impl PyBatchCopyEngine {
         requests: Vec<PyBatchCopyRequest>,
         _options: Option<PyCopyOptions>,
         progress_callback: Option<ProgressCallback>,
-    ) -> PyResult<&'py PyAny> {
+    ) -> PyResult<Bound<'py, PyAny>> {
         let gil_manager = Arc::clone(&self.gil_manager);
         let batch_size = self.batch_size;
 
-        pyo3_asyncio::tokio::future_into_py(py, async move {
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
             // Execute batch operations with GIL released during computation
             let gil_result = gil_manager
                 .execute_with_gil_released(move |progress_tx| async move {
@@ -294,7 +294,7 @@ pub fn copy_files_batch<'py>(
     options: Option<PyCopyOptions>,
     progress_callback: Option<ProgressCallback>,
     batch_size: usize,
-) -> PyResult<&'py PyAny> {
+) -> PyResult<Bound<'py, PyAny>> {
     let engine = PyBatchCopyEngine::new(batch_size)?;
     engine.copy_files_batch(py, requests, options, progress_callback)
 }

@@ -8,7 +8,7 @@ use ferrocp_engine::{task::CopyRequest, CopyEngine};
 use ferrocp_types::CopyStats;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use pyo3_asyncio::tokio::future_into_py;
+use pyo3_async_runtimes::tokio::future_into_py;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -130,7 +130,7 @@ impl PyCopyEngine {
     /// Create a new copy engine
     #[new]
     pub fn new() -> PyResult<Self> {
-        let engine = pyo3_asyncio::tokio::get_runtime()
+        let engine = pyo3_async_runtimes::tokio::get_runtime()
             .block_on(async { CopyEngine::new().await })
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
         let async_manager = Arc::new(PyAsyncManager::new());
@@ -151,7 +151,7 @@ impl PyCopyEngine {
         destination: String,
         options: Option<PyCopyOptions>,
         progress_callback: Option<ProgressCallback>,
-    ) -> PyResult<&'py PyAny> {
+    ) -> PyResult<Bound<'py, PyAny>> {
         let source_path = PathBuf::from(source);
         let dest_path = PathBuf::from(destination);
         let copy_options = options;
@@ -233,7 +233,7 @@ impl PyCopyEngine {
         destination: String,
         options: Option<PyCopyOptions>,
         progress_callback: Option<ProgressCallback>,
-    ) -> PyResult<&'py PyAny> {
+    ) -> PyResult<Bound<'py, PyAny>> {
         let source_path = PathBuf::from(source);
         let dest_path = PathBuf::from(destination);
         let copy_options = options;
@@ -307,8 +307,8 @@ impl PyCopyEngine {
     }
 
     /// Get engine statistics
-    pub fn get_statistics<'py>(&self, py: Python<'py>) -> PyResult<&'py PyDict> {
-        let dict = PyDict::new(py);
+    pub fn get_statistics<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        let dict = PyDict::new_bound(py);
         // TODO: Implement actual statistics collection from engine
         dict.set_item("total_operations", 0)?;
         dict.set_item("total_bytes_copied", 0)?;
@@ -323,8 +323,8 @@ impl PyCopyEngine {
     }
 
     /// Get supported features
-    pub fn get_features<'py>(&self, py: Python<'py>) -> PyResult<&'py PyDict> {
-        let dict = PyDict::new(py);
+    pub fn get_features<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        let dict = PyDict::new_bound(py);
         dict.set_item("zero_copy", true)?;
         dict.set_item("compression", true)?;
         dict.set_item("network_transfer", true)?;
@@ -342,7 +342,7 @@ impl PyCopyEngine {
         source: String,
         destination: String,
         options: Option<PyCopyOptions>,
-    ) -> PyResult<&'py PyAny> {
+    ) -> PyResult<Bound<'py, PyAny>> {
         let source_path = PathBuf::from(source);
         let dest_path = PathBuf::from(destination);
         let engine = self.engine.clone();
@@ -408,7 +408,7 @@ pub fn copy_file<'py>(
     destination: String,
     options: Option<PyCopyOptions>,
     progress_callback: Option<ProgressCallback>,
-) -> PyResult<&'py PyAny> {
+) -> PyResult<Bound<'py, PyAny>> {
     let engine = PyCopyEngine::new()?;
     engine.copy_file(py, source, destination, options, progress_callback)
 }
@@ -422,7 +422,7 @@ pub fn copy_directory<'py>(
     destination: String,
     options: Option<PyCopyOptions>,
     progress_callback: Option<ProgressCallback>,
-) -> PyResult<&'py PyAny> {
+) -> PyResult<Bound<'py, PyAny>> {
     let engine = PyCopyEngine::new()?;
     engine.copy_directory(py, source, destination, options, progress_callback)
 }
@@ -440,7 +440,7 @@ pub fn quick_copy<'py>(
     py: Python<'py>,
     source: String,
     destination: String,
-) -> PyResult<&'py PyAny> {
+) -> PyResult<Bound<'py, PyAny>> {
     copy_file(py, source, destination, None, None)
 }
 
@@ -452,7 +452,7 @@ pub fn copy_with_verification<'py>(
     source: String,
     destination: String,
     progress_callback: Option<ProgressCallback>,
-) -> PyResult<&'py PyAny> {
+) -> PyResult<Bound<'py, PyAny>> {
     let mut options = PyCopyOptions::default();
     options.verify = true;
     copy_file(py, source, destination, Some(options), progress_callback)
@@ -466,7 +466,7 @@ pub fn copy_with_compression<'py>(
     source: String,
     destination: String,
     progress_callback: Option<ProgressCallback>,
-) -> PyResult<&'py PyAny> {
+) -> PyResult<Bound<'py, PyAny>> {
     let mut options = PyCopyOptions::default();
     options.enable_compression = true;
     copy_file(py, source, destination, Some(options), progress_callback)
@@ -480,7 +480,7 @@ pub fn copy_file_async<'py>(
     source: String,
     destination: String,
     options: Option<PyCopyOptions>,
-) -> PyResult<&'py PyAny> {
+) -> PyResult<Bound<'py, PyAny>> {
     let engine = PyCopyEngine::new()?;
     engine.copy_file_async(py, source, destination, options)
 }
