@@ -51,13 +51,17 @@ fi
 # Function to build wheels using maturin
 build_with_maturin() {
     log_info "Building wheels with maturin..."
-    
-    # Build wheels for current platform
-    maturin build --release --out dist --find-interpreter
-    
+
+    # Set environment variables for stable builds
+    export CARGO_NET_GIT_FETCH_WITH_CLI=true
+    export RUSTFLAGS="-C opt-level=3"
+
+    # Build wheels for current platform only (avoid cross-compilation issues)
+    maturin build --release --out dist --interpreter python3
+
     # Build source distribution
     maturin sdist --out dist
-    
+
     log_success "Maturin build completed"
 }
 

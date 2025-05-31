@@ -45,11 +45,18 @@ jobs:
           sudo apt-get install -y \
             gcc-aarch64-linux-gnu \
             gcc-mingw-w64-x86-64 \
-            libc6-dev-arm64-cross
-          
+            libc6-dev-arm64-cross \
+            lld \
+            clang \
+            build-essential \
+            pkg-config \
+            libssl-dev
+
           # Verify tools are installed
           aarch64-linux-gnu-gcc --version
           x86_64-w64-mingw32-gcc --version
+          lld --version
+          clang --version
 
       # Set up Go (required by GoReleaser)
       - name: Set up Go

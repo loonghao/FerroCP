@@ -29,7 +29,7 @@ log_error() {
 
 # Build configuration
 BINARY_NAME="ferrocp"
-RUSTFLAGS="-C target-cpu=native -C opt-level=3 -C lto=fat -C codegen-units=1"
+RUSTFLAGS="-C opt-level=3 -C lto=fat -C codegen-units=1"
 
 # Target configurations
 declare -A TARGETS=(
@@ -41,10 +41,9 @@ declare -A TARGETS=(
 )
 
 log_info "Building FerroCP for all targets..."
-log_info "Rust flags: $RUSTFLAGS"
+log_info "Using target-specific Rust flags for optimization"
 
-# Export Rust flags
-export RUSTFLAGS
+# Note: RUSTFLAGS are set per-target to avoid conflicts
 
 # Function to build a single target
 build_target() {
@@ -61,18 +60,32 @@ build_target() {
                 export CC_aarch64_unknown_linux_gnu="aarch64-linux-gnu-gcc"
                 export CXX_aarch64_unknown_linux_gnu="aarch64-linux-gnu-g++"
                 export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER="aarch64-linux-gnu-gcc"
+                export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C opt-level=3 -C lto=fat"
             else
                 log_warning "aarch64-linux-gnu-gcc not found, cross-compilation may fail"
             fi
             ;;
+        "x86_64-unknown-linux-gnu")
+            # Linux x86_64 - native or cross-compile
+            export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C opt-level=3 -C lto=fat"
+            if [[ "$(uname -s)" != "Linux" ]]; then
+                log_info "Cross-compiling for Linux from $(uname -s)"
+                if command -v x86_64-linux-gnu-gcc >/dev/null 2>&1; then
+                    export CC="x86_64-linux-gnu-gcc"
+                    export CXX="x86_64-linux-gnu-g++"
+                fi
+            fi
+            ;;
         "x86_64-apple-darwin")
             # macOS x86_64 setup
+            export CARGO_TARGET_X86_64_APPLE_DARWIN_RUSTFLAGS="-C opt-level=3 -C lto=fat"
             if [[ "$(uname -s)" == "Darwin" ]]; then
                 export MACOSX_DEPLOYMENT_TARGET="10.15"
             fi
             ;;
         "aarch64-apple-darwin")
             # macOS ARM64 setup
+            export CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS="-C opt-level=3 -C lto=fat"
             if [[ "$(uname -s)" == "Darwin" ]]; then
                 export MACOSX_DEPLOYMENT_TARGET="11.0"
             fi
@@ -83,6 +96,8 @@ build_target() {
                 export CC_x86_64_pc_windows_gnu="x86_64-w64-mingw32-gcc"
                 export CXX_x86_64_pc_windows_gnu="x86_64-w64-mingw32-g++"
                 export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER="x86_64-w64-mingw32-gcc"
+                # Disable problematic linker flags for Windows cross-compilation
+                export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS="-C opt-level=3 -C lto=fat"
             else
                 log_warning "x86_64-w64-mingw32-gcc not found, Windows cross-compilation may fail"
             fi

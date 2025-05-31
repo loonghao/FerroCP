@@ -28,9 +28,9 @@ before:
     # Build all targets
     - chmod +x scripts/build-all-targets.sh
     - ./scripts/build-all-targets.sh
-    # Build Python wheels for all platforms
-    - chmod +x scripts/build-python-wheels.sh
-    - ./scripts/build-python-wheels.sh
+    # Build Python wheels for all platforms (temporarily disabled for debugging)
+    # - chmod +x scripts/build-python-wheels.sh
+    # - ./scripts/build-python-wheels.sh
 
 # Build configuration for Rust binaries
 builds:
@@ -243,26 +243,26 @@ dockers:
       - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
       - "--label=org.opencontainers.image.licenses=Apache-2.0"
 
-# Python package publishing using Trusted Publishing (OIDC)
-publishers:
-  - name: pypi
-    ids:
-      - python-wheels
-    dir: "{{ dir .ArtifactPath }}"
-    cmd: |
-      # Install twine if not available
-      pip install twine
+# Python package publishing using Trusted Publishing (OIDC) - temporarily disabled
+# publishers:
+#   - name: pypi
+#     ids:
+#       - python-wheels
+#     dir: "{{ dir .ArtifactPath }}"
+#     cmd: |
+#       # Install twine if not available
+#       pip install twine
+#
+#       # Upload to PyPI using Trusted Publishing (no token needed)
+#       twine upload dist/*.whl dist/*.tar.gz --verbose
+#     # No environment variables needed for Trusted Publishing
 
-      # Upload to PyPI using Trusted Publishing (no token needed)
-      twine upload dist/*.whl dist/*.tar.gz --verbose
-    # No environment variables needed for Trusted Publishing
-
-# Custom artifacts for Python wheels
-extra_files:
-  - glob: "dist/*.whl"
-    name_template: "{{ .ProjectName }}-{{ .Version }}-py3-none-any.whl"
-  - glob: "dist/*.tar.gz"
-    name_template: "{{ .ProjectName }}-{{ .Version }}.tar.gz"
+# Custom artifacts for Python wheels - temporarily disabled
+# extra_files:
+#   - glob: "dist/*.whl"
+#     name_template: "{{ .ProjectName }}-{{ .Version }}-py3-none-any.whl"
+#   - glob: "dist/*.tar.gz"
+#     name_template: "{{ .ProjectName }}-{{ .Version }}.tar.gz"
 
 # Announce to various platforms
 announce:
