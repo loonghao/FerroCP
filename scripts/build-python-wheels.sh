@@ -48,13 +48,52 @@ if ! command -v cibuildwheel >/dev/null 2>&1; then
     pip install cibuildwheel
 fi
 
+# Function to check and fix linker issues
+check_linker() {
+    log_info "Checking linker availability..."
+
+    # Check if ld is available
+    if ! command -v ld >/dev/null 2>&1; then
+        log_warning "Linker 'ld' not found, attempting to fix..."
+
+        # Try to install binutils if on Linux
+        if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+            if command -v apt-get >/dev/null 2>&1; then
+                sudo apt-get update && sudo apt-get install -y binutils
+            elif command -v yum >/dev/null 2>&1; then
+                sudo yum install -y binutils
+            fi
+        fi
+
+        # Verify again
+        if ! command -v ld >/dev/null 2>&1; then
+            log_error "Failed to install linker. Please install binutils manually."
+            return 1
+        fi
+    fi
+
+    log_success "Linker check passed: $(which ld)"
+    ld --version | head -1
+}
+
 # Function to build wheels using maturin
 build_with_maturin() {
     log_info "Building wheels with maturin..."
 
+    # Check linker first
+    check_linker || return 1
+
     # Set environment variables for stable builds
     export CARGO_NET_GIT_FETCH_WITH_CLI=true
     export RUSTFLAGS="-C opt-level=3"
+
+    # Use clang as linker if available (more reliable)
+    if command -v clang >/dev/null 2>&1; then
+        export CC=clang
+        export CXX=clang++
+        export RUSTFLAGS="$RUSTFLAGS -C linker=clang"
+        log_info "Using clang as compiler and linker"
+    fi
 
     # Build wheels for current platform only (avoid cross-compilation issues)
     maturin build --release --out dist --interpreter python3
