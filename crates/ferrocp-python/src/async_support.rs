@@ -1,7 +1,7 @@
 //! Async support utilities for Python bindings
 
 use pyo3::prelude::*;
-use pyo3_asyncio::tokio::future_into_py;
+use pyo3_async_runtimes::tokio::future_into_py;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 use tokio::task::JoinHandle;
@@ -26,7 +26,7 @@ impl PyAsyncOperation {
     }
 
     /// Check if operation is running
-    pub fn is_running<'py>(&self, py: Python<'py>) -> PyResult<&'py PyAny> {
+    pub fn is_running<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let handle = self.handle.clone();
         future_into_py(py, async move {
             let handle_guard = handle.read().await;
@@ -35,7 +35,7 @@ impl PyAsyncOperation {
     }
 
     /// Cancel the operation
-    pub fn cancel<'py>(&self, py: Python<'py>) -> PyResult<&'py PyAny> {
+    pub fn cancel<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let cancel_tx = self.cancel_tx.clone();
         let handle = self.handle.clone();
 
@@ -55,7 +55,7 @@ impl PyAsyncOperation {
     }
 
     /// Get current progress (0.0 to 1.0)
-    pub fn get_progress<'py>(&self, py: Python<'py>) -> PyResult<&'py PyAny> {
+    pub fn get_progress<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let progress_rx = self.progress_rx.clone();
         future_into_py(py, async move {
             let mut rx_guard = progress_rx.write().await;
@@ -71,7 +71,7 @@ impl PyAsyncOperation {
     }
 
     /// Wait for operation to complete
-    pub fn wait<'py>(&self, py: Python<'py>) -> PyResult<&'py PyAny> {
+    pub fn wait<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let handle = self.handle.clone();
         future_into_py(py, async move {
             if let Some(handle) = handle.write().await.take() {
@@ -131,7 +131,7 @@ impl PyAsyncManager {
     }
 
     /// Get all active operations
-    pub fn get_active_operations<'py>(&self, py: Python<'py>) -> PyResult<&'py PyAny> {
+    pub fn get_active_operations<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let operations = self.operations.clone();
         future_into_py(py, async move {
             let ops_guard = operations.read().await;
@@ -145,7 +145,7 @@ impl PyAsyncManager {
         &self,
         py: Python<'py>,
         operation_id: String,
-    ) -> PyResult<&'py PyAny> {
+    ) -> PyResult<Bound<'py, PyAny>> {
         let operations = self.operations.clone();
         future_into_py(py, async move {
             if let Ok(id) = Uuid::parse_str(&operation_id) {
@@ -162,7 +162,7 @@ impl PyAsyncManager {
     }
 
     /// Cancel all operations
-    pub fn cancel_all<'py>(&self, py: Python<'py>) -> PyResult<&'py PyAny> {
+    pub fn cancel_all<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let operations = self.operations.clone();
         future_into_py(py, async move {
             let mut ops_guard = operations.write().await;

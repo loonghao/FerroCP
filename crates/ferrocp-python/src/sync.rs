@@ -3,7 +3,7 @@
 use crate::progress::ProgressCallback;
 use ferrocp_sync::{SyncEngine, SyncOptions, SyncResult};
 use pyo3::prelude::*;
-use pyo3_asyncio::tokio::future_into_py;
+use pyo3_async_runtimes::tokio::future_into_py;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -280,12 +280,12 @@ impl PySyncEngine {
         &mut self,
         py: Python<'py>,
         options: Option<PySyncOptions>,
-    ) -> PyResult<&'py PyAny> {
+    ) -> PyResult<Bound<'py, PyAny>> {
         let sync_options = options.map(SyncOptions::from).unwrap_or_default();
 
         // For now, initialize synchronously to avoid borrowing issues
         // TODO: Implement proper async initialization
-        let engine = pyo3_asyncio::tokio::get_runtime()
+        let engine = pyo3_async_runtimes::tokio::get_runtime()
             .block_on(async { SyncEngine::with_options(sync_options).await })
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
         self.engine = Some(engine);
@@ -302,14 +302,14 @@ impl PySyncEngine {
         destination: String,
         options: Option<PySyncOptions>,
         _progress_callback: Option<ProgressCallback>,
-    ) -> PyResult<&'py PyAny> {
+    ) -> PyResult<Bound<'py, PyAny>> {
         let _source_path = PathBuf::from(source);
         let _dest_path = PathBuf::from(destination);
         let sync_options = options.map(SyncOptions::from).unwrap_or_default();
 
         // Initialize engine if not already done
         if self.engine.is_none() {
-            let engine = pyo3_asyncio::tokio::get_runtime()
+            let engine = pyo3_async_runtimes::tokio::get_runtime()
                 .block_on(async { SyncEngine::with_options(sync_options.clone()).await })
                 .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
             self.engine = Some(engine);
@@ -337,7 +337,7 @@ pub fn sync_directories<'py>(
     destination: String,
     options: Option<PySyncOptions>,
     progress_callback: Option<ProgressCallback>,
-) -> PyResult<&'py PyAny> {
+) -> PyResult<Bound<'py, PyAny>> {
     let mut engine = PySyncEngine::new();
     engine.sync(py, source, destination, options, progress_callback)
 }

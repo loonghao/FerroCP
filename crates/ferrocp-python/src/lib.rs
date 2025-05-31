@@ -63,10 +63,10 @@ use sync::*;
 
 /// Python module for FerroCP
 #[pymodule]
-fn _ferrocp(py: Python<'_>, m: &PyModule) -> PyResult<()> {
+fn _ferrocp(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Initialize async runtime with proper configuration
     let builder = tokio::runtime::Builder::new_multi_thread();
-    pyo3_asyncio::tokio::init(builder);
+    pyo3_async_runtimes::tokio::init(builder);
 
     // Add classes
     m.add_class::<PyCopyEngine>()?;
@@ -90,11 +90,11 @@ fn _ferrocp(py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<PyCacheConfig>()?;
 
     // Add exceptions
-    m.add("FerrocpError", py.get_type::<PyFerrocpError>())?;
-    m.add("IoError", py.get_type::<PyIoError>())?;
-    m.add("ConfigError", py.get_type::<PyConfigError>())?;
-    m.add("NetworkError", py.get_type::<PyNetworkError>())?;
-    m.add("SyncError", py.get_type::<PySyncError>())?;
+    m.add("FerrocpError", py.get_type_bound::<PyFerrocpError>())?;
+    m.add("IoError", py.get_type_bound::<PyIoError>())?;
+    m.add("ConfigError", py.get_type_bound::<PyConfigError>())?;
+    m.add("NetworkError", py.get_type_bound::<PyNetworkError>())?;
+    m.add("SyncError", py.get_type_bound::<PySyncError>())?;
 
     // Add convenience functions
     m.add_function(wrap_pyfunction!(copy_file, m)?)?;

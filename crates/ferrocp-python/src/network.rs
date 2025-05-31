@@ -5,7 +5,7 @@ use crate::error::IntoPyResult;
 use crate::progress::{ProgressCallback, PyProgress};
 use ferrocp_network::{ClientConfig, NetworkClient, TransferResult};
 use pyo3::prelude::*;
-use pyo3_asyncio::tokio::future_into_py;
+use pyo3_async_runtimes::tokio::future_into_py;
 use std::path::PathBuf;
 
 /// Python wrapper for network transfer results
@@ -119,7 +119,7 @@ impl PyNetworkClient {
         &mut self,
         py: Python<'py>,
         config: Option<PyNetworkConfig>,
-    ) -> PyResult<&'py PyAny> {
+    ) -> PyResult<Bound<'py, PyAny>> {
         // Initialize synchronously to avoid borrowing issues
         let client = if let Some(config) = config {
             let protocol = match config.to_network_protocol() {
@@ -135,11 +135,11 @@ impl PyNetworkClient {
                 request_timeout: std::time::Duration::from_secs_f64(config.operation_timeout),
                 ..Default::default()
             };
-            pyo3_asyncio::tokio::get_runtime()
+            pyo3_async_runtimes::tokio::get_runtime()
                 .block_on(async { NetworkClient::with_config(client_config).await })
                 .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?
         } else {
-            pyo3_asyncio::tokio::get_runtime()
+            pyo3_async_runtimes::tokio::get_runtime()
                 .block_on(async { NetworkClient::new().await })
                 .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?
         };
@@ -158,13 +158,13 @@ impl PyNetworkClient {
         source: String,
         destination: String,
         _progress_callback: Option<ProgressCallback>,
-    ) -> PyResult<&'py PyAny> {
+    ) -> PyResult<Bound<'py, PyAny>> {
         let _source_path = PathBuf::from(source);
         let _dest_path = PathBuf::from(destination);
 
         // Initialize client if not already done
         if self.client.is_none() {
-            let client = pyo3_asyncio::tokio::get_runtime()
+            let client = pyo3_async_runtimes::tokio::get_runtime()
                 .block_on(async { NetworkClient::new().await })
                 .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
             self.client = Some(client);
@@ -182,7 +182,7 @@ impl PyNetworkClient {
     }
 
     /// Get active transfers
-    pub fn get_active_transfers<'py>(&self, py: Python<'py>) -> PyResult<&'py PyAny> {
+    pub fn get_active_transfers<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let has_client = self.client.is_some();
         future_into_py(py, async move {
             if has_client {
@@ -200,7 +200,7 @@ impl PyNetworkClient {
         &self,
         py: Python<'py>,
         transfer_id: String,
-    ) -> PyResult<&'py PyAny> {
+    ) -> PyResult<Bound<'py, PyAny>> {
         let has_client = self.client.is_some();
         future_into_py(py, async move {
             if has_client {
