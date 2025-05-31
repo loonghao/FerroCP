@@ -3,16 +3,16 @@
 //! This module provides detailed benchmarks for memory usage patterns,
 //! allocation efficiency, and memory optimization strategies.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::fs;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use tempfile::TempDir;
 use tokio::runtime::Runtime;
 
 use ferrocp_io::{
-    AdaptiveBuffer, BufferedCopyEngine, CopyEngine, MicroFileCopyEngine, 
-    ParallelCopyEngine, BufferPool, MultiSizeBufferPool,
+    AdaptiveBuffer, BufferPool, BufferedCopyEngine, CopyEngine, MicroFileCopyEngine,
+    MultiSizeBufferPool, ParallelCopyEngine,
 };
 use ferrocp_types::DeviceType;
 
@@ -37,11 +37,16 @@ impl AllocationTracker {
     fn track_allocation(&self, size: usize) {
         self.allocations.fetch_add(1, Ordering::Relaxed);
         let current = self.current_memory.fetch_add(size, Ordering::Relaxed) + size;
-        
+
         // Update peak if necessary
         let mut peak = self.peak_memory.load(Ordering::Relaxed);
         while current > peak {
-            match self.peak_memory.compare_exchange_weak(peak, current, Ordering::Relaxed, Ordering::Relaxed) {
+            match self.peak_memory.compare_exchange_weak(
+                peak,
+                current,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
                 Ok(_) => break,
                 Err(x) => peak = x,
             }
@@ -102,7 +107,7 @@ fn benchmark_buffer_pool_efficiency(c: &mut Criterion) {
                 b.iter(|| {
                     let tracker = AllocationTracker::new();
                     let pool = BufferPool::new(pool_size, buffer_size);
-                    
+
                     // Simulate allocation/deallocation cycles
                     let mut buffers = Vec::new();
                     for _ in 0..pool_size {
@@ -111,13 +116,13 @@ fn benchmark_buffer_pool_efficiency(c: &mut Criterion) {
                             buffers.push(buffer);
                         }
                     }
-                    
+
                     // Return buffers
                     for buffer in buffers {
                         tracker.track_deallocation(buffer_size);
                         pool.return_buffer(buffer);
                     }
-                    
+
                     black_box(tracker.get_stats());
                 });
             },
@@ -131,11 +136,11 @@ fn benchmark_buffer_pool_efficiency(c: &mut Criterion) {
                 b.iter(|| {
                     let tracker = AllocationTracker::new();
                     let pool = MultiSizeBufferPool::new();
-                    
+
                     // Test different buffer sizes
                     let sizes = vec![1024, 4096, 16384, 65536];
                     let mut buffers = Vec::new();
-                    
+
                     for &size in &sizes {
                         for _ in 0..(pool_size / 4) {
                             tracker.track_allocation(size);
@@ -144,13 +149,13 @@ fn benchmark_buffer_pool_efficiency(c: &mut Criterion) {
                             }
                         }
                     }
-                    
+
                     // Return buffers
                     for (buffer, size) in buffers {
                         tracker.track_deallocation(size);
                         pool.return_buffer(buffer, size);
                     }
-                    
+
                     black_box(tracker.get_stats());
                 });
             },
@@ -180,20 +185,20 @@ fn benchmark_adaptive_buffer_memory(c: &mut Criterion) {
                 b.iter(|| {
                     let tracker = AllocationTracker::new();
                     let mut buffer = AdaptiveBuffer::new(device_type);
-                    
+
                     // Simulate adaptation cycles
                     for size in [1024, 4096, 16384, 65536, 262144] {
                         tracker.track_allocation(size);
                         buffer.resize(size);
-                        
+
                         // Simulate usage
                         let data = vec![0u8; size];
                         buffer.as_mut().copy_from_slice(&data);
                         buffer.clear();
-                        
+
                         tracker.track_deallocation(size);
                     }
-                    
+
                     black_box(tracker.get_stats());
                 });
             },
@@ -229,13 +234,13 @@ fn benchmark_copy_engine_memory_patterns(c: &mut Criterion) {
                         let source = create_test_file(&temp_dir, "source.txt", size);
                         let dest = temp_dir.path().join("dest.txt");
                         let tracker = AllocationTracker::new();
-                        
+
                         rt.block_on(async {
                             tracker.track_allocation(size);
                             let mut engine = MicroFileCopyEngine::new();
                             let result = engine.copy_file(&source, &dest).await.unwrap();
                             tracker.track_deallocation(size);
-                            
+
                             black_box((result, tracker.get_stats()));
                         });
                     });
@@ -253,13 +258,13 @@ fn benchmark_copy_engine_memory_patterns(c: &mut Criterion) {
                     let source = create_test_file(&temp_dir, "source.txt", size);
                     let dest = temp_dir.path().join("dest.txt");
                     let tracker = AllocationTracker::new();
-                    
+
                     rt.block_on(async {
                         tracker.track_allocation(size);
                         let mut engine = BufferedCopyEngine::new();
                         let result = engine.copy_file(&source, &dest).await.unwrap();
                         tracker.track_deallocation(size);
-                        
+
                         black_box((result, tracker.get_stats()));
                     });
                 });
@@ -277,13 +282,13 @@ fn benchmark_copy_engine_memory_patterns(c: &mut Criterion) {
                         let source = create_test_file(&temp_dir, "source.txt", size);
                         let dest = temp_dir.path().join("dest.txt");
                         let tracker = AllocationTracker::new();
-                        
+
                         rt.block_on(async {
                             tracker.track_allocation(size);
                             let mut engine = ParallelCopyEngine::new();
                             let result = engine.copy_file(&source, &dest).await.unwrap();
                             tracker.track_deallocation(size);
-                            
+
                             black_box((result, tracker.get_stats()));
                         });
                     });
@@ -315,20 +320,20 @@ fn benchmark_memory_fragmentation(c: &mut Criterion) {
                 b.iter(|| {
                     let tracker = AllocationTracker::new();
                     let mut buffers = Vec::new();
-                    
+
                     // Allocate buffers in pattern
                     for &size in sizes {
                         tracker.track_allocation(size);
                         let buffer = AdaptiveBuffer::with_size(DeviceType::SSD, size);
                         buffers.push((buffer, size));
                     }
-                    
+
                     // Deallocate in reverse order (worst case for fragmentation)
                     for (buffer, size) in buffers.into_iter().rev() {
                         tracker.track_deallocation(size);
                         drop(buffer);
                     }
-                    
+
                     black_box(tracker.get_stats());
                 });
             },

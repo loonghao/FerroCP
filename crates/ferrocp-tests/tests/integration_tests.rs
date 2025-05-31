@@ -9,9 +9,9 @@ use std::time::Duration;
 use tempfile::TempDir;
 use tokio::time::timeout;
 
-use ferrocp_types::CompressionEngine;
-use ferrocp_io::{BufferedCopyEngine, CopyEngine};
 use ferrocp_compression::CompressionEngineImpl;
+use ferrocp_io::{BufferedCopyEngine, CopyEngine};
+use ferrocp_types::CompressionEngine;
 
 /// Helper function to create test files with specific content
 fn create_test_file(path: &Path, size: usize) -> std::io::Result<()> {
@@ -47,9 +47,9 @@ fn create_test_directory_structure(base_path: &Path) -> std::io::Result<Vec<Path
 
     // Create files of different sizes
     let files = [
-        ("small.txt", 1024),           // 1KB
-        ("medium.txt", 64 * 1024),     // 64KB
-        ("large.txt", 1024 * 1024),    // 1MB
+        ("small.txt", 1024),        // 1KB
+        ("medium.txt", 64 * 1024),  // 64KB
+        ("large.txt", 1024 * 1024), // 1MB
         ("subdir1/file1.txt", 2048),
         ("subdir2/file2.txt", 4096),
         ("subdir1/nested/file3.txt", 8192),
@@ -81,7 +81,10 @@ async fn test_basic_file_copy() -> Result<(), Box<dyn std::error::Error>> {
 
     // Verify the copy was successful
     assert!(dest_file.exists());
-    assert_eq!(fs::metadata(&source_file)?.len(), fs::metadata(&dest_file)?.len());
+    assert_eq!(
+        fs::metadata(&source_file)?.len(),
+        fs::metadata(&dest_file)?.len()
+    );
     assert_eq!(fs::read(&source_file)?, fs::read(&dest_file)?);
     assert!(result.bytes_copied > 0);
 
@@ -101,7 +104,10 @@ async fn test_compression_integration() -> Result<(), Box<dyn std::error::Error>
     let compressed_data = compression_engine.compress(original_data).await?;
 
     // Verify compression worked
-    assert!(compressed_data.len() < original_data.len(), "Data should be compressed");
+    assert!(
+        compressed_data.len() < original_data.len(),
+        "Data should be compressed"
+    );
 
     // Decompress the data
     let decompressed_data = compression_engine.decompress(&compressed_data).await?;
@@ -127,7 +133,10 @@ async fn test_large_file_copy() -> Result<(), Box<dyn std::error::Error>> {
 
     // Verify the copy was successful
     assert!(dest_file.exists());
-    assert_eq!(fs::metadata(&source_file)?.len(), fs::metadata(&dest_file)?.len());
+    assert_eq!(
+        fs::metadata(&source_file)?.len(),
+        fs::metadata(&dest_file)?.len()
+    );
     assert_eq!(result.bytes_copied, 10 * 1024 * 1024);
 
     // Verify content integrity
@@ -170,7 +179,10 @@ async fn test_directory_copy_integration() -> Result<(), Box<dyn std::error::Err
         let dest_file = dest_dir.join(relative_path);
 
         assert!(dest_file.exists());
-        assert_eq!(fs::metadata(source_file)?.len(), fs::metadata(&dest_file)?.len());
+        assert_eq!(
+            fs::metadata(source_file)?.len(),
+            fs::metadata(&dest_file)?.len()
+        );
 
         // Verify content integrity
         let source_content = fs::read(source_file)?;
@@ -230,11 +242,16 @@ async fn test_error_recovery_integration() -> Result<(), Box<dyn std::error::Err
     let result = copy_engine.copy_file(&source_file, &nonexistent_dest).await;
 
     // Verify error handling
-    assert!(result.is_err(), "Copy to non-existent directory should fail");
+    assert!(
+        result.is_err(),
+        "Copy to non-existent directory should fail"
+    );
 
     // Test 2: Create the directory and retry (should succeed)
     fs::create_dir_all(nonexistent_dest.parent().unwrap())?;
-    let result = copy_engine.copy_file(&source_file, &nonexistent_dest).await?;
+    let result = copy_engine
+        .copy_file(&source_file, &nonexistent_dest)
+        .await?;
     assert!(result.bytes_copied > 0);
     assert!(nonexistent_dest.exists());
 

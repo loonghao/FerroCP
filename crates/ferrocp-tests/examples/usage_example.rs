@@ -86,7 +86,7 @@ impl ModuleBenchmark for CustomBenchmark {
 
 fn main() {
     println!("FerroCP Benchmark Suite Usage Example");
-    
+
     // Create a custom benchmark configuration
     let config = BenchmarkConfig {
         sample_size: 50,
@@ -117,12 +117,15 @@ fn main() {
         eprintln!("Failed to load baselines: {}", e);
     } else {
         println!("Baseline metrics loaded from examples/baseline_metrics.json");
-        
+
         // Display loaded baselines
         if let Some(baselines) = load_suite.get_module_baselines("copy_engine") {
             println!("Copy engine baselines:");
             for baseline in baselines {
-                println!("  - {}: {} ops/s", baseline.benchmark_name, baseline.expected_throughput);
+                println!(
+                    "  - {}: {} ops/s",
+                    baseline.benchmark_name, baseline.expected_throughput
+                );
             }
         }
     }

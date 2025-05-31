@@ -3,7 +3,7 @@
 //! This module provides cross-platform device detection capabilities,
 //! identifying storage device types and their characteristics.
 
-use crate::cache::{SharedDeviceCache, create_shared_cache};
+use crate::cache::{create_shared_cache, SharedDeviceCache};
 use ferrocp_types::{DeviceDetector as DeviceDetectorTrait, DeviceType, Result};
 use std::path::Path;
 use tracing::debug;
@@ -59,7 +59,10 @@ impl DeviceDetector {
         {
             let mut cache = self.cache.write().await;
             if let Some(device_type) = cache.get(&path) {
-                debug!("Device type cache hit for path: {}", path.as_ref().display());
+                debug!(
+                    "Device type cache hit for path: {}",
+                    path.as_ref().display()
+                );
                 return Ok(device_type);
             }
         }
@@ -99,11 +102,17 @@ impl DeviceDetector {
                 cache.update_refreshed_entry(path, device_type);
                 refreshed_count += 1;
 
-                debug!("Background refreshed device type for path: {}", path.display());
+                debug!(
+                    "Background refreshed device type for path: {}",
+                    path.display()
+                );
             }
         }
 
-        debug!("Background refresh completed: {} entries refreshed", refreshed_count);
+        debug!(
+            "Background refresh completed: {} entries refreshed",
+            refreshed_count
+        );
         Ok(refreshed_count)
     }
 
@@ -392,19 +401,37 @@ mod tests {
 
         // First call should be a cache miss
         let stats_before = detector.cache_stats().await;
-        let device_type1 = detector.detect_device_type_cached(&test_path).await.unwrap();
+        let device_type1 = detector
+            .detect_device_type_cached(&test_path)
+            .await
+            .unwrap();
         let stats_after_first = detector.cache_stats().await;
 
-        assert_eq!(stats_after_first.total_lookups, stats_before.total_lookups + 1);
-        assert_eq!(stats_after_first.cache_misses, stats_before.cache_misses + 1);
+        assert_eq!(
+            stats_after_first.total_lookups,
+            stats_before.total_lookups + 1
+        );
+        assert_eq!(
+            stats_after_first.cache_misses,
+            stats_before.cache_misses + 1
+        );
 
         // Second call should be a cache hit
-        let device_type2 = detector.detect_device_type_cached(&test_path).await.unwrap();
+        let device_type2 = detector
+            .detect_device_type_cached(&test_path)
+            .await
+            .unwrap();
         let stats_after_second = detector.cache_stats().await;
 
         assert_eq!(device_type1, device_type2);
-        assert_eq!(stats_after_second.total_lookups, stats_after_first.total_lookups + 1);
-        assert_eq!(stats_after_second.cache_hits, stats_after_first.cache_hits + 1);
+        assert_eq!(
+            stats_after_second.total_lookups,
+            stats_after_first.total_lookups + 1
+        );
+        assert_eq!(
+            stats_after_second.cache_hits,
+            stats_after_first.cache_hits + 1
+        );
 
         // Cache hit rate should be 50% (1 hit out of 2 lookups)
         assert_eq!(stats_after_second.hit_rate(), 50.0);
@@ -469,13 +496,19 @@ mod tests {
         std::fs::write(&test_path, "test content").unwrap();
 
         // Initial detection
-        detector.detect_device_type_cached(&test_path).await.unwrap();
+        detector
+            .detect_device_type_cached(&test_path)
+            .await
+            .unwrap();
 
         // Wait for refresh threshold
         tokio::time::sleep(Duration::from_millis(150)).await;
 
         // Access the cache to trigger refresh queue population
-        detector.detect_device_type_cached(&test_path).await.unwrap();
+        detector
+            .detect_device_type_cached(&test_path)
+            .await
+            .unwrap();
 
         // Check if background refresh is needed
         assert!(detector.needs_background_refresh().await);

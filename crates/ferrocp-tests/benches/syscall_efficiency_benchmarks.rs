@@ -3,7 +3,7 @@
 //! This module provides benchmarks for system call patterns and efficiency,
 //! helping to optimize the number and types of system calls made during file operations.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::fs;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -140,22 +140,22 @@ fn benchmark_copy_syscall_efficiency(c: &mut Criterion) {
                         tracker.track_metadata(); // File size check
                         tracker.track_open(); // Open source
                         tracker.track_open(); // Open dest
-                        
+
                         let mut engine = MicroFileCopyEngine::new();
                         let result = engine.copy_file(&source, &dest).await.unwrap();
-                        
+
                         // Estimate syscalls based on strategy
                         let stats = engine.stats();
                         let estimated_reads = (size + 4095) / 4096; // Estimate read syscalls
                         let estimated_writes = (size + 4095) / 4096; // Estimate write syscalls
-                        
+
                         for _ in 0..estimated_reads {
                             tracker.track_read();
                         }
                         for _ in 0..estimated_writes {
                             tracker.track_write();
                         }
-                        
+
                         tracker.track_flush(); // Flush
                         tracker.track_close(); // Close source
                         tracker.track_close(); // Close dest
@@ -181,22 +181,22 @@ fn benchmark_copy_syscall_efficiency(c: &mut Criterion) {
                         tracker.track_metadata(); // File size check
                         tracker.track_open(); // Open source
                         tracker.track_open(); // Open dest
-                        
+
                         let mut engine = BufferedCopyEngine::new();
                         let result = engine.copy_file(&source, &dest).await.unwrap();
-                        
+
                         // Estimate syscalls for buffered engine
                         let buffer_size = 64 * 1024; // Default buffer size
                         let estimated_reads = (size + buffer_size - 1) / buffer_size;
                         let estimated_writes = (size + buffer_size - 1) / buffer_size;
-                        
+
                         for _ in 0..estimated_reads {
                             tracker.track_read();
                         }
                         for _ in 0..estimated_writes {
                             tracker.track_write();
                         }
-                        
+
                         tracker.track_flush();
                         tracker.track_close();
                         tracker.track_close();
@@ -222,21 +222,21 @@ fn benchmark_copy_syscall_efficiency(c: &mut Criterion) {
                     tracker.track_metadata(); // Source metadata
                     tracker.track_open(); // Open source
                     tracker.track_open(); // Open dest
-                    
+
                     let result = fs::copy(&source, &dest).unwrap();
-                    
+
                     // std::fs::copy typically uses larger buffers
                     let buffer_size = 64 * 1024;
                     let estimated_reads = (size + buffer_size - 1) / buffer_size;
                     let estimated_writes = (size + buffer_size - 1) / buffer_size;
-                    
+
                     for _ in 0..estimated_reads {
                         tracker.track_read();
                     }
                     for _ in 0..estimated_writes {
                         tracker.track_write();
                     }
-                    
+
                     tracker.track_metadata(); // Set dest metadata
                     tracker.track_close();
                     tracker.track_close();
@@ -281,13 +281,13 @@ fn benchmark_file_io_syscall_patterns(c: &mut Criterion) {
                     rt.block_on(async {
                         tracker.track_open();
                         let mut reader = AsyncFileReader::open(&source).await.unwrap();
-                        
+
                         for _ in 0..num_operations {
                             tracker.track_read();
                             // Simulate reading chunk_size bytes
                             // In real implementation, this would be actual read operations
                         }
-                        
+
                         tracker.track_close();
                         black_box((reader, tracker.get_stats()));
                     });
@@ -309,13 +309,13 @@ fn benchmark_file_io_syscall_patterns(c: &mut Criterion) {
                     rt.block_on(async {
                         tracker.track_open();
                         let mut writer = AsyncFileWriter::create(&dest).await.unwrap();
-                        
+
                         for _ in 0..num_operations {
                             tracker.track_write();
                             // Simulate writing chunk_size bytes
                             let _ = writer.write_all(&data).await;
                         }
-                        
+
                         tracker.track_flush();
                         tracker.track_close();
                         black_box((writer, tracker.get_stats()));
@@ -356,15 +356,15 @@ fn benchmark_syscall_optimization_strategies(c: &mut Criterion) {
 
                     rt.block_on(async {
                         let mut engine = MicroFileCopyEngine::with_strategy(*strategy);
-                        
+
                         // Track estimated syscalls for each strategy
                         tracker.track_metadata(); // File size check
                         tracker.track_open(); // Open source
                         tracker.track_open(); // Open dest
-                        
+
                         let result = engine.copy_file(&source, &dest).await.unwrap();
                         let stats = engine.stats();
-                        
+
                         // Different strategies may have different syscall patterns
                         match strategy {
                             ferrocp_io::MicroCopyStrategy::SuperFast => {
@@ -381,7 +381,7 @@ fn benchmark_syscall_optimization_strategies(c: &mut Criterion) {
                                 }
                             }
                         }
-                        
+
                         tracker.track_close();
                         tracker.track_close();
 

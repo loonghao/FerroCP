@@ -3,7 +3,7 @@
 //! This module provides detailed benchmarks for individual functions and methods
 //! to identify performance bottlenecks at a granular level.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::fs;
 
 use tempfile::TempDir;
@@ -289,7 +289,10 @@ fn benchmark_device_detection(c: &mut Criterion) {
                 b.iter(|| {
                     rt.block_on(async {
                         let engine = BufferedCopyEngine::new();
-                        let device_type = engine.detect_device_type(path).await.unwrap_or(DeviceType::Unknown);
+                        let device_type = engine
+                            .detect_device_type(path)
+                            .await
+                            .unwrap_or(DeviceType::Unknown);
                         black_box(device_type);
                     });
                 });

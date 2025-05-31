@@ -3,7 +3,7 @@
 //! This module provides comprehensive benchmarks for multi-threaded performance,
 //! resource contention analysis, and scalability testing across 1-32 threads.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::fs;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -101,15 +101,15 @@ impl ResourceContentionSimulator {
 
     fn simulate_contention(&self, operations_per_thread: usize) {
         let mut handles = Vec::new();
-        
+
         for _ in 0..self.metrics.thread_count {
             let resource = Arc::clone(&self.shared_resource);
             let metrics = self.metrics.clone();
-            
+
             let handle = thread::spawn(move || {
                 for _ in 0..operations_per_thread {
                     let start = Instant::now();
-                    
+
                     // Simulate lock contention
                     match resource.try_lock() {
                         Ok(mut data) => {
@@ -120,7 +120,7 @@ impl ResourceContentionSimulator {
                         Err(_) => {
                             // Lock contention detected
                             metrics.record_lock_contention();
-                            
+
                             // Wait and try again
                             thread::sleep(Duration::from_micros(1));
                             if let Ok(mut data) = resource.lock() {
@@ -129,17 +129,17 @@ impl ResourceContentionSimulator {
                             }
                         }
                     }
-                    
+
                     // Simulate memory allocation
                     let temp_data = vec![0u8; 1024];
                     metrics.record_memory_allocation(temp_data.len());
                     black_box(temp_data);
                 }
             });
-            
+
             handles.push(handle);
         }
-        
+
         // Wait for all threads to complete
         for handle in handles {
             handle.join().unwrap();
@@ -170,7 +170,9 @@ fn benchmark_multithreaded_copy_performance(c: &mut Criterion) {
     let files_per_thread = 10;
 
     for thread_count in &thread_counts {
-        group.throughput(Throughput::Bytes((file_size * files_per_thread * thread_count) as u64));
+        group.throughput(Throughput::Bytes(
+            (file_size * files_per_thread * thread_count) as u64,
+        ));
 
         // Benchmark MicroFileCopyEngine concurrency
         group.bench_with_input(
@@ -186,7 +188,9 @@ fn benchmark_multithreaded_copy_performance(c: &mut Criterion) {
 
                         // Create all source files first
                         let sources: Vec<_> = (0..thread_count)
-                            .map(|i| create_test_file(&temp_dir, &format!("source_{}.txt", i), file_size))
+                            .map(|i| {
+                                create_test_file(&temp_dir, &format!("source_{}.txt", i), file_size)
+                            })
                             .collect();
 
                         for i in 0..thread_count {
@@ -197,8 +201,10 @@ fn benchmark_multithreaded_copy_performance(c: &mut Criterion) {
                             let handle = tokio::spawn(async move {
                                 let mut engine = MicroFileCopyEngine::new();
                                 for j in 0..files_per_thread {
-                                    let file_dest = temp_dir_path.join(format!("dest_{}_{}.txt", i, j));
-                                    let result = engine.copy_file(&source, &file_dest).await.unwrap();
+                                    let file_dest =
+                                        temp_dir_path.join(format!("dest_{}_{}.txt", i, j));
+                                    let result =
+                                        engine.copy_file(&source, &file_dest).await.unwrap();
                                     metrics_clone.record_operation(result.bytes_copied as usize);
                                 }
                             });
@@ -211,7 +217,10 @@ fn benchmark_multithreaded_copy_performance(c: &mut Criterion) {
                             handle.await.unwrap();
                         }
 
-                        black_box((metrics.get_throughput_mbps(), metrics.get_scalability_factor()));
+                        black_box((
+                            metrics.get_throughput_mbps(),
+                            metrics.get_scalability_factor(),
+                        ));
                     });
                 });
             },
@@ -231,7 +240,9 @@ fn benchmark_multithreaded_copy_performance(c: &mut Criterion) {
 
                         // Create all source files first
                         let sources: Vec<_> = (0..thread_count)
-                            .map(|i| create_test_file(&temp_dir, &format!("source_{}.txt", i), file_size))
+                            .map(|i| {
+                                create_test_file(&temp_dir, &format!("source_{}.txt", i), file_size)
+                            })
                             .collect();
 
                         for i in 0..thread_count {
@@ -242,8 +253,10 @@ fn benchmark_multithreaded_copy_performance(c: &mut Criterion) {
                             let handle = tokio::spawn(async move {
                                 let mut engine = BufferedCopyEngine::new();
                                 for j in 0..files_per_thread {
-                                    let file_dest = temp_dir_path.join(format!("dest_{}_{}.txt", i, j));
-                                    let result = engine.copy_file(&source, &file_dest).await.unwrap();
+                                    let file_dest =
+                                        temp_dir_path.join(format!("dest_{}_{}.txt", i, j));
+                                    let result =
+                                        engine.copy_file(&source, &file_dest).await.unwrap();
                                     metrics_clone.record_operation(result.bytes_copied as usize);
                                 }
                             });
@@ -256,7 +269,10 @@ fn benchmark_multithreaded_copy_performance(c: &mut Criterion) {
                             handle.await.unwrap();
                         }
 
-                        black_box((metrics.get_throughput_mbps(), metrics.get_scalability_factor()));
+                        black_box((
+                            metrics.get_throughput_mbps(),
+                            metrics.get_scalability_factor(),
+                        ));
                     });
                 });
             },
@@ -275,7 +291,9 @@ fn benchmark_resource_contention(c: &mut Criterion) {
     let resource_size = 1024; // 1KB shared resource
 
     for thread_count in &thread_counts {
-        group.throughput(Throughput::Elements((operations_per_thread * thread_count) as u64));
+        group.throughput(Throughput::Elements(
+            (operations_per_thread * thread_count) as u64,
+        ));
 
         group.bench_with_input(
             BenchmarkId::new("lock_contention", thread_count),
@@ -284,7 +302,7 @@ fn benchmark_resource_contention(c: &mut Criterion) {
                 b.iter(|| {
                     let simulator = ResourceContentionSimulator::new(thread_count, resource_size);
                     simulator.simulate_contention(operations_per_thread);
-                    
+
                     let metrics = simulator.get_metrics();
                     black_box((
                         metrics.get_throughput_mbps(),
@@ -309,7 +327,9 @@ fn benchmark_concurrent_memory_usage(c: &mut Criterion) {
     let files_per_thread = 5;
 
     for thread_count in &thread_counts {
-        group.throughput(Throughput::Bytes((file_size * files_per_thread * thread_count) as u64));
+        group.throughput(Throughput::Bytes(
+            (file_size * files_per_thread * thread_count) as u64,
+        ));
 
         group.bench_with_input(
             BenchmarkId::new("memory_allocation_pattern", thread_count),
@@ -324,7 +344,9 @@ fn benchmark_concurrent_memory_usage(c: &mut Criterion) {
 
                         // Create all source files first
                         let sources: Vec<_> = (0..thread_count)
-                            .map(|i| create_test_file(&temp_dir, &format!("source_{}.txt", i), file_size))
+                            .map(|i| {
+                                create_test_file(&temp_dir, &format!("source_{}.txt", i), file_size)
+                            })
                             .collect();
 
                         let temp_dir_path = temp_dir.path().to_path_buf();
@@ -341,7 +363,8 @@ fn benchmark_concurrent_memory_usage(c: &mut Criterion) {
                                     // Simulate memory allocation tracking
                                     metrics_clone.record_memory_allocation(file_size);
 
-                                    let dest = temp_dir_path_clone.join(format!("dest_{}_{}.txt", i, j));
+                                    let dest =
+                                        temp_dir_path_clone.join(format!("dest_{}_{}.txt", i, j));
                                     let result = engine.copy_file(&source, &dest).await.unwrap();
                                     metrics_clone.record_operation(result.bytes_copied as usize);
 
@@ -398,7 +421,9 @@ fn benchmark_thread_scalability(c: &mut Criterion) {
 
                         // Create all source files first
                         let sources: Vec<_> = (0..thread_count)
-                            .map(|i| create_test_file(&temp_dir, &format!("source_{}.txt", i), file_size))
+                            .map(|i| {
+                                create_test_file(&temp_dir, &format!("source_{}.txt", i), file_size)
+                            })
                             .collect();
 
                         for i in 0..thread_count {
@@ -424,7 +449,8 @@ fn benchmark_thread_scalability(c: &mut Criterion) {
                         }
 
                         let elapsed = start_time.elapsed();
-                        let throughput = total_work as f64 / elapsed.as_secs_f64() / (1024.0 * 1024.0);
+                        let throughput =
+                            total_work as f64 / elapsed.as_secs_f64() / (1024.0 * 1024.0);
                         let efficiency = throughput / thread_count as f64;
 
                         black_box((throughput, efficiency, metrics.get_scalability_factor()));
@@ -447,7 +473,9 @@ fn benchmark_io_resource_competition(c: &mut Criterion) {
     let files_per_thread = 3;
 
     for thread_count in &thread_counts {
-        group.throughput(Throughput::Bytes((file_size * files_per_thread * thread_count) as u64));
+        group.throughput(Throughput::Bytes(
+            (file_size * files_per_thread * thread_count) as u64,
+        ));
 
         // Test same source file (read competition)
         group.bench_with_input(
@@ -472,11 +500,13 @@ fn benchmark_io_resource_competition(c: &mut Criterion) {
                                 let mut engine = BufferedCopyEngine::new();
 
                                 for j in 0..files_per_thread {
-                                    let dest = temp_dir_path_clone.join(format!("dest_{}_{}.txt", i, j));
+                                    let dest =
+                                        temp_dir_path_clone.join(format!("dest_{}_{}.txt", i, j));
 
                                     // Simulate I/O contention detection
                                     let _start = Instant::now();
-                                    let result = engine.copy_file(&source_clone, &dest).await.unwrap();
+                                    let result =
+                                        engine.copy_file(&source_clone, &dest).await.unwrap();
                                     let elapsed = _start.elapsed();
 
                                     // If operation took longer than expected, record contention
@@ -518,7 +548,9 @@ fn benchmark_io_resource_competition(c: &mut Criterion) {
 
                         // Create all source files first
                         let sources: Vec<_> = (0..thread_count)
-                            .map(|i| create_test_file(&temp_dir, &format!("source_{}.txt", i), file_size))
+                            .map(|i| {
+                                create_test_file(&temp_dir, &format!("source_{}.txt", i), file_size)
+                            })
                             .collect();
 
                         let temp_dir_path = temp_dir.path().to_path_buf();
@@ -533,7 +565,8 @@ fn benchmark_io_resource_competition(c: &mut Criterion) {
 
                                 for j in 0..files_per_thread {
                                     // All threads write to same directory (potential filesystem contention)
-                                    let dest = temp_dir_path_clone.join(format!("shared_dest_{}_{}.txt", i, j));
+                                    let dest = temp_dir_path_clone
+                                        .join(format!("shared_dest_{}_{}.txt", i, j));
 
                                     let _start = Instant::now();
                                     let result = engine.copy_file(&source, &dest).await.unwrap();

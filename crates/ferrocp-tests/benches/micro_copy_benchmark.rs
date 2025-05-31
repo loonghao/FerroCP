@@ -3,7 +3,7 @@
 //! These benchmarks specifically test the performance of the MicroFileCopyEngine
 //! against standard file copy operations for small files.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::fs;
 use std::time::Instant;
 use tempfile::TempDir;
@@ -68,9 +68,9 @@ fn benchmark_micro_vs_buffered(c: &mut Criterion) {
     let sizes = vec![
         (100, "100B"),
         (500, "500B"),
-        (1024, "1KB"),    // Critical target size
+        (1024, "1KB"), // Critical target size
         (2048, "2KB"),
-        (4096, "4KB"),    // Threshold boundary
+        (4096, "4KB"), // Threshold boundary
     ];
 
     for (size, size_name) in &sizes {
@@ -85,7 +85,7 @@ fn benchmark_micro_vs_buffered(c: &mut Criterion) {
                     let temp_dir = TempDir::new().unwrap();
                     let source = create_test_file(&temp_dir, "source.txt", size);
                     let dest = temp_dir.path().join("dest.txt");
-                    
+
                     rt.block_on(async {
                         let mut engine = MicroFileCopyEngine::new();
                         let result = engine.copy_file(&source, &dest).await.unwrap();
@@ -104,7 +104,7 @@ fn benchmark_micro_vs_buffered(c: &mut Criterion) {
                     let temp_dir = TempDir::new().unwrap();
                     let source = create_test_file(&temp_dir, "source.txt", size);
                     let dest = temp_dir.path().join("dest.txt");
-                    
+
                     rt.block_on(async {
                         let mut engine = BufferedCopyEngine::new();
                         let result = engine.copy_file(&source, &dest).await.unwrap();
@@ -123,7 +123,7 @@ fn benchmark_micro_vs_buffered(c: &mut Criterion) {
                     let temp_dir = TempDir::new().unwrap();
                     let source = create_test_file(&temp_dir, "source.txt", size);
                     let dest = temp_dir.path().join("dest.txt");
-                    
+
                     black_box(fs::copy(&source, &dest).unwrap())
                 });
             },
@@ -147,7 +147,7 @@ fn benchmark_micro_throughput(c: &mut Criterion) {
             let temp_dir = TempDir::new().unwrap();
             let source = create_test_file(&temp_dir, "source.txt", file_size);
             let dest = temp_dir.path().join("dest.txt");
-            
+
             rt.block_on(async {
                 let mut engine = MicroFileCopyEngine::new();
                 let result = engine.copy_file(&source, &dest).await.unwrap();
@@ -172,18 +172,19 @@ fn benchmark_micro_batch(c: &mut Criterion) {
     group.bench_function("micro_engine_batch", |b| {
         b.iter(|| {
             let temp_dir = TempDir::new().unwrap();
-            
+
             rt.block_on(async {
                 let mut engine = MicroFileCopyEngine::new();
-                
+
                 for i in 0..file_count {
-                    let source = create_test_file(&temp_dir, &format!("source_{}.txt", i), file_size);
+                    let source =
+                        create_test_file(&temp_dir, &format!("source_{}.txt", i), file_size);
                     let dest = temp_dir.path().join(format!("dest_{}.txt", i));
-                    
+
                     let result = engine.copy_file(&source, &dest).await.unwrap();
                     black_box(result);
                 }
-                
+
                 // Check final statistics
                 let stats = engine.stats();
                 black_box(stats);
@@ -194,14 +195,15 @@ fn benchmark_micro_batch(c: &mut Criterion) {
     group.bench_function("buffered_engine_batch", |b| {
         b.iter(|| {
             let temp_dir = TempDir::new().unwrap();
-            
+
             rt.block_on(async {
                 let mut engine = BufferedCopyEngine::new();
-                
+
                 for i in 0..file_count {
-                    let source = create_test_file(&temp_dir, &format!("source_{}.txt", i), file_size);
+                    let source =
+                        create_test_file(&temp_dir, &format!("source_{}.txt", i), file_size);
                     let dest = temp_dir.path().join(format!("dest_{}.txt", i));
-                    
+
                     let result = engine.copy_file(&source, &dest).await.unwrap();
                     black_box(result);
                 }
@@ -229,9 +231,8 @@ fn benchmark_micro_strategies(c: &mut Criterion) {
             let dest = temp_dir.path().join("dest.txt");
 
             rt.block_on(async {
-                let mut engine = MicroFileCopyEngine::with_strategy(
-                    ferrocp_io::MicroCopyStrategy::UltraFast
-                );
+                let mut engine =
+                    MicroFileCopyEngine::with_strategy(ferrocp_io::MicroCopyStrategy::UltraFast);
                 let result = engine.copy_file(&source, &dest).await.unwrap();
                 black_box(result);
 
@@ -250,9 +251,8 @@ fn benchmark_micro_strategies(c: &mut Criterion) {
             let dest = temp_dir.path().join("dest.txt");
 
             rt.block_on(async {
-                let mut engine = MicroFileCopyEngine::with_strategy(
-                    ferrocp_io::MicroCopyStrategy::StackBuffer
-                );
+                let mut engine =
+                    MicroFileCopyEngine::with_strategy(ferrocp_io::MicroCopyStrategy::StackBuffer);
                 let result = engine.copy_file(&source, &dest).await.unwrap();
                 black_box(result);
 
@@ -271,9 +271,8 @@ fn benchmark_micro_strategies(c: &mut Criterion) {
             let dest = temp_dir.path().join("dest.txt");
 
             rt.block_on(async {
-                let mut engine = MicroFileCopyEngine::with_strategy(
-                    ferrocp_io::MicroCopyStrategy::HyperFast
-                );
+                let mut engine =
+                    MicroFileCopyEngine::with_strategy(ferrocp_io::MicroCopyStrategy::HyperFast);
                 let result = engine.copy_file(&source, &dest).await.unwrap();
                 black_box(result);
 
@@ -292,9 +291,8 @@ fn benchmark_micro_strategies(c: &mut Criterion) {
             let dest = temp_dir.path().join("dest.txt");
 
             rt.block_on(async {
-                let mut engine = MicroFileCopyEngine::with_strategy(
-                    ferrocp_io::MicroCopyStrategy::SuperFast
-                );
+                let mut engine =
+                    MicroFileCopyEngine::with_strategy(ferrocp_io::MicroCopyStrategy::SuperFast);
                 let result = engine.copy_file(&source, &dest).await.unwrap();
                 black_box(result);
 
@@ -381,7 +379,11 @@ fn benchmark_file_size_analysis(c: &mut Criterion) {
                             memory_tracker.update_peak();
                             let result = engine.copy_file(&source, &dest).await.unwrap();
                             memory_tracker.update_peak();
-                            black_box((result, memory_tracker.memory_delta(), start_time.elapsed()));
+                            black_box((
+                                result,
+                                memory_tracker.memory_delta(),
+                                start_time.elapsed(),
+                            ));
                         })
                     });
                 },
@@ -406,7 +408,11 @@ fn benchmark_file_size_analysis(c: &mut Criterion) {
                             memory_tracker.update_peak();
                             let result = engine.copy_file(&source, &dest).await.unwrap();
                             memory_tracker.update_peak();
-                            black_box((result, memory_tracker.memory_delta(), start_time.elapsed()));
+                            black_box((
+                                result,
+                                memory_tracker.memory_delta(),
+                                start_time.elapsed(),
+                            ));
                         })
                     });
                 },
@@ -431,7 +437,11 @@ fn benchmark_file_size_analysis(c: &mut Criterion) {
                             memory_tracker.update_peak();
                             let result = engine.copy_file(&source, &dest).await.unwrap();
                             memory_tracker.update_peak();
-                            black_box((result, memory_tracker.memory_delta(), start_time.elapsed()));
+                            black_box((
+                                result,
+                                memory_tracker.memory_delta(),
+                                start_time.elapsed(),
+                            ));
                         })
                     });
                 },

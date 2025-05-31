@@ -38,14 +38,14 @@ pub struct ParallelCopyConfig {
 impl Default for ParallelCopyConfig {
     fn default() -> Self {
         Self {
-            chunk_size: 1024 * 1024,        // 1MB chunks
+            chunk_size: 1024 * 1024,         // 1MB chunks
             max_concurrent: 4,               // 4 concurrent operations
             pipeline_depth: 8,               // Buffer up to 8 chunks
             min_file_size: 10 * 1024 * 1024, // 10MB minimum
             adaptive_chunk_size: true,
             max_memory_usage: 64 * 1024 * 1024, // 64MB max memory
-            enable_read_ahead: true,         // Enable read-ahead optimization
-            read_ahead_multiplier: 2,        // Read 2x ahead
+            enable_read_ahead: true,            // Enable read-ahead optimization
+            read_ahead_multiplier: 2,           // Read 2x ahead
         }
     }
 }
@@ -124,7 +124,7 @@ impl ParallelCopyEngine {
     pub fn new() -> Self {
         let config = ParallelCopyConfig::default();
         let semaphore = Arc::new(Semaphore::new(config.max_concurrent));
-        
+
         Self {
             config,
             stats: ParallelCopyStats::default(),
@@ -136,7 +136,7 @@ impl ParallelCopyEngine {
     /// Create a new parallel copy engine with custom configuration
     pub fn with_config(config: ParallelCopyConfig) -> Self {
         let semaphore = Arc::new(Semaphore::new(config.max_concurrent));
-        
+
         Self {
             config,
             stats: ParallelCopyStats::default(),
@@ -175,11 +175,11 @@ impl ParallelCopyEngine {
 
         // Adaptive chunk sizing based on file size and device type
         let base_size = match device_type {
-            DeviceType::SSD => 2 * 1024 * 1024,      // 2MB for SSD
-            DeviceType::RamDisk => 4 * 1024 * 1024,   // 4MB for RAM disk
-            DeviceType::HDD => 512 * 1024,            // 512KB for HDD
-            DeviceType::Network => 256 * 1024,        // 256KB for network
-            DeviceType::Unknown => 1024 * 1024,       // 1MB default
+            DeviceType::SSD => 2 * 1024 * 1024,     // 2MB for SSD
+            DeviceType::RamDisk => 4 * 1024 * 1024, // 4MB for RAM disk
+            DeviceType::HDD => 512 * 1024,          // 512KB for HDD
+            DeviceType::Network => 256 * 1024,      // 256KB for network
+            DeviceType::Unknown => 1024 * 1024,     // 1MB default
         };
 
         // Scale chunk size based on file size
@@ -192,7 +192,7 @@ impl ParallelCopyEngine {
         };
 
         let optimal_size = (base_size as f64 * size_factor) as usize;
-        
+
         // Ensure chunk size is within reasonable bounds
         optimal_size.min(8 * 1024 * 1024).max(64 * 1024) // 64KB - 8MB range
     }
@@ -232,36 +232,33 @@ impl ParallelCopyEngine {
         let chunks_processed = Arc::new(AtomicU64::new(0));
 
         // Start reader task
-        let reader_handle = self.start_reader_task(
-            source_path.to_path_buf(),
-            read_tx,
-            chunk_size,
-            file_size,
-            Arc::clone(&bytes_copied),
-        ).await?;
+        let reader_handle = self
+            .start_reader_task(
+                source_path.to_path_buf(),
+                read_tx,
+                chunk_size,
+                file_size,
+                Arc::clone(&bytes_copied),
+            )
+            .await?;
 
         // Start processor task (reads from read_rx, writes to write_tx)
-        let processor_handle = self.start_processor_task(
-            read_rx,
-            write_tx,
-            Arc::clone(&chunks_processed),
-        ).await?;
+        let processor_handle = self
+            .start_processor_task(read_rx, write_tx, Arc::clone(&chunks_processed))
+            .await?;
 
         // Start writer task
-        let writer_handle = self.start_writer_task(
-            dest_path.to_path_buf(),
-            write_rx,
-            Arc::clone(&bytes_copied),
-        ).await?;
+        let writer_handle = self
+            .start_writer_task(dest_path.to_path_buf(), write_rx, Arc::clone(&bytes_copied))
+            .await?;
 
         // Wait for all tasks to complete
-        let (reader_result, processor_result, writer_result) = tokio::try_join!(
-            reader_handle,
-            processor_handle,
-            writer_handle
-        ).map_err(|e| Error::Io {
-            message: format!("Parallel copy task failed: {}", e),
-        })?;
+        let (reader_result, processor_result, writer_result) =
+            tokio::try_join!(reader_handle, processor_handle, writer_handle).map_err(|e| {
+                Error::Io {
+                    message: format!("Parallel copy task failed: {}", e),
+                }
+            })?;
 
         // Check for errors
         reader_result?;
@@ -338,18 +335,19 @@ impl ParallelCopyEngine {
                 let current_chunk_size = std::cmp::min(chunk_size, remaining as usize);
 
                 // Implement read-ahead optimization
-                let effective_read_size = if enable_read_ahead && remaining > current_chunk_size as u64 {
-                    // Read ahead for better pipeline performance
-                    let read_ahead_size = current_chunk_size * read_ahead_multiplier;
-                    std::cmp::min(read_ahead_size, remaining as usize)
-                } else {
-                    current_chunk_size
-                };
+                let effective_read_size =
+                    if enable_read_ahead && remaining > current_chunk_size as u64 {
+                        // Read ahead for better pipeline performance
+                        let read_ahead_size = current_chunk_size * read_ahead_multiplier;
+                        std::cmp::min(read_ahead_size, remaining as usize)
+                    } else {
+                        current_chunk_size
+                    };
 
                 // Read chunk using AsyncFileReader's method
                 let mut temp_buffer = crate::AdaptiveBuffer::with_size(
                     crate::buffer::AdaptiveBuffer::new(DeviceType::SSD).device_type(),
-                    current_chunk_size
+                    current_chunk_size,
                 );
                 let bytes_read_chunk = match reader.read_into_buffer(&mut temp_buffer).await {
                     Ok(n) => n,
@@ -385,7 +383,11 @@ impl ParallelCopyEngine {
                 bytes_read.fetch_add(bytes_read_chunk as u64, Ordering::Relaxed);
                 sequence += 1;
 
-                trace!("Reader: Sent chunk {} ({} bytes)", sequence - 1, bytes_read_chunk);
+                trace!(
+                    "Reader: Sent chunk {} ({} bytes)",
+                    sequence - 1,
+                    bytes_read_chunk
+                );
             }
 
             debug!("Reader task completed: {} bytes read", total_read);
@@ -438,7 +440,8 @@ impl ParallelCopyEngine {
         let handle = tokio::spawn(async move {
             let mut writer = AsyncFileWriter::create(&dest_path).await?;
             let mut expected_sequence = 0u64;
-            let mut out_of_order_chunks: std::collections::BTreeMap<u64, DataChunk> = std::collections::BTreeMap::new();
+            let mut out_of_order_chunks: std::collections::BTreeMap<u64, DataChunk> =
+                std::collections::BTreeMap::new();
 
             while let Some(chunk) = rx.recv().await {
                 // Handle out-of-order chunks
@@ -452,17 +455,27 @@ impl ParallelCopyEngine {
 
                     expected_sequence += 1;
 
-                    trace!("Writer: Wrote chunk {} ({} bytes)", chunk.sequence, chunk.size);
+                    trace!(
+                        "Writer: Wrote chunk {} ({} bytes)",
+                        chunk.sequence,
+                        chunk.size
+                    );
 
                     // Check if we can write any buffered chunks
-                    while let Some(buffered_chunk) = out_of_order_chunks.remove(&expected_sequence) {
-                        writer.write_all(&buffered_chunk.data[..buffered_chunk.size]).await?;
+                    while let Some(buffered_chunk) = out_of_order_chunks.remove(&expected_sequence)
+                    {
+                        writer
+                            .write_all(&buffered_chunk.data[..buffered_chunk.size])
+                            .await?;
                         bytes_written.fetch_add(buffered_chunk.size as u64, Ordering::Relaxed);
                         memory_usage.fetch_sub(buffered_chunk.size as u64, Ordering::Relaxed);
                         expected_sequence += 1;
 
-                        trace!("Writer: Wrote buffered chunk {} ({} bytes)",
-                               buffered_chunk.sequence, buffered_chunk.size);
+                        trace!(
+                            "Writer: Wrote buffered chunk {} ({} bytes)",
+                            buffered_chunk.sequence,
+                            buffered_chunk.size
+                        );
                     }
 
                     if chunk.is_last {
@@ -495,8 +508,13 @@ impl Default for ParallelCopyEngine {
 
 #[async_trait::async_trait]
 impl CopyEngine for ParallelCopyEngine {
-    async fn copy_file<P: AsRef<Path> + Send>(&mut self, source: P, destination: P) -> Result<CopyStats> {
-        self.copy_file_with_options(source, destination, CopyOptions::default()).await
+    async fn copy_file<P: AsRef<Path> + Send>(
+        &mut self,
+        source: P,
+        destination: P,
+    ) -> Result<CopyStats> {
+        self.copy_file_with_options(source, destination, CopyOptions::default())
+            .await
     }
 
     async fn copy_file_with_options<P: AsRef<Path> + Send>(
@@ -509,23 +527,28 @@ impl CopyEngine for ParallelCopyEngine {
         let dest_path = destination.as_ref();
 
         // Get file size
-        let metadata = tokio::fs::metadata(source_path).await.map_err(|e| Error::Io {
-            message: format!("Failed to get file metadata: {}", e),
-        })?;
+        let metadata = tokio::fs::metadata(source_path)
+            .await
+            .map_err(|e| Error::Io {
+                message: format!("Failed to get file metadata: {}", e),
+            })?;
         let file_size = metadata.len();
 
         // Check if we should use parallel processing
         if !self.should_use_parallel(file_size) {
             debug!("File too small for parallel processing, falling back to sequential");
             // Fall back to a simple sequential copy
-            return self.copy_file_sequential(source_path, dest_path, file_size).await;
+            return self
+                .copy_file_sequential(source_path, dest_path, file_size)
+                .await;
         }
 
         // Detect device type (simplified for now)
         let device_type = DeviceType::SSD; // TODO: Implement proper device detection
 
         // Perform parallel copy
-        self.copy_file_parallel(source_path, dest_path, file_size, device_type).await
+        self.copy_file_parallel(source_path, dest_path, file_size, device_type)
+            .await
     }
 
     async fn detect_device_type<P: AsRef<Path> + Send>(&self, path: P) -> Result<DeviceType> {
@@ -554,9 +577,11 @@ impl ParallelCopyEngine {
         let start_time = Instant::now();
 
         // Simple sequential copy using tokio::fs
-        tokio::fs::copy(source.as_ref(), destination.as_ref()).await.map_err(|e| Error::Io {
-            message: format!("Sequential copy failed: {}", e),
-        })?;
+        tokio::fs::copy(source.as_ref(), destination.as_ref())
+            .await
+            .map_err(|e| Error::Io {
+                message: format!("Sequential copy failed: {}", e),
+            })?;
 
         Ok(CopyStats {
             files_copied: 1,

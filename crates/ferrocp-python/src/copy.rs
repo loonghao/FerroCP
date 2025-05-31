@@ -2,7 +2,7 @@
 
 use crate::async_support::{create_cancellable_task, report_progress, PyAsyncManager};
 use crate::config::PyCopyOptions;
-use crate::gil_optimization::{GilOptimizationManager, GilFreeProgressReporter};
+use crate::gil_optimization::{GilFreeProgressReporter, GilOptimizationManager};
 use crate::progress::{call_progress_callback, ProgressCallback, PyProgress};
 use ferrocp_engine::{task::CopyRequest, CopyEngine};
 use ferrocp_types::CopyStats;
@@ -160,52 +160,54 @@ impl PyCopyEngine {
 
         future_into_py(py, async move {
             // Execute the copy operation with GIL released during computation
-            let gil_result = gil_manager.execute_with_gil_released(|progress_tx| async move {
-                let reporter = GilFreeProgressReporter::new(progress_tx);
+            let gil_result = gil_manager
+                .execute_with_gil_released(|progress_tx| async move {
+                    let reporter = GilFreeProgressReporter::new(progress_tx);
 
-                // Report start
-                let _ = reporter.report_progress(0.0, "Starting file copy".to_string());
+                    // Report start
+                    let _ = reporter.report_progress(0.0, "Starting file copy".to_string());
 
-                // Create copy request with options
-                let mut request = CopyRequest::new(source_path, dest_path);
+                    // Create copy request with options
+                    let mut request = CopyRequest::new(source_path, dest_path);
 
-                // Apply copy options if provided
-                if let Some(opts) = copy_options {
-                    if opts.verify {
-                        request.verify_copy = true;
+                    // Apply copy options if provided
+                    if let Some(opts) = copy_options {
+                        if opts.verify {
+                            request.verify_copy = true;
+                        }
+                        if opts.preserve_timestamps || opts.preserve_permissions {
+                            request.preserve_metadata = true;
+                        }
+                        if opts.enable_compression {
+                            request.enable_compression = true;
+                        }
+                        // TODO: Add exclude/include patterns to PyCopyOptions
+                        // For now, we'll skip these fields
                     }
-                    if opts.preserve_timestamps || opts.preserve_permissions {
-                        request.preserve_metadata = true;
-                    }
-                    if opts.enable_compression {
-                        request.enable_compression = true;
-                    }
-                    // TODO: Add exclude/include patterns to PyCopyOptions
-                    // For now, we'll skip these fields
-                }
 
-                // Report progress
-                let _ = reporter.report_progress(10.0, "Copy request prepared".to_string());
+                    // Report progress
+                    let _ = reporter.report_progress(10.0, "Copy request prepared".to_string());
 
-                // Execute the copy operation (GIL is released during this)
-                let result = engine.execute(request).await;
+                    // Execute the copy operation (GIL is released during this)
+                    let result = engine.execute(request).await;
 
-                // Report completion
-                let _ = reporter.report_progress(100.0, "Copy operation completed".to_string());
+                    // Report completion
+                    let _ = reporter.report_progress(100.0, "Copy operation completed".to_string());
 
-                match result {
-                    Ok(copy_result) => {
-                        let stats = copy_result.stats;
-                        Ok(PyCopyResult::from(stats))
+                    match result {
+                        Ok(copy_result) => {
+                            let stats = copy_result.stats;
+                            Ok(PyCopyResult::from(stats))
+                        }
+                        Err(e) => {
+                            let mut result = PyCopyResult::new();
+                            result.success = false;
+                            result.error_message = Some(e.to_string());
+                            Ok(result)
+                        }
                     }
-                    Err(e) => {
-                        let mut result = PyCopyResult::new();
-                        result.success = false;
-                        result.error_message = Some(e.to_string());
-                        Ok(result)
-                    }
-                }
-            }).await?;
+                })
+                .await?;
 
             // Handle progress callback with GIL (only if needed)
             if progress_callback.is_some() {
@@ -215,9 +217,7 @@ impl PyCopyEngine {
                     duration: gil_result.duration,
                     ..Default::default()
                 });
-                Python::with_gil(|py| {
-                    call_progress_callback(py, &progress_callback, &progress)
-                })?;
+                Python::with_gil(|py| call_progress_callback(py, &progress_callback, &progress))?;
             }
 
             Ok(gil_result.result)
@@ -242,52 +242,54 @@ impl PyCopyEngine {
 
         future_into_py(py, async move {
             // Execute the directory copy operation with GIL released during computation
-            let gil_result = gil_manager.execute_with_gil_released(|progress_tx| async move {
-                let reporter = GilFreeProgressReporter::new(progress_tx);
+            let gil_result = gil_manager
+                .execute_with_gil_released(|progress_tx| async move {
+                    let reporter = GilFreeProgressReporter::new(progress_tx);
 
-                // Report start
-                let _ = reporter.report_progress(0.0, "Starting directory copy".to_string());
+                    // Report start
+                    let _ = reporter.report_progress(0.0, "Starting directory copy".to_string());
 
-                // Create copy request with options
-                let mut request = CopyRequest::new(source_path, dest_path);
+                    // Create copy request with options
+                    let mut request = CopyRequest::new(source_path, dest_path);
 
-                // Apply copy options if provided
-                if let Some(opts) = copy_options {
-                    if opts.verify {
-                        request.verify_copy = true;
+                    // Apply copy options if provided
+                    if let Some(opts) = copy_options {
+                        if opts.verify {
+                            request.verify_copy = true;
+                        }
+                        if opts.preserve_timestamps || opts.preserve_permissions {
+                            request.preserve_metadata = true;
+                        }
+                        if opts.enable_compression {
+                            request.enable_compression = true;
+                        }
+                        // TODO: Add exclude/include patterns to PyCopyOptions
+                        // For now, we'll skip these fields
                     }
-                    if opts.preserve_timestamps || opts.preserve_permissions {
-                        request.preserve_metadata = true;
-                    }
-                    if opts.enable_compression {
-                        request.enable_compression = true;
-                    }
-                    // TODO: Add exclude/include patterns to PyCopyOptions
-                    // For now, we'll skip these fields
-                }
 
-                // Report progress
-                let _ = reporter.report_progress(10.0, "Directory scan started".to_string());
+                    // Report progress
+                    let _ = reporter.report_progress(10.0, "Directory scan started".to_string());
 
-                // Execute the copy operation (GIL is released during this)
-                let result = engine.execute(request).await;
+                    // Execute the copy operation (GIL is released during this)
+                    let result = engine.execute(request).await;
 
-                // Report completion
-                let _ = reporter.report_progress(100.0, "Directory copy completed".to_string());
+                    // Report completion
+                    let _ = reporter.report_progress(100.0, "Directory copy completed".to_string());
 
-                match result {
-                    Ok(copy_result) => {
-                        let stats = copy_result.stats;
-                        Ok(PyCopyResult::from(stats))
+                    match result {
+                        Ok(copy_result) => {
+                            let stats = copy_result.stats;
+                            Ok(PyCopyResult::from(stats))
+                        }
+                        Err(e) => {
+                            let mut result = PyCopyResult::new();
+                            result.success = false;
+                            result.error_message = Some(e.to_string());
+                            Ok(result)
+                        }
                     }
-                    Err(e) => {
-                        let mut result = PyCopyResult::new();
-                        result.success = false;
-                        result.error_message = Some(e.to_string());
-                        Ok(result)
-                    }
-                }
-            }).await?;
+                })
+                .await?;
 
             // Handle progress callback with GIL (only if needed)
             if progress_callback.is_some() {
@@ -297,9 +299,7 @@ impl PyCopyEngine {
                     duration: gil_result.duration,
                     ..Default::default()
                 });
-                Python::with_gil(|py| {
-                    call_progress_callback(py, &progress_callback, &progress)
-                })?;
+                Python::with_gil(|py| call_progress_callback(py, &progress_callback, &progress))?;
             }
 
             Ok(gil_result.result)

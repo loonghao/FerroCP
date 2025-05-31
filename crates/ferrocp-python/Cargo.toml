@@ -62,10 +62,6 @@ tempfile = { workspace = true }
 
 # Disable tests for this crate as it's a Python extension module
 # Tests should be written in Python and run with pytest
-[[test]]
-name = "integration"
-path = "tests/integration.rs"
-required-features = ["test-integration"]
 
 [features]
 # Feature flag to enable integration tests (disabled by default)

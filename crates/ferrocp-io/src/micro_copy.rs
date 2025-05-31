@@ -142,7 +142,11 @@ impl MicroFileCopyEngine {
         let source_path = source.as_ref();
         let dest_path = destination.as_ref();
 
-        trace!("Starting ultra-fast micro file copy: {:?} -> {:?}", source_path, dest_path);
+        trace!(
+            "Starting ultra-fast micro file copy: {:?} -> {:?}",
+            source_path,
+            dest_path
+        );
 
         // Optimized: Minimal metadata check + ultra-fast read
         let content = {
@@ -222,7 +226,11 @@ impl MicroFileCopyEngine {
         let source_path = source.as_ref();
         let dest_path = destination.as_ref();
 
-        trace!("Starting hyper-fast micro file copy: {:?} -> {:?}", source_path, dest_path);
+        trace!(
+            "Starting hyper-fast micro file copy: {:?} -> {:?}",
+            source_path,
+            dest_path
+        );
 
         // Hyper-optimized: Direct read/write with minimal checks
         let content = fs::read(source_path).map_err(|e| Error::Io {
@@ -234,7 +242,8 @@ impl MicroFileCopyEngine {
             return Err(Error::Other {
                 message: format!(
                     "File size {} exceeds micro file threshold {}",
-                    content.len(), MICRO_FILE_THRESHOLD
+                    content.len(),
+                    MICRO_FILE_THRESHOLD
                 ),
             });
         }
@@ -288,7 +297,11 @@ impl MicroFileCopyEngine {
         let source_path = source.as_ref();
         let dest_path = destination.as_ref();
 
-        trace!("Starting super-fast micro file copy: {:?} -> {:?}", source_path, dest_path);
+        trace!(
+            "Starting super-fast micro file copy: {:?} -> {:?}",
+            source_path,
+            dest_path
+        );
 
         // Super-optimized: Use stack-allocated buffer for zero heap allocation
         let mut stack_buffer = [0u8; MICRO_BUFFER_SIZE];
@@ -322,9 +335,11 @@ impl MicroFileCopyEngine {
                 message: format!("Failed to create destination file: {}", e),
             })?;
 
-            dest_file.write_all(&stack_buffer[..bytes_read]).map_err(|e| Error::Io {
-                message: format!("Failed to write destination file: {}", e),
-            })?;
+            dest_file
+                .write_all(&stack_buffer[..bytes_read])
+                .map_err(|e| Error::Io {
+                    message: format!("Failed to write destination file: {}", e),
+                })?;
         }
 
         let bytes_copied = bytes_read as u64;
@@ -373,7 +388,11 @@ impl MicroFileCopyEngine {
         let source_path = source.as_ref();
         let dest_path = destination.as_ref();
 
-        trace!("Starting ultra-optimized micro file copy: {:?} -> {:?}", source_path, dest_path);
+        trace!(
+            "Starting ultra-optimized micro file copy: {:?} -> {:?}",
+            source_path,
+            dest_path
+        );
 
         // Ultra-optimized: Use 1KB stack-allocated buffer for maximum cache efficiency
         let mut stack_buffer = [0u8; 1024];
@@ -397,9 +416,11 @@ impl MicroFileCopyEngine {
                 message: format!("Failed to create destination file: {}", e),
             })?;
 
-            dest_file.write_all(&stack_buffer[..bytes_read]).map_err(|e| Error::Io {
-                message: format!("Failed to write destination file: {}", e),
-            })?;
+            dest_file
+                .write_all(&stack_buffer[..bytes_read])
+                .map_err(|e| Error::Io {
+                    message: format!("Failed to write destination file: {}", e),
+                })?;
         }
 
         let bytes_copied = bytes_read as u64;
@@ -441,7 +462,11 @@ impl MicroFileCopyEngine {
         let source_path = source.as_ref();
         let dest_path = destination.as_ref();
 
-        trace!("Starting zero-syscall micro file copy: {:?} -> {:?}", source_path, dest_path);
+        trace!(
+            "Starting zero-syscall micro file copy: {:?} -> {:?}",
+            source_path,
+            dest_path
+        );
 
         // Ensure destination directory exists (only if needed)
         if let Some(parent) = dest_path.parent() {
@@ -490,18 +515,22 @@ impl MicroFileCopyEngine {
                 let mut stack_buffer = [0u8; MICRO_BUFFER_SIZE];
 
                 // Optimized: Single read operation with exact size
-                let bytes_read = source_file.read(&mut stack_buffer[..file_size as usize]).map_err(|e| Error::Io {
-                    message: format!("Failed to read source file: {}", e),
-                })?;
+                let bytes_read = source_file
+                    .read(&mut stack_buffer[..file_size as usize])
+                    .map_err(|e| Error::Io {
+                        message: format!("Failed to read source file: {}", e),
+                    })?;
 
                 // Optimized: Create and write in one operation
                 let mut dest_file = fs::File::create(dest_path).map_err(|e| Error::Io {
                     message: format!("Failed to create destination file: {}", e),
                 })?;
 
-                dest_file.write_all(&stack_buffer[..bytes_read]).map_err(|e| Error::Io {
-                    message: format!("Failed to write destination file: {}", e),
-                })?;
+                dest_file
+                    .write_all(&stack_buffer[..bytes_read])
+                    .map_err(|e| Error::Io {
+                        message: format!("Failed to write destination file: {}", e),
+                    })?;
 
                 // Optimized: Skip flush for micro files to improve performance
                 // For files < 4KB, the OS buffer will handle this efficiently
@@ -584,7 +613,8 @@ impl MicroFileCopyEngine {
 
         // Preserve modification time
         if let Ok(modified) = source_metadata.modified() {
-            if let Err(e) = filetime::set_file_mtime(dest_path, filetime::FileTime::from(modified)) {
+            if let Err(e) = filetime::set_file_mtime(dest_path, filetime::FileTime::from(modified))
+            {
                 debug!("Failed to set modification time: {}", e);
             }
         }
@@ -625,7 +655,12 @@ impl MicroFileCopyEngine {
 
     /// Get optimization strategy usage statistics
     pub fn strategy_usage(&self) -> (u64, u64, u64, u64) {
-        (self.stats.ultra_fast_operations, self.stats.stack_buffer_operations, self.stats.super_fast_operations, self.stats.ultra_optimized_operations)
+        (
+            self.stats.ultra_fast_operations,
+            self.stats.stack_buffer_operations,
+            self.stats.super_fast_operations,
+            self.stats.ultra_optimized_operations,
+        )
     }
 }
 
@@ -644,9 +679,7 @@ impl CopyEngine for MicroFileCopyEngine {
                 MicroCopyStrategy::UltraFast => {
                     self.copy_micro_file_ultra_fast(source, destination).await
                 }
-                MicroCopyStrategy::StackBuffer => {
-                    self.copy_micro_file(source, destination).await
-                }
+                MicroCopyStrategy::StackBuffer => self.copy_micro_file(source, destination).await,
                 MicroCopyStrategy::HyperFast => {
                     self.copy_micro_file_hyper_fast(source, destination).await
                 }
@@ -654,7 +687,8 @@ impl CopyEngine for MicroFileCopyEngine {
                     self.copy_micro_file_super_fast(source, destination).await
                 }
                 MicroCopyStrategy::UltraOptimized => {
-                    self.copy_micro_file_ultra_optimized(source, destination).await
+                    self.copy_micro_file_ultra_optimized(source, destination)
+                        .await
                 }
             }
         } else {
@@ -685,8 +719,8 @@ impl CopyEngine for MicroFileCopyEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     #[tokio::test]
     async fn test_micro_file_detection() {
@@ -700,30 +734,34 @@ mod tests {
         let large_file = temp_dir.path().join("large.txt");
         fs::write(&large_file, "B".repeat(8192)).unwrap();
 
-        assert!(MicroFileCopyEngine::is_micro_file(&small_file).await.unwrap());
-        assert!(!MicroFileCopyEngine::is_micro_file(&large_file).await.unwrap());
+        assert!(MicroFileCopyEngine::is_micro_file(&small_file)
+            .await
+            .unwrap());
+        assert!(!MicroFileCopyEngine::is_micro_file(&large_file)
+            .await
+            .unwrap());
     }
 
     #[tokio::test]
     async fn test_micro_file_copy() {
         let temp_dir = TempDir::new().unwrap();
         let mut engine = MicroFileCopyEngine::new();
-        
+
         // Create test file
         let source = temp_dir.path().join("source.txt");
         let content = "Hello, micro world!";
         fs::write(&source, content).unwrap();
-        
+
         let destination = temp_dir.path().join("dest.txt");
-        
+
         // Copy file
         let stats = engine.copy_file(&source, &destination).await.unwrap();
-        
+
         // Verify copy
         assert!(destination.exists());
         assert_eq!(fs::read_to_string(&destination).unwrap(), content);
         assert_eq!(stats.bytes_copied, content.len() as u64);
-        
+
         // Check statistics
         let engine_stats = engine.stats();
         assert_eq!(engine_stats.files_processed, 1);
@@ -872,13 +910,20 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
 
         // Test all strategies with empty files
-        for strategy in [MicroCopyStrategy::UltraFast, MicroCopyStrategy::StackBuffer, MicroCopyStrategy::SuperFast, MicroCopyStrategy::UltraOptimized] {
+        for strategy in [
+            MicroCopyStrategy::UltraFast,
+            MicroCopyStrategy::StackBuffer,
+            MicroCopyStrategy::SuperFast,
+            MicroCopyStrategy::UltraOptimized,
+        ] {
             let mut engine = MicroFileCopyEngine::with_strategy(strategy);
 
             let source = temp_dir.path().join(format!("empty_{:?}.txt", strategy));
             fs::write(&source, "").unwrap(); // Empty file
 
-            let destination = temp_dir.path().join(format!("dest_empty_{:?}.txt", strategy));
+            let destination = temp_dir
+                .path()
+                .join(format!("dest_empty_{:?}.txt", strategy));
 
             let stats = engine.copy_file(&source, &destination).await.unwrap();
 
@@ -899,7 +944,13 @@ mod tests {
         fs::write(&source, &content).unwrap();
 
         // Test all strategies
-        for strategy in [MicroCopyStrategy::StackBuffer, MicroCopyStrategy::UltraFast, MicroCopyStrategy::HyperFast, MicroCopyStrategy::SuperFast, MicroCopyStrategy::UltraOptimized] {
+        for strategy in [
+            MicroCopyStrategy::StackBuffer,
+            MicroCopyStrategy::UltraFast,
+            MicroCopyStrategy::HyperFast,
+            MicroCopyStrategy::SuperFast,
+            MicroCopyStrategy::UltraOptimized,
+        ] {
             let mut engine = MicroFileCopyEngine::with_strategy(strategy);
             let destination = temp_dir.path().join(format!("dest_{:?}.txt", strategy));
 

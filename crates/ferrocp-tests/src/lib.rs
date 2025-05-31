@@ -78,13 +78,13 @@ mod benchmark_framework {
     pub trait ModuleBenchmark {
         /// Get the name of this benchmark module
         fn name(&self) -> &str;
-        
+
         /// Run all benchmarks for this module
         fn run_benchmarks(&self, c: &mut Criterion);
-        
+
         /// Get baseline metrics for this module
         fn get_baseline_metrics(&self) -> Vec<BaselineMetrics>;
-        
+
         /// Get module-specific configuration
         fn get_config(&self) -> BenchmarkConfig {
             BenchmarkConfig::default()
@@ -110,7 +110,7 @@ mod benchmark_framework {
                 baselines: HashMap::new(),
             }
         }
-        
+
         /// Create a new benchmark suite with custom configuration
         pub fn with_config(config: BenchmarkConfig) -> Self {
             Self {
@@ -119,7 +119,7 @@ mod benchmark_framework {
                 baselines: HashMap::new(),
             }
         }
-        
+
         /// Register a benchmark module
         pub fn register_module(&mut self, module: Box<dyn ModuleBenchmark>) {
             let module_name = module.name().to_string();
@@ -127,46 +127,49 @@ mod benchmark_framework {
             self.baselines.insert(module_name, baselines);
             self.modules.push(module);
         }
-        
+
         /// Run all registered benchmarks
         pub fn run_all_benchmarks(&self, c: &mut Criterion) {
             // Configure Criterion with our settings
             self.configure_criterion(c);
-            
+
             // Run benchmarks for each module
             for module in &self.modules {
                 println!("Running benchmarks for module: {}", module.name());
                 module.run_benchmarks(c);
             }
         }
-        
+
         /// Configure Criterion with benchmark settings
         fn configure_criterion(&self, c: &mut Criterion) {
             *c = std::mem::take(c)
                 .sample_size(self.config.sample_size)
                 .measurement_time(self.config.measurement_time)
                 .warm_up_time(self.config.warm_up_time);
-                
+
             if self.config.enable_profiling {
                 // Note: Profiling support can be added by enabling pprof feature
                 println!("Profiling enabled (requires pprof feature)");
             }
         }
-        
+
         /// Get baseline metrics for a specific module
         pub fn get_module_baselines(&self, module_name: &str) -> Option<&Vec<BaselineMetrics>> {
             self.baselines.get(module_name)
         }
-        
+
         /// Save baseline metrics to file
         pub fn save_baselines(&self, file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
             let json = serde_json::to_string_pretty(&self.baselines)?;
             std::fs::write(file_path, json)?;
             Ok(())
         }
-        
+
         /// Load baseline metrics from file
-        pub fn load_baselines(&mut self, file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+        pub fn load_baselines(
+            &mut self,
+            file_path: &str,
+        ) -> Result<(), Box<dyn std::error::Error>> {
             let content = std::fs::read_to_string(file_path)?;
             self.baselines = serde_json::from_str(&content)?;
             Ok(())
@@ -202,11 +205,7 @@ mod tests {
         }
 
         fn run_benchmarks(&self, c: &mut Criterion) {
-            c.bench_function("test_benchmark", |b| {
-                b.iter(|| {
-                    criterion::black_box(42)
-                })
-            });
+            c.bench_function("test_benchmark", |b| b.iter(|| criterion::black_box(42)));
         }
 
         fn get_baseline_metrics(&self) -> Vec<BaselineMetrics> {
@@ -231,7 +230,7 @@ mod tests {
     fn test_module_registration() {
         let mut suite = BenchmarkSuite::new();
         suite.register_module(Box::new(TestBenchmark));
-        
+
         let baselines = suite.get_module_baselines("test_module");
         assert!(baselines.is_some());
         assert_eq!(baselines.unwrap().len(), 1);
@@ -241,18 +240,18 @@ mod tests {
     fn test_baseline_serialization() {
         let mut suite = BenchmarkSuite::new();
         suite.register_module(Box::new(TestBenchmark));
-        
+
         // Test saving baselines
         let temp_file = "test_baselines.json";
         suite.save_baselines(temp_file).unwrap();
-        
+
         // Test loading baselines
         let mut new_suite = BenchmarkSuite::new();
         new_suite.load_baselines(temp_file).unwrap();
-        
+
         let baselines = new_suite.get_module_baselines("test_module");
         assert!(baselines.is_some());
-        
+
         // Cleanup
         std::fs::remove_file(temp_file).ok();
     }
