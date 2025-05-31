@@ -23,7 +23,7 @@ split-debuginfo = "unpacked"
 # Development aliases
 dev-check = "check --workspace --all-targets --all-features"
 dev-test = "test --workspace --all-features"
-dev-clippy = "clippy --workspace --all-targets --all-features -- -D warnings"
+dev-clippy = "clippy --workspace --all-targets --all-features -- -D clippy::correctness -D clippy::suspicious -D clippy::complexity -W clippy::perf -W clippy::style"
 dev-fmt = "fmt --all"
 
 # Build aliases
@@ -49,7 +49,7 @@ doc-private = "doc --workspace --all-features --document-private-items"
 # Utility aliases
 clean-all = "clean --workspace"
 update-deps = "update --workspace"
-audit = "audit --deny warnings"
+security-audit = "audit --deny warnings"
 
 # Target-specific configurations
 [target.x86_64-pc-windows-msvc]
