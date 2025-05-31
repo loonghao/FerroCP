@@ -294,7 +294,7 @@ impl TaskScheduler {
 
     /// Run the scheduler main loop
     pub async fn run(&self) -> Result<()> {
-        let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
+        let (_shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
         // Note: In a real implementation, we'd store shutdown_tx somewhere accessible
 
         let config = self.config.clone();

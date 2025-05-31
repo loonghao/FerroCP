@@ -33,6 +33,7 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod analyzer;
+pub mod cache;
 pub mod detector;
 pub mod optimization;
 
@@ -44,5 +45,6 @@ pub mod unix;
 
 // Re-export main types
 pub use analyzer::{DeviceAnalyzer, DevicePerformance, FileSystemInfo};
+pub use cache::{DeviceCache, DeviceCacheConfig, SharedDeviceCache, create_shared_cache, create_shared_cache_with_config};
 pub use detector::DeviceDetector;
 pub use optimization::{DeviceOptimizer, OptimizationStrategy};

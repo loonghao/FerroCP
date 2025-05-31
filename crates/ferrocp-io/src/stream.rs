@@ -61,6 +61,11 @@ impl FileStream {
             0.0
         }
     }
+
+    /// Get the chunk size used for reading
+    pub fn chunk_size(&self) -> usize {
+        self.chunk_size
+    }
 }
 
 impl Stream for FileStream {

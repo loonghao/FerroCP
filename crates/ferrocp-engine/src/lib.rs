@@ -35,10 +35,12 @@ pub mod engine;
 pub mod executor;
 pub mod monitor;
 pub mod scheduler;
+pub mod selector;
 pub mod task;
 
 pub use engine::{CopyEngine, EngineBuilder};
 pub use executor::{ExecutorConfig, TaskExecutor};
 pub use monitor::{ProgressMonitor, StatisticsCollector};
 pub use scheduler::{SchedulerConfig, TaskScheduler};
+pub use selector::{EngineSelector, EngineSelectionConfig, EngineSelection, EngineType, EngineSelectionStats};
 pub use task::{CopyRequest, CopyResult, Task, TaskId, TaskStatus};

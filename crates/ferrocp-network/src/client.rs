@@ -139,7 +139,7 @@ impl NetworkClient {
         endpoint: SocketAddr,
         request: TransferRequest,
     ) -> Result<TransferResult> {
-        let start_time = Instant::now();
+        let _start_time = Instant::now();
 
         // Get connection
         let connection = self.connection_manager.connect(endpoint).await?;
@@ -380,7 +380,7 @@ impl NetworkClient {
     /// Create resume request message
     fn create_resume_request_message(
         &self,
-        request: &TransferRequest,
+        _request: &TransferRequest,
         resume_info: &crate::resume::ResumeInfo,
     ) -> Result<ProtocolMessage> {
         let data = bincode::serialize(resume_info).map_err(|e| Error::Network {

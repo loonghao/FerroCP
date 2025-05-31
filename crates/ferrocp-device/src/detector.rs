@@ -3,61 +3,114 @@
 //! This module provides cross-platform device detection capabilities,
 //! identifying storage device types and their characteristics.
 
+use crate::cache::{SharedDeviceCache, create_shared_cache};
 use ferrocp_types::{DeviceDetector as DeviceDetectorTrait, DeviceType, Result};
 use std::path::Path;
 use tracing::debug;
 #[cfg(not(any(windows, unix)))]
 use tracing::warn;
 
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
-
 /// Device detection implementation
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[derive(Debug)]
 pub struct DeviceDetector {
-    /// Cache for device type detection results
-    cache: std::collections::HashMap<String, DeviceType>,
+    /// Intelligent cache for device type detection results
+    cache: SharedDeviceCache,
 }
 
 impl DeviceDetector {
     /// Create a new device detector
     pub fn new() -> Self {
         Self {
-            cache: std::collections::HashMap::new(),
+            cache: create_shared_cache(),
+        }
+    }
+
+    /// Create a new device detector with custom cache configuration
+    pub fn with_cache_config(config: crate::cache::DeviceCacheConfig) -> Self {
+        Self {
+            cache: crate::cache::create_shared_cache_with_config(config),
         }
     }
 
     /// Clear the detection cache
-    pub fn clear_cache(&mut self) {
-        self.cache.clear();
+    pub async fn clear_cache(&self) {
+        let mut cache = self.cache.write().await;
+        cache.clear();
     }
 
     /// Get the number of cached entries
-    pub fn cache_size(&self) -> usize {
-        self.cache.len()
+    pub async fn cache_size(&self) -> usize {
+        let cache = self.cache.read().await;
+        cache.len()
+    }
+
+    /// Get cache statistics
+    pub async fn cache_stats(&self) -> ferrocp_types::DeviceCacheStats {
+        let cache = self.cache.read().await;
+        cache.stats().clone()
     }
 
     /// Detect device type for a given path with caching
     pub async fn detect_device_type_cached<P: AsRef<Path> + Send + Sync>(
-        &mut self,
+        &self,
         path: P,
     ) -> Result<DeviceType> {
-        let path_str = path.as_ref().to_string_lossy().to_string();
-
         // Check cache first
-        if let Some(&device_type) = self.cache.get(&path_str) {
-            debug!("Device type cache hit for path: {}", path_str);
-            return Ok(device_type);
+        {
+            let mut cache = self.cache.write().await;
+            if let Some(device_type) = cache.get(&path) {
+                debug!("Device type cache hit for path: {}", path.as_ref().display());
+                return Ok(device_type);
+            }
         }
 
         // Perform detection using internal method
         let device_type = self.detect_device_type_internal(&path).await?;
 
         // Cache the result
-        self.cache.insert(path_str, device_type);
+        {
+            let mut cache = self.cache.write().await;
+            cache.insert(&path, device_type);
+        }
 
         Ok(device_type)
+    }
+
+    /// Process background refresh queue
+    pub async fn process_background_refresh(&self) -> Result<usize> {
+        let refresh_queue = {
+            let mut cache = self.cache.write().await;
+            cache.get_refresh_queue()
+        };
+
+        if refresh_queue.is_empty() {
+            return Ok(0);
+        }
+
+        let mut refreshed_count = 0;
+        for path_key in refresh_queue {
+            // Convert cache key back to path for detection
+            let path = std::path::Path::new(&path_key);
+
+            // Perform fresh detection
+            if let Ok(device_type) = self.detect_device_type_internal(path).await {
+                // Update cache with fresh result
+                let mut cache = self.cache.write().await;
+                cache.update_refreshed_entry(path, device_type);
+                refreshed_count += 1;
+
+                debug!("Background refreshed device type for path: {}", path.display());
+            }
+        }
+
+        debug!("Background refresh completed: {} entries refreshed", refreshed_count);
+        Ok(refreshed_count)
+    }
+
+    /// Check if background refresh is needed
+    pub async fn needs_background_refresh(&self) -> bool {
+        let cache = self.cache.read().await;
+        cache.needs_background_refresh()
     }
 
     /// Internal device type detection logic
@@ -279,19 +332,19 @@ mod tests {
     #[tokio::test]
     async fn test_device_detector_creation() {
         let detector = DeviceDetector::new();
-        assert_eq!(detector.cache_size(), 0);
+        assert_eq!(detector.cache_size().await, 0);
     }
 
     #[tokio::test]
     async fn test_cache_functionality() {
-        let mut detector = DeviceDetector::new();
+        let detector = DeviceDetector::new();
 
         // Cache should be empty initially
-        assert_eq!(detector.cache_size(), 0);
+        assert_eq!(detector.cache_size().await, 0);
 
         // Clear cache should work even when empty
-        detector.clear_cache();
-        assert_eq!(detector.cache_size(), 0);
+        detector.clear_cache().await;
+        assert_eq!(detector.cache_size().await, 0);
     }
 
     #[tokio::test]
@@ -326,5 +379,109 @@ mod tests {
         assert!(detector.supports_zero_copy(DeviceType::RamDisk));
         assert!(!detector.supports_zero_copy(DeviceType::Network));
         assert!(!detector.supports_zero_copy(DeviceType::Unknown));
+    }
+
+    #[tokio::test]
+    async fn test_cache_hit_and_miss() {
+        use tempfile::TempDir;
+
+        let detector = DeviceDetector::new();
+        let temp_dir = TempDir::new().unwrap();
+        let test_path = temp_dir.path().join("test_file.txt");
+        std::fs::write(&test_path, "test content").unwrap();
+
+        // First call should be a cache miss
+        let stats_before = detector.cache_stats().await;
+        let device_type1 = detector.detect_device_type_cached(&test_path).await.unwrap();
+        let stats_after_first = detector.cache_stats().await;
+
+        assert_eq!(stats_after_first.total_lookups, stats_before.total_lookups + 1);
+        assert_eq!(stats_after_first.cache_misses, stats_before.cache_misses + 1);
+
+        // Second call should be a cache hit
+        let device_type2 = detector.detect_device_type_cached(&test_path).await.unwrap();
+        let stats_after_second = detector.cache_stats().await;
+
+        assert_eq!(device_type1, device_type2);
+        assert_eq!(stats_after_second.total_lookups, stats_after_first.total_lookups + 1);
+        assert_eq!(stats_after_second.cache_hits, stats_after_first.cache_hits + 1);
+
+        // Cache hit rate should be 50% (1 hit out of 2 lookups)
+        assert_eq!(stats_after_second.hit_rate(), 50.0);
+    }
+
+    #[tokio::test]
+    async fn test_cache_statistics() {
+        let detector = DeviceDetector::new();
+
+        // Initial stats should be empty
+        let stats = detector.cache_stats().await;
+        assert_eq!(stats.total_lookups, 0);
+        assert_eq!(stats.cache_hits, 0);
+        assert_eq!(stats.cache_misses, 0);
+        assert_eq!(stats.hit_rate(), 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_path_prefix_caching() {
+        use tempfile::TempDir;
+
+        let detector = DeviceDetector::new();
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create two files in the same directory
+        let file1 = temp_dir.path().join("file1.txt");
+        let file2 = temp_dir.path().join("file2.txt");
+        std::fs::write(&file1, "content1").unwrap();
+        std::fs::write(&file2, "content2").unwrap();
+
+        // First file detection should be a cache miss
+        let device_type1 = detector.detect_device_type_cached(&file1).await.unwrap();
+        let stats_after_first = detector.cache_stats().await;
+        assert_eq!(stats_after_first.cache_misses, 1);
+
+        // Second file in same directory should be a cache hit due to path prefix optimization
+        let device_type2 = detector.detect_device_type_cached(&file2).await.unwrap();
+        let stats_after_second = detector.cache_stats().await;
+
+        // Both files should have the same device type (same directory)
+        assert_eq!(device_type1, device_type2);
+        // Should have one cache hit due to path prefix optimization
+        assert_eq!(stats_after_second.cache_hits, 1);
+    }
+
+    #[tokio::test]
+    async fn test_background_refresh() {
+        use crate::cache::DeviceCacheConfig;
+        use std::time::Duration;
+
+        let config = DeviceCacheConfig {
+            enable_background_refresh: true,
+            background_refresh_interval: Duration::from_millis(100),
+            refresh_threshold: 0.1, // Refresh after 10% of TTL
+            ttl: Duration::from_millis(1000),
+            ..DeviceCacheConfig::default()
+        };
+
+        let detector = DeviceDetector::with_cache_config(config);
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let test_path = temp_dir.path().join("test_file.txt");
+        std::fs::write(&test_path, "test content").unwrap();
+
+        // Initial detection
+        detector.detect_device_type_cached(&test_path).await.unwrap();
+
+        // Wait for refresh threshold
+        tokio::time::sleep(Duration::from_millis(150)).await;
+
+        // Access the cache to trigger refresh queue population
+        detector.detect_device_type_cached(&test_path).await.unwrap();
+
+        // Check if background refresh is needed
+        assert!(detector.needs_background_refresh().await);
+
+        // Process background refresh
+        let refreshed_count = detector.process_background_refresh().await.unwrap();
+        assert!(refreshed_count > 0);
     }
 }

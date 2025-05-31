@@ -21,6 +21,10 @@ path = "src/main.rs"
 
 [dependencies]
 ferrocp-types = { path = "../ferrocp-types" }
+ferrocp-engine = { path = "../ferrocp-engine" }
+
+# System info
+num_cpus = "1.16"
 
 # CLI framework
 clap = { workspace = true }

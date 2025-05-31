@@ -67,6 +67,36 @@ impl CopyEngine {
         let progress_monitor = Arc::clone(&self.progress_monitor);
         let statistics = Arc::clone(&self.statistics);
 
+        // Start the main task processing loop
+        let scheduler_for_loop = Arc::clone(&self.scheduler);
+        let executor_for_loop = Arc::clone(&self.executor);
+
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
+
+            loop {
+                interval.tick().await;
+
+                // Get next task from scheduler
+                if let Some(task) = scheduler_for_loop.get_next_task().await {
+                    debug!("Processing task {} from scheduler", task.id);
+
+                    // Mark task as started in scheduler
+                    if let Err(e) = scheduler_for_loop.mark_task_started(task.clone()).await {
+                        warn!("Failed to mark task as started: {}", e);
+                        continue;
+                    }
+
+                    // Execute task
+                    if let Err(e) = executor_for_loop.execute_task(task.clone()).await {
+                        warn!("Failed to execute task {}: {}", task.id, e);
+                        // Mark task as failed
+                        let _ = scheduler_for_loop.mark_task_failed(task.id, e.to_string()).await;
+                    }
+                }
+            }
+        });
+
         tokio::spawn(async move {
             tokio::select! {
                 _ = scheduler.run() => {

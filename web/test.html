@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FerroCP Benchmarks Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #2563eb;
+        }
+        .status {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #2563eb;
+        }
+        button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #1d4ed8;
+        }
+        #chart-test {
+            width: 100%;
+            height: 300px;
+            border: 1px solid #ddd;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 FerroCP Benchmarks - Diagnostic Test</h1>
+            <p>Testing web page functionality and data loading</p>
+        </div>
+
+        <div class="test-section">
+            <h3>1. Basic HTML/CSS Test</h3>
+            <div class="success">✅ HTML and CSS are loading correctly!</div>
+        </div>
+
+        <div class="test-section">
+            <h3>2. JavaScript Test</h3>
+            <div id="js-test" class="info">🔄 Testing JavaScript...</div>
+            <button onclick="testBasicJS()">Test Basic JavaScript</button>
+        </div>
+
+        <div class="test-section">
+            <h3>3. External Libraries Test</h3>
+            <div id="libs-test" class="info">🔄 Testing external libraries...</div>
+            <button onclick="testLibraries()">Test Chart.js & Plotly</button>
+        </div>
+
+        <div class="test-section">
+            <h3>4. Data Loading Test</h3>
+            <div id="data-test" class="info">🔄 Testing data loading...</div>
+            <button onclick="testDataLoading()">Test Data Loading</button>
+        </div>
+
+        <div class="test-section">
+            <h3>5. Chart Test</h3>
+            <div id="chart-status" class="info">🔄 Ready to test charts...</div>
+            <button onclick="testChart()">Create Test Chart</button>
+            <canvas id="chart-test"></canvas>
+        </div>
+
+        <div class="test-section">
+            <h3>6. Console Output</h3>
+            <div class="info">Check browser console (F12) for detailed error messages</div>
+            <div id="console-output" style="background: #f8f9fa; padding: 10px; font-family: monospace; white-space: pre-wrap; max-height: 200px; overflow-y: auto;"></div>
+        </div>
+    </div>
+
+    <!-- External Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+
+    <script>
+        // Console capture for debugging
+        const originalLog = console.log;
+        const originalError = console.error;
+        const consoleOutput = document.getElementById('console-output');
+        
+        function addToConsole(message, type = 'log') {
+            const timestamp = new Date().toLocaleTimeString();
+            consoleOutput.textContent += `[${timestamp}] ${type.toUpperCase()}: ${message}\n`;
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        }
+        
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            addToConsole(args.join(' '), 'log');
+        };
+        
+        console.error = function(...args) {
+            originalError.apply(console, args);
+            addToConsole(args.join(' '), 'error');
+        };
+
+        // Test functions
+        function updateStatus(elementId, message, type = 'success') {
+            const element = document.getElementById(elementId);
+            element.className = type;
+            element.innerHTML = message;
+        }
+
+        function testBasicJS() {
+            try {
+                console.log('Testing basic JavaScript functionality...');
+                const testArray = [1, 2, 3, 4, 5];
+                const sum = testArray.reduce((a, b) => a + b, 0);
+                console.log('Array sum test:', sum);
+                
+                updateStatus('js-test', '✅ JavaScript is working correctly!', 'success');
+            } catch (error) {
+                console.error('JavaScript test failed:', error);
+                updateStatus('js-test', '❌ JavaScript test failed: ' + error.message, 'error');
+            }
+        }
+
+        function testLibraries() {
+            try {
+                console.log('Testing external libraries...');
+                
+                // Test Chart.js
+                if (typeof Chart !== 'undefined') {
+                    console.log('Chart.js loaded successfully, version:', Chart.version);
+                } else {
+                    throw new Error('Chart.js not loaded');
+                }
+                
+                // Test Plotly
+                if (typeof Plotly !== 'undefined') {
+                    console.log('Plotly.js loaded successfully');
+                } else {
+                    throw new Error('Plotly.js not loaded');
+                }
+                
+                updateStatus('libs-test', '✅ External libraries loaded successfully!', 'success');
+            } catch (error) {
+                console.error('Libraries test failed:', error);
+                updateStatus('libs-test', '❌ Libraries test failed: ' + error.message, 'error');
+            }
+        }
+
+        async function testDataLoading() {
+            try {
+                console.log('Testing data loading...');
+                
+                // Test loading summary.json
+                const response = await fetch('./summary.json');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                console.log('Summary data loaded:', data);
+                
+                updateStatus('data-test', '✅ Data loading successful!', 'success');
+            } catch (error) {
+                console.error('Data loading test failed:', error);
+                updateStatus('data-test', '❌ Data loading failed: ' + error.message, 'error');
+            }
+        }
+
+        function testChart() {
+            try {
+                console.log('Testing chart creation...');
+                
+                const ctx = document.getElementById('chart-test');
+                if (!ctx) {
+                    throw new Error('Chart canvas not found');
+                }
+                
+                // Destroy existing chart if any
+                if (window.testChart) {
+                    window.testChart.destroy();
+                }
+                
+                // Create test chart
+                window.testChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Test 1', 'Test 2', 'Test 3', 'Test 4'],
+                        datasets: [{
+                            label: 'Sample Data',
+                            data: [12, 19, 3, 5],
+                            backgroundColor: '#2563eb'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false
+                    }
+                });
+                
+                console.log('Test chart created successfully');
+                updateStatus('chart-status', '✅ Chart created successfully!', 'success');
+            } catch (error) {
+                console.error('Chart test failed:', error);
+                updateStatus('chart-status', '❌ Chart test failed: ' + error.message, 'error');
+            }
+        }
+
+        // Auto-run basic tests
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, running automatic tests...');
+            
+            setTimeout(() => {
+                testBasicJS();
+            }, 100);
+            
+            setTimeout(() => {
+                testLibraries();
+            }, 200);
+            
+            setTimeout(() => {
+                testDataLoading();
+            }, 300);
+        });
+    </script>
+</body>
+</html>

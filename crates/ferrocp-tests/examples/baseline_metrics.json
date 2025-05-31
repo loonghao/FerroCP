@@ -1,0 +1,40 @@
+{
+  "copy_engine": [
+    {
+      "module_name": "copy_engine",
+      "benchmark_name": "copy_engine_1mb",
+      "expected_throughput": 100.0,
+      "expected_latency": 10000000.0,
+      "memory_usage": 1048576,
+      "timestamp": "1735574400"
+    }
+  ],
+  "package_system": [
+    {
+      "module_name": "package_system",
+      "benchmark_name": "package_creation",
+      "expected_throughput": 1000.0,
+      "expected_latency": 1000000.0,
+      "memory_usage": 1024,
+      "timestamp": "1735574400"
+    },
+    {
+      "module_name": "package_system",
+      "benchmark_name": "package_serialization",
+      "expected_throughput": 500.0,
+      "expected_latency": 2000000.0,
+      "memory_usage": 2048,
+      "timestamp": "1735574400"
+    }
+  ],
+  "context_system": [
+    {
+      "module_name": "context_system",
+      "benchmark_name": "environment_parsing",
+      "expected_throughput": 2000.0,
+      "expected_latency": 500000.0,
+      "memory_usage": 512,
+      "timestamp": "1735574400"
+    }
+  ]
+}

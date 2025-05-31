@@ -15,10 +15,16 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = []
+serde = ["dep:serde"]
+
 [dependencies]
 ferrocp-types = { path = "../ferrocp-types", features = ["async"] }
 ferrocp-config = { path = "../ferrocp-config" }
 ferrocp-io = { path = "../ferrocp-io" }
+ferrocp-device = { path = "../ferrocp-device" }
+ferrocp-zerocopy = { path = "../ferrocp-zerocopy" }
 
 # Async runtime
 tokio = { workspace = true, features = ["full"] }
@@ -40,7 +46,15 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 num_cpus = { workspace = true }
 
+# Serialization (optional)
+serde = { workspace = true, features = ["derive"], optional = true }
+
 [dev-dependencies]
 tokio-test = { workspace = true }
 rstest = { workspace = true }
 tempfile = { workspace = true }
+criterion = { version = "0.5", features = ["html_reports", "async_tokio"] }
+
+[[bench]]
+name = "selector_performance"
+harness = false

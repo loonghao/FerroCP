@@ -37,3 +37,5 @@ serde = ["dep:serde", "ferrocp-types/serde"]
 [dev-dependencies]
 tokio-test = { workspace = true }
 rstest = { workspace = true }
+proptest = { workspace = true }
+arbitrary = { version = "1.3", features = ["derive"] }

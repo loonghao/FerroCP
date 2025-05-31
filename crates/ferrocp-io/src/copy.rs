@@ -1,6 +1,6 @@
 //! High-performance file copying engine
 
-use crate::{AdaptiveBuffer, AsyncFileReader, AsyncFileWriter, BufferPool};
+use crate::{AdaptiveBuffer, AsyncFileReader, AsyncFileWriter, BufferPool, PreReadBuffer, PreReadStrategy};
 use ferrocp_types::{CopyStats, DeviceType, Error, ProgressInfo, Result};
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -24,6 +24,10 @@ pub struct CopyOptions {
     pub enable_zero_copy: bool,
     /// Maximum number of retry attempts
     pub max_retries: u32,
+    /// Enable pre-read optimization for large files
+    pub enable_preread: bool,
+    /// Custom pre-read strategy (None = auto-detect)
+    pub preread_strategy: Option<PreReadStrategy>,
 }
 
 impl Default for CopyOptions {
@@ -36,6 +40,8 @@ impl Default for CopyOptions {
             preserve_metadata: true,
             enable_zero_copy: true,
             max_retries: 3,
+            enable_preread: true, // Enable pre-read by default for large files
+            preread_strategy: None, // Auto-detect based on device
         }
     }
 }
@@ -92,6 +98,11 @@ impl BufferedCopyEngine {
         self
     }
 
+    /// Get a reference to the buffer pool
+    pub fn buffer_pool(&self) -> &BufferPool {
+        &self.buffer_pool
+    }
+
     /// Copy file with detailed progress tracking
     async fn copy_file_internal<P: AsRef<Path>>(
         &mut self,
@@ -133,20 +144,60 @@ impl BufferedCopyEngine {
             Self::calculate_optimal_buffer_size(file_size, source_device, dest_device)
         });
 
-        // Create adaptive buffer
+        // Determine if we should use pre-read optimization for large files
+        let use_preread = options.enable_preread && file_size > 10 * 1024 * 1024; // 10MB threshold
+
+        // Create buffer (with or without pre-read)
+        let mut preread_buffer = if use_preread {
+            let strategy = options.preread_strategy.unwrap_or_else(|| {
+                PreReadStrategy::for_device(source_device, false)
+            });
+            Some(PreReadBuffer::with_strategy(source_device, strategy))
+        } else {
+            None
+        };
+
         let mut buffer = AdaptiveBuffer::with_size(source_device, buffer_size);
 
         // Open source and destination files
         let mut reader = AsyncFileReader::open(source_path).await?;
         let mut writer = AsyncFileWriter::create(dest_path).await?;
 
-        // Copy data with progress tracking
+        // Set file size for pre-read buffer if available
+        if let Some(ref mut preread_buf) = preread_buffer {
+            preread_buf.set_file_size(file_size);
+        }
+
+        // Copy data with progress tracking and optional pre-reading
         let mut bytes_copied = 0u64;
         let mut last_progress_time = Instant::now();
 
         loop {
-            // Read chunk
-            let bytes_read = reader.read_into_buffer(&mut buffer).await?;
+            let bytes_read = if let Some(ref mut preread_buf) = preread_buffer {
+                // Try to get pre-fetched data first
+                if let Some(prefetched_data) = preread_buf.get_prefetched_buffer() {
+                    let bytes_to_copy = prefetched_data.len();
+                    buffer.as_mut().clear();
+                    buffer.as_mut().extend_from_slice(&prefetched_data);
+                    bytes_to_copy
+                } else {
+                    // No pre-fetched data, read normally
+                    let bytes_read = reader.read_into_buffer(&mut buffer).await?;
+
+                    // Start pre-reading for next chunk if we read data
+                    if bytes_read > 0 {
+                        if let Err(e) = preread_buf.preread_from_file_reader(&mut reader).await {
+                            debug!("Pre-read failed, continuing without: {}", e);
+                        }
+                    }
+
+                    bytes_read
+                }
+            } else {
+                // Standard read without pre-reading
+                reader.read_into_buffer(&mut buffer).await?
+            };
+
             if bytes_read == 0 {
                 break; // EOF
             }
@@ -202,9 +253,23 @@ impl BufferedCopyEngine {
         stats.duration = start_time.elapsed();
         stats.files_copied = 1;
 
+        // Log pre-read statistics if pre-reading was used
+        if let Some(ref preread_buf) = preread_buffer {
+            let preread_stats = preread_buf.stats();
+            debug!(
+                "Pre-read stats: {} ops, {} bytes, {:.1}% hit ratio, {:.1}% efficiency",
+                preread_stats.total_preread_ops,
+                preread_stats.total_preread_bytes,
+                preread_stats.hit_ratio(),
+                preread_stats.efficiency()
+            );
+        }
+
         info!(
-            "Copy completed: {} bytes in {:?}",
-            stats.bytes_copied, stats.duration
+            "Copy completed: {} bytes in {:?}{}",
+            stats.bytes_copied,
+            stats.duration,
+            if use_preread { " (with pre-read)" } else { "" }
         );
         Ok(stats)
     }

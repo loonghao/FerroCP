@@ -2,7 +2,7 @@
 
 use bytes::{Bytes, BytesMut};
 use ferrocp_types::DeviceType;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
 /// Adaptive buffer that adjusts size based on performance characteristics
@@ -70,9 +70,10 @@ impl AdaptiveBuffer {
 
     /// Reserve additional capacity
     pub fn reserve(&mut self, additional: usize) {
-        let new_capacity = (self.buffer.capacity() + additional).min(self.max_size);
-        if new_capacity > self.buffer.capacity() {
-            self.buffer.reserve(new_capacity - self.buffer.capacity());
+        let current_capacity = self.buffer.capacity();
+        let new_capacity = current_capacity.saturating_add(additional).min(self.max_size);
+        if new_capacity > current_capacity {
+            self.buffer.reserve(new_capacity - current_capacity);
         }
     }
 
@@ -105,6 +106,11 @@ impl AdaptiveBuffer {
         self.buffer.split_to(at).freeze()
     }
 
+    /// Get the device type this buffer is optimized for
+    pub fn device_type(&self) -> DeviceType {
+        self.device_type
+    }
+
     /// Get size limits for different device types
     fn get_size_limits(device_type: DeviceType) -> (usize, usize, usize) {
         match device_type {
@@ -117,11 +123,13 @@ impl AdaptiveBuffer {
     }
 }
 
-/// Smart buffer that automatically manages memory allocation
+/// Smart buffer that automatically manages memory allocation with multi-size pool support
 #[derive(Debug)]
 pub struct SmartBuffer {
     inner: AdaptiveBuffer,
     usage_stats: BufferUsageStats,
+    pool: Option<Arc<MultiSizeBufferPool>>,
+    memory_monitor: Option<Arc<crate::memory::MemoryMonitor>>,
 }
 
 /// Statistics for buffer usage tracking
@@ -143,6 +151,32 @@ impl SmartBuffer {
         Self {
             inner: AdaptiveBuffer::new(device_type),
             usage_stats: BufferUsageStats::default(),
+            pool: None,
+            memory_monitor: None,
+        }
+    }
+
+    /// Create a new smart buffer with multi-size pool support
+    pub fn with_pool(device_type: DeviceType, pool: Arc<MultiSizeBufferPool>) -> Self {
+        Self {
+            inner: AdaptiveBuffer::new(device_type),
+            usage_stats: BufferUsageStats::default(),
+            pool: Some(pool),
+            memory_monitor: None,
+        }
+    }
+
+    /// Create a new smart buffer with memory monitoring
+    pub fn with_monitoring(
+        device_type: DeviceType,
+        pool: Arc<MultiSizeBufferPool>,
+        monitor: Arc<crate::memory::MemoryMonitor>,
+    ) -> Self {
+        Self {
+            inner: AdaptiveBuffer::new(device_type),
+            usage_stats: BufferUsageStats::default(),
+            pool: Some(pool),
+            memory_monitor: Some(monitor),
         }
     }
 
@@ -170,11 +204,51 @@ impl SmartBuffer {
         &mut self.inner
     }
 
+    /// Get a buffer from the pool if available, otherwise use the adaptive buffer
+    pub fn get_pooled_buffer(&self, size: usize) -> Option<BytesMut> {
+        self.pool.as_ref().map(|pool| pool.get_buffer(size))
+    }
+
+    /// Return a buffer to the pool
+    pub fn return_pooled_buffer(&self, buffer: BytesMut) {
+        if let Some(pool) = &self.pool {
+            pool.return_buffer(buffer);
+        }
+    }
+
+    /// Get current memory statistics from the pool
+    pub fn memory_stats(&self) -> Option<MemoryStats> {
+        self.pool.as_ref().map(|pool| pool.memory_stats())
+    }
+
+    /// Check memory status and get alerts
+    pub fn check_memory_status(&self) -> Option<crate::memory::MemoryAlert> {
+        if let (Some(pool), Some(monitor)) = (&self.pool, &self.memory_monitor) {
+            let stats = pool.memory_stats();
+            Some(monitor.check_memory_status(stats.current_used, stats.efficiency()))
+        } else {
+            None
+        }
+    }
+
+    /// Force cleanup of unused buffers
+    pub fn cleanup_buffers(&self) {
+        if let Some(pool) = &self.pool {
+            pool.cleanup_unused_buffers();
+        }
+    }
+
     fn update_avg_operation_size(&mut self) {
         let total_ops = self.usage_stats.total_reads + self.usage_stats.total_writes;
         if total_ops > 0 {
             self.usage_stats.avg_operation_size =
                 self.usage_stats.total_bytes as f64 / total_ops as f64;
+        }
+
+        // Update memory monitor if available
+        if let (Some(pool), Some(monitor)) = (&self.pool, &self.memory_monitor) {
+            let stats = pool.memory_stats();
+            monitor.record_usage(stats.current_used, stats.active_buffers, stats.efficiency());
         }
     }
 }
@@ -233,6 +307,183 @@ impl Default for BufferPool {
     }
 }
 
+/// Memory usage statistics for monitoring
+#[derive(Debug, Clone, Default)]
+pub struct MemoryStats {
+    /// Total allocated memory in bytes
+    pub total_allocated: u64,
+    /// Currently used memory in bytes
+    pub current_used: u64,
+    /// Peak memory usage in bytes
+    pub peak_usage: u64,
+    /// Number of active buffers
+    pub active_buffers: u64,
+    /// Number of pooled buffers
+    pub pooled_buffers: u64,
+    /// Memory allocation count
+    pub allocation_count: u64,
+    /// Memory deallocation count
+    pub deallocation_count: u64,
+}
+
+impl MemoryStats {
+    /// Calculate memory efficiency as a percentage
+    pub fn efficiency(&self) -> f64 {
+        if self.total_allocated == 0 {
+            return 100.0;
+        }
+        (self.current_used as f64 / self.total_allocated as f64) * 100.0
+    }
+
+    /// Check if memory usage is within acceptable limits
+    pub fn is_healthy(&self, max_memory_mb: u64) -> bool {
+        let max_bytes = max_memory_mb * 1024 * 1024;
+        self.current_used <= max_bytes && self.efficiency() >= 60.0
+    }
+}
+
+/// Multi-size buffer pool that manages different buffer sizes efficiently
+#[derive(Debug)]
+pub struct MultiSizeBufferPool {
+    pools: HashMap<usize, BufferPool>,
+    memory_stats: Arc<Mutex<MemoryStats>>,
+    max_memory_mb: u64,
+    auto_cleanup_threshold: f64,
+}
+
+impl MultiSizeBufferPool {
+    /// Create a new multi-size buffer pool
+    pub fn new(max_memory_mb: u64) -> Self {
+        let mut pools = HashMap::new();
+
+        // Standard buffer sizes: 4KB, 64KB, 1MB, 4MB
+        let sizes = [4 * 1024, 64 * 1024, 1024 * 1024, 4 * 1024 * 1024];
+        let max_pool_sizes = [32, 16, 8, 4]; // Fewer large buffers
+
+        for (&size, &max_pool_size) in sizes.iter().zip(max_pool_sizes.iter()) {
+            pools.insert(size, BufferPool::new(size, max_pool_size));
+        }
+
+        Self {
+            pools,
+            memory_stats: Arc::new(Mutex::new(MemoryStats::default())),
+            max_memory_mb,
+            auto_cleanup_threshold: 80.0, // Cleanup when 80% memory used
+        }
+    }
+
+    /// Get a buffer of the specified size or the next larger available size
+    pub fn get_buffer(&self, requested_size: usize) -> BytesMut {
+        let optimal_size = self.find_optimal_size(requested_size);
+
+        let buffer = if let Some(pool) = self.pools.get(&optimal_size) {
+            pool.get_buffer()
+        } else {
+            // Fallback to creating a new buffer
+            BytesMut::with_capacity(requested_size)
+        };
+
+        // Update memory statistics
+        self.update_allocation_stats(buffer.capacity());
+
+        // Check if cleanup is needed
+        if self.should_cleanup() {
+            self.cleanup_unused_buffers();
+        }
+
+        buffer
+    }
+
+    /// Return a buffer to the appropriate pool
+    pub fn return_buffer(&self, buffer: BytesMut) {
+        let size = buffer.capacity();
+
+        if let Some(pool) = self.pools.get(&size) {
+            pool.return_buffer(buffer);
+            self.update_deallocation_stats(size);
+        }
+        // If no matching pool, buffer is dropped automatically
+    }
+
+    /// Get current memory statistics
+    pub fn memory_stats(&self) -> MemoryStats {
+        self.memory_stats.lock().unwrap().clone()
+    }
+
+    /// Force cleanup of unused buffers
+    pub fn cleanup_unused_buffers(&self) {
+        for pool in self.pools.values() {
+            // Clear half of the buffers in each pool to free memory
+            let current_size = pool.pool_size();
+            let target_size = current_size / 2;
+
+            for _ in target_size..current_size {
+                if pool.pool_size() > target_size {
+                    let _ = pool.get_buffer(); // Get and drop buffer
+                }
+            }
+        }
+
+        // Update memory stats after cleanup
+        self.recalculate_memory_stats();
+    }
+
+    /// Find the optimal buffer size for the requested size
+    fn find_optimal_size(&self, requested_size: usize) -> usize {
+        let sizes = [4 * 1024, 64 * 1024, 1024 * 1024, 4 * 1024 * 1024];
+
+        for &size in &sizes {
+            if requested_size <= size {
+                return size;
+            }
+        }
+
+        // If larger than all predefined sizes, use the largest
+        sizes[sizes.len() - 1]
+    }
+
+    /// Check if cleanup should be performed
+    fn should_cleanup(&self) -> bool {
+        let stats = self.memory_stats.lock().unwrap();
+        let usage_percentage = (stats.current_used as f64 / (self.max_memory_mb * 1024 * 1024) as f64) * 100.0;
+        usage_percentage > self.auto_cleanup_threshold
+    }
+
+    /// Update allocation statistics
+    fn update_allocation_stats(&self, size: usize) {
+        let mut stats = self.memory_stats.lock().unwrap();
+        stats.allocation_count += 1;
+        stats.active_buffers += 1;
+        stats.current_used += size as u64;
+        stats.total_allocated += size as u64;
+
+        if stats.current_used > stats.peak_usage {
+            stats.peak_usage = stats.current_used;
+        }
+    }
+
+    /// Update deallocation statistics
+    fn update_deallocation_stats(&self, size: usize) {
+        let mut stats = self.memory_stats.lock().unwrap();
+        stats.deallocation_count += 1;
+        stats.active_buffers = stats.active_buffers.saturating_sub(1);
+        stats.current_used = stats.current_used.saturating_sub(size as u64);
+        stats.pooled_buffers += 1;
+    }
+
+    /// Recalculate memory statistics after cleanup
+    fn recalculate_memory_stats(&self) {
+        let mut stats = self.memory_stats.lock().unwrap();
+        let mut total_pooled = 0;
+
+        for (size, pool) in &self.pools {
+            total_pooled += pool.pool_size() as u64 * (*size as u64);
+        }
+
+        stats.pooled_buffers = total_pooled / 1024; // Convert to KB for easier reading
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -287,5 +538,74 @@ mod tests {
 
         pool.return_buffer(buffer2);
         assert_eq!(pool.pool_size(), 2);
+    }
+
+    #[test]
+    fn test_multi_size_buffer_pool() {
+        let pool = MultiSizeBufferPool::new(64); // 64MB max
+
+        // Test different buffer sizes
+        let small_buffer = pool.get_buffer(2048); // Should get 4KB buffer
+        assert!(small_buffer.capacity() >= 2048);
+
+        let medium_buffer = pool.get_buffer(32 * 1024); // Should get 64KB buffer
+        assert!(medium_buffer.capacity() >= 32 * 1024);
+
+        let large_buffer = pool.get_buffer(512 * 1024); // Should get 1MB buffer
+        assert!(large_buffer.capacity() >= 512 * 1024);
+
+        // Return buffers
+        pool.return_buffer(small_buffer);
+        pool.return_buffer(medium_buffer);
+        pool.return_buffer(large_buffer);
+
+        // Check memory stats
+        let stats = pool.memory_stats();
+        assert!(stats.pooled_buffers > 0);
+    }
+
+    #[test]
+    fn test_memory_stats() {
+        let stats = MemoryStats {
+            total_allocated: 1024 * 1024,
+            current_used: 512 * 1024,
+            peak_usage: 768 * 1024,
+            active_buffers: 10,
+            pooled_buffers: 5,
+            allocation_count: 15,
+            deallocation_count: 5,
+        };
+
+        assert_eq!(stats.efficiency(), 50.0);
+        // 512KB used, 2MB limit = 25% usage, but efficiency is 50% < 60% threshold
+        assert!(!stats.is_healthy(2)); // Should be unhealthy due to low efficiency
+        assert!(!stats.is_healthy(1)); // 1MB limit (too small)
+
+        // Test with good efficiency
+        let healthy_stats = MemoryStats {
+            total_allocated: 1024 * 1024,
+            current_used: 700 * 1024, // 70% efficiency
+            peak_usage: 768 * 1024,
+            active_buffers: 10,
+            pooled_buffers: 5,
+            allocation_count: 15,
+            deallocation_count: 5,
+        };
+        assert!(healthy_stats.is_healthy(2)); // Should be healthy
+    }
+
+    #[test]
+    fn test_smart_buffer_with_pool() {
+        let pool = Arc::new(MultiSizeBufferPool::new(32)); // 32MB max
+        let buffer = SmartBuffer::with_pool(DeviceType::SSD, pool.clone());
+
+        // Test pooled buffer operations
+        if let Some(pooled_buffer) = buffer.get_pooled_buffer(8192) {
+            assert!(pooled_buffer.capacity() >= 8192);
+            buffer.return_pooled_buffer(pooled_buffer);
+        }
+
+        // Test memory stats
+        assert!(buffer.memory_stats().is_some());
     }
 }
