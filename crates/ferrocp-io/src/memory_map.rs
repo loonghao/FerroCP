@@ -145,7 +145,12 @@ impl MemoryMappedFile {
             MemoryAdvice::Random => Advice::Random,
             MemoryAdvice::Sequential => Advice::Sequential,
             MemoryAdvice::WillNeed => Advice::WillNeed,
-            MemoryAdvice::DontNeed => Advice::DontNeed,
+            MemoryAdvice::DontNeed => {
+                // DontNeed might not be available in all versions of memmap2
+                // Fall back to Normal advice
+                debug!("DontNeed advice not available, using Normal");
+                Advice::Normal
+            }
         };
 
         self.mmap.advise(mmap_advice).map_err(|e| Error::Io {
