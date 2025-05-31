@@ -54,6 +54,7 @@ impl Default for DeviceCacheConfig {
 /// LRU node for the cache
 #[derive(Debug)]
 struct LruNode {
+    #[allow(dead_code)]
     key: String,
     entry: DeviceCacheEntry,
     prev: Option<String>,
@@ -127,6 +128,7 @@ impl DeviceCache {
     }
 
     /// Generate a precise cache key from a path (for exact path matching)
+    #[allow(dead_code)]
     fn generate_precise_cache_key<P: AsRef<Path>>(&self, path: P) -> String {
         let path = path.as_ref();
         path.to_string_lossy().to_string()

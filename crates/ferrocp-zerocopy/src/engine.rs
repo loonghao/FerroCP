@@ -230,6 +230,7 @@ impl ZeroCopyEngineImpl {
     }
 
     /// Update statistics after an operation
+    #[allow(dead_code)]
     fn update_stats(&mut self, result: &ZeroCopyResult, operation_time: Duration) {
         self.stats.attempts += 1;
 

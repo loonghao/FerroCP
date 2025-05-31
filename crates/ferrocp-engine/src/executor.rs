@@ -75,6 +75,7 @@ pub struct TaskExecutor {
 
 #[derive(Debug)]
 struct TaskHandle {
+    #[allow(dead_code)]
     task: Task,
     cancel_tx: mpsc::Sender<()>,
 }

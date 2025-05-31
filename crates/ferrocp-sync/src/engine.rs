@@ -170,6 +170,7 @@ impl SyncResult {
 #[derive(Debug)]
 pub struct SyncEngine {
     diff_engine: DiffEngine,
+    #[allow(dead_code)]
     delta_engine: DeltaEngine,
     hash_cache: Option<HashCache>,
     conflict_resolver: ConflictResolver,

@@ -67,6 +67,7 @@ impl AllocationTracker {
         )
     }
 
+    #[allow(dead_code)]
     fn reset(&self) {
         self.allocations.store(0, Ordering::Relaxed);
         self.deallocations.store(0, Ordering::Relaxed);

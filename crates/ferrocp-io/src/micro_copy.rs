@@ -577,6 +577,7 @@ impl MicroFileCopyEngine {
     /// Preserve file metadata (timestamps, permissions) - optimized version
     ///
     /// This version minimizes system calls and error handling overhead
+    #[allow(dead_code)]
     fn preserve_metadata_optimized<P: AsRef<Path>>(
         &self,
         _source: P,
