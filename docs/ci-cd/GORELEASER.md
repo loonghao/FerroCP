@@ -26,11 +26,48 @@ FerroCP builds for the following platforms:
 
 ### Build Process
 
-1. **Before Hooks**: Install Rust targets and run tests
+1. **Before Hooks**: Install Rust targets, run tests, build Python wheels
 2. **Build**: Use custom Rust build scripts for cross-compilation
 3. **Archive**: Create platform-specific archives
 4. **Checksum**: Generate SHA256 checksums
 5. **Release**: Create GitHub release with assets
+6. **Publish**: Publish to PyPI (Python) and crates.io (Rust)
+
+### Publishing Targets
+
+#### Python Package (PyPI)
+- **Method**: Trusted Publishing (OIDC) - no tokens required
+- **Artifacts**: Cross-platform wheels and source distribution
+- **Platforms**: Linux, macOS, Windows (x86_64, ARM64)
+
+#### Rust Crates (crates.io)
+- **Method**: Cargo publish with registry token
+- **Crates**: Library crates only (excludes CLI, Python bindings, tests)
+- **Order**: Dependency-ordered publishing to handle workspace dependencies
+
+## Setup Requirements
+
+### PyPI Trusted Publishing Setup
+
+1. **Go to PyPI**: Visit [https://pypi.org/manage/account/publishing/](https://pypi.org/manage/account/publishing/)
+2. **Add Trusted Publisher**:
+   - Publisher: GitHub
+   - Owner: `loonghao`
+   - Repository name: `FerroCP`
+   - Workflow name: `goreleaser.yml`
+   - Environment name: (leave empty)
+3. **No tokens needed**: Trusted Publishing uses OIDC for secure authentication
+
+### Rust crates.io Setup
+
+1. **Get API Token**: Visit [https://crates.io/settings/tokens](https://crates.io/settings/tokens)
+2. **Create Token**: Generate a new API token with publish permissions
+3. **Add to GitHub Secrets**: Add the token as `CARGO_REGISTRY_TOKEN`
+
+### GitHub Secrets Required
+
+- `CARGO_REGISTRY_TOKEN`: Your crates.io API token
+- No PyPI token needed (uses Trusted Publishing)
 
 ## Usage
 

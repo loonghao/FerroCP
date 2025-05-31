@@ -243,7 +243,7 @@ dockers:
       - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
       - "--label=org.opencontainers.image.licenses=Apache-2.0"
 
-# Python package publishing
+# Python package publishing using Trusted Publishing (OIDC)
 publishers:
   - name: pypi
     ids:
@@ -253,11 +253,9 @@ publishers:
       # Install twine if not available
       pip install twine
 
-      # Upload to PyPI using twine
+      # Upload to PyPI using Trusted Publishing (no token needed)
       twine upload dist/*.whl dist/*.tar.gz --verbose
-    env:
-      - TWINE_USERNAME=__token__
-      - TWINE_PASSWORD={{ .Env.PYPI_TOKEN }}
+    # No environment variables needed for Trusted Publishing
 
 # Custom artifacts for Python wheels
 extra_files:
@@ -277,6 +275,18 @@ announce:
   twitter:
     enabled: false
     message_template: "FerroCP {{ .Version }} is out! High-performance file copying tool built with Rust. {{ .ReleaseURL }}"
+
+# Global after hooks - run after building and publishing
+after:
+  hooks:
+    # Publish Rust crates to crates.io (workspace publishing)
+    - cmd: "chmod +x scripts/publish-crates.sh && ./scripts/publish-crates.sh --dry-run"
+      env:
+        - CARGO_REGISTRY_TOKEN={{ .Env.CARGO_REGISTRY_TOKEN }}
+    # Only publish if not a snapshot build
+    - cmd: "{{ if not .IsSnapshot }}chmod +x scripts/publish-crates.sh && ./scripts/publish-crates.sh{{ else }}echo 'Skipping cargo publish for snapshot build'{{ end }}"
+      env:
+        - CARGO_REGISTRY_TOKEN={{ .Env.CARGO_REGISTRY_TOKEN }}
 
 # Validation
 validate:
