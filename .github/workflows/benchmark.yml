@@ -137,7 +137,53 @@ jobs:
     - name: Run Rust benchmarks
       if: inputs.benchmark_type == 'rust' || inputs.benchmark_type == 'all'
       run: |
+        mkdir -p benchmarks/results/rust
+        # Run integration tests first to ensure everything works
+        cargo test --test integration_tests --release
+
+        # Run performance benchmarks with appropriate settings
+        if [ "${{ inputs.benchmark_type }}" = "quick" ]; then
+          cargo bench --bench performance_benchmarks -- --measurement-time 10 --sample-size 50
+        else
+          cargo bench --bench performance_benchmarks
+        fi
+
+        # Also run the copy benchmarks
         cargo bench --bench copy_benchmarks
+
+    - name: Generate Rust benchmark report
+      if: inputs.benchmark_type == 'rust' || inputs.benchmark_type == 'all'
+      shell: bash
+      run: |
+        # Create a summary of Rust benchmark results
+        mkdir -p benchmarks/results/rust
+        echo "# Rust Performance Benchmark Results" > benchmarks/results/rust/summary.md
+        echo "Generated: $(date)" >> benchmarks/results/rust/summary.md
+        echo "OS: ${{ matrix.os }}" >> benchmarks/results/rust/summary.md
+        echo "Python Version: ${{ matrix.python-version }}" >> benchmarks/results/rust/summary.md
+        echo "Rust Version: $(rustc --version)" >> benchmarks/results/rust/summary.md
+        echo "" >> benchmarks/results/rust/summary.md
+
+        # Add system information
+        echo "## System Information" >> benchmarks/results/rust/summary.md
+        if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+          echo "CPU: $(lscpu | grep 'Model name' | cut -d: -f2 | xargs)" >> benchmarks/results/rust/summary.md
+          echo "Memory: $(free -h | grep Mem | awk '{print $2}')" >> benchmarks/results/rust/summary.md
+        elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+          echo "CPU: $(sysctl -n machdep.cpu.brand_string)" >> benchmarks/results/rust/summary.md
+          echo "Memory: $(sysctl -n hw.memsize | awk '{print $1/1024/1024/1024 " GB"}')" >> benchmarks/results/rust/summary.md
+        elif [ "${{ matrix.os }}" = "windows-latest" ]; then
+          echo "CPU: $(wmic cpu get name /value | grep Name | cut -d= -f2)" >> benchmarks/results/rust/summary.md
+          echo "Memory: $(wmic computersystem get TotalPhysicalMemory /value | grep TotalPhysicalMemory | cut -d= -f2)" >> benchmarks/results/rust/summary.md
+        fi
+        echo "" >> benchmarks/results/rust/summary.md
+
+        # Copy criterion results if they exist
+        if [ -d "target/criterion" ]; then
+          cp -r target/criterion benchmarks/results/rust/
+          echo "## Criterion Results" >> benchmarks/results/rust/summary.md
+          echo "Detailed benchmark results are available in the criterion directory." >> benchmarks/results/rust/summary.md
+        fi
 
     - name: Upload benchmark results
       uses: actions/upload-artifact@v4
@@ -145,6 +191,7 @@ jobs:
         name: benchmark-results-${{ matrix.os }}-py${{ matrix.python-version }}
         path: |
           benchmarks/results/*.json
+          benchmarks/results/rust/
           target/criterion/
         retention-days: 30
 
@@ -182,6 +229,27 @@ jobs:
       run: |
         python scripts/performance_analyzer.py --data-dir benchmark-artifacts --output-dir .
 
+    - name: Generate Rust benchmark summary
+      run: |
+        echo "# Rust Benchmark Summary" > rust-benchmark-summary.md
+        echo "Generated: $(date)" >> rust-benchmark-summary.md
+        echo "" >> rust-benchmark-summary.md
+
+        # Find and summarize Rust benchmark results
+        if find benchmark-artifacts -name "summary.md" -path "*/rust/*" | head -1 > /dev/null; then
+          echo "## Rust Performance Results" >> rust-benchmark-summary.md
+          echo "" >> rust-benchmark-summary.md
+
+          # Combine all Rust summaries
+          for summary_file in $(find benchmark-artifacts -name "summary.md" -path "*/rust/*"); do
+            echo "### $(dirname "$summary_file" | sed 's/.*benchmark-results-//' | sed 's/-py.*//')" >> rust-benchmark-summary.md
+            cat "$summary_file" >> rust-benchmark-summary.md
+            echo "" >> rust-benchmark-summary.md
+          done
+        else
+          echo "No Rust benchmark results found." >> rust-benchmark-summary.md
+        fi
+
     - name: Upload comprehensive benchmark results
       uses: actions/upload-artifact@v4
       with:
@@ -192,6 +260,7 @@ jobs:
           performance-charts.png
           performance-interactive.html
           baseline-performance.json
+          rust-benchmark-summary.md
         retention-days: 90
 
     - name: Upload to GitHub Pages (if main branch)
@@ -411,6 +480,14 @@ jobs:
             performanceReport = 'Performance report not available';
           }
 
+          // Read Rust benchmark summary
+          let rustBenchmarkReport = '';
+          try {
+            rustBenchmarkReport = fs.readFileSync('performance-results/rust-benchmark-summary.md', 'utf8');
+          } catch (e) {
+            rustBenchmarkReport = 'Rust benchmark results not available';
+          }
+
           // Read regression analysis
           let regressionReport = '';
           try {
@@ -426,6 +503,10 @@ jobs:
 
           ---
 
+          ${rustBenchmarkReport}
+
+          ---
+
           ${regressionReport}
 
           ---
@@ -435,7 +516,7 @@ jobs:
           - [Interactive Charts](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
           - [Raw Data (CSV)](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
 
-          *Benchmarks run on: Ubuntu, Windows, macOS with Python 3.9, 3.11, 3.12*
+          *Benchmarks run on: Ubuntu, Windows, macOS with Python 3.9, 3.11, 3.12 (Python + Rust)*
           `;
 
           github.rest.issues.createComment({

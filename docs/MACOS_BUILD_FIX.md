@@ -26,8 +26,10 @@ error[E0080]: evaluation of constant value failed
 
 #### 修改的文件：
 - `.github/workflows/test.yml`
-- `.github/workflows/rust-benchmarks.yml` 
+- `.github/workflows/rust-benchmarks.yml`
 - `.github/workflows/release.yml`
+- `.github/workflows/benchmark.yml`
+- `.github/workflows/test-pgo.yml`
 
 #### 添加的步骤：
 ```yaml
@@ -43,6 +45,10 @@ error[E0080]: evaluation of constant value failed
     echo "CC=clang" >> $GITHUB_ENV
     echo "CXX=clang++" >> $GITHUB_ENV
     echo "MACOSX_DEPLOYMENT_TARGET=10.15" >> $GITHUB_ENV
+    # Force ring to use precompiled assembly
+    echo "RING_PREGENERATE_ASM=1" >> $GITHUB_ENV
+    # Disable CPU feature detection for ring
+    echo "CARGO_CFG_TARGET_FEATURE=" >> $GITHUB_ENV
 ```
 
 ### 2. Cargo 配置优化
@@ -70,6 +76,8 @@ rustflags = [
 - `MACOSX_DEPLOYMENT_TARGET=10.15`: 确保向后兼容性
 - `CC=clang`: 使用系统 clang 编译器
 - `CXX=clang++`: 使用系统 clang++ 编译器
+- `RING_PREGENERATE_ASM=1`: 强制 ring 使用预编译的汇编代码
+- `CARGO_CFG_TARGET_FEATURE=`: 禁用 ring 的 CPU 特性检测
 
 ## 验证结果
 
@@ -80,7 +88,8 @@ rustflags = [
 
 ### CI/CD 验证
 - ✅ 修复推送到 `refactor-cross-platform-api` 分支
-- ✅ 提交哈希: `026103f`
+- ✅ 提交哈希: `67ad8b6` (增强版修复)
+- ✅ 应用了更强力的 ring 编译修复
 - ⏳ 等待 CI/CD 管道验证
 
 ## 影响的依赖库
