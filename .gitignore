@@ -86,3 +86,9 @@ wheelhouse/
 .ferrocp_cache/
 pgo-data/
 .benchmarks/
+
+# Task management and development artifacts
+.shrimp-config.json
+任务清单.md
+GORELEASER_FIX_SUMMARY.md
+scripts/test-build-fix.sh
