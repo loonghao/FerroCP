@@ -4,6 +4,7 @@
 //! It includes structured error types, error context, and recovery mechanisms.
 
 use std::path::PathBuf;
+use thiserror::Error;
 
 // Serde is imported conditionally through cfg_attr
 
@@ -53,7 +54,7 @@ impl ErrorContext {
 }
 
 /// Main error type for FerroCP operations
-#[derive(thiserror::Error, Debug)]
+#[derive(Error, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Error {
     /// I/O operation failed
