@@ -1,0 +1,18 @@
+# Documentation build requirements for Read the Docs
+# This file contains only the dependencies needed for building documentation
+# without requiring Rust compilation or maturin
+
+# Core Sphinx dependencies
+sphinx>=7.0.0
+
+# Theme
+pydata-sphinx-theme>=0.14.1
+
+# Optional extensions (commented out to keep build minimal)
+# sphinx-autobuild>=2021.3.14
+# myst-parser>=2.0.0
+# sphinx-gallery>=0.13.0
+# pillow>=9.0.0
+# myst-sphinx-gallery>=0.3.0
+# myst-nb>=1.0.0
+# tomli>=2.0.0

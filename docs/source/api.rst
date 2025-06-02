@@ -1,22 +1,23 @@
 API Reference
 =============
 
-This part of the documentation covers all the interfaces of your-project-name.
+This part of the documentation covers all the interfaces of FerroCP.
 
-your_project_name
-----------------
+For detailed API documentation, please refer to the Python package documentation
+or use the interactive help system in Python:
 
-.. automodule:: your_project_name
-   :members:
+.. code-block:: python
 
-your_project_name.cli
---------------------
+   import ferrocp
+   help(ferrocp)
 
-.. automodule:: your_project_name.cli
-   :members:
+Main Components
+---------------
 
-your_project_name.config
------------------------
+FerroCP provides the following main components:
 
-.. automodule:: your_project_name.config
-   :members:
+* **ferrocp**: Core file copying functionality
+* **ferrocp.cli**: Command-line interface
+
+For the most up-to-date API documentation, please refer to the source code
+or use Python's built-in help system.
