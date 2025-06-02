@@ -242,12 +242,42 @@ uv run nox -s lint_fix
 
 ### 文档
 
+FerroCP 提供多种文档构建方式，满足不同需求：
+
 ```bash
-# 构建文档
+# 快速文档构建（CI 优化，无需 Rust 编译）
+uv run nox -s docs_only
+
+# 完整文档构建，包含 API 文档（需要 Rust 编译）
 uv run nox -s docs
 
-# 启动带实时重载的文档服务器
+# 启动带实时重载的文档服务器（开发模式）
 uv run nox -s docs_serve
+
+# 使用 make 直接构建（最小依赖）
+cd docs && make html
+```
+
+#### 文档构建选项
+
+- **`docs_only`**: 快速构建，适用于 CI 环境，独立于 Rust 编译（约 2-3 分钟）
+- **`docs`**: 完整构建，包含 API 文档（需要 maturin，约 10-15 分钟）
+- **`docs_serve`**: 开发服务器，支持实时重载和 API 文档
+- **`make html`**: 直接 Sphinx 构建，最小依赖
+
+#### 故障排除
+
+如果遇到构建问题：
+
+```bash
+# 清理构建产物
+cd docs && make clean
+
+# 验证 Sphinx 配置
+cd docs && python -c "import sys; sys.path.append('source'); import conf; print('✅ 配置正常')"
+
+# 检查依赖
+pip install sphinx>=7.0.0 pydata-sphinx-theme>=0.14.1
 ```
 
 ## 依赖

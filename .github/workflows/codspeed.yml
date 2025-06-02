@@ -71,6 +71,7 @@ jobs:
 
     # Set stable build environment
     - name: Set build environment
+      shell: bash
       run: |
         echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
         echo "RUSTFLAGS=-C opt-level=3" >> $GITHUB_ENV
@@ -199,6 +200,7 @@ jobs:
 
     # Set stable build environment
     - name: Set build environment
+      shell: bash
       run: |
         echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
         echo "RUSTFLAGS=-C opt-level=3" >> $GITHUB_ENV
@@ -294,6 +296,7 @@ jobs:
 
     # Set stable build environment
     - name: Set build environment
+      shell: bash
       run: |
         echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
         echo "RUSTFLAGS=-C opt-level=3" >> $GITHUB_ENV

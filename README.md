@@ -242,12 +242,42 @@ uv run nox -s lint_fix
 
 ### Documentation
 
+FerroCP provides multiple ways to build documentation depending on your needs:
+
 ```bash
-# Build documentation
+# Quick documentation build (CI-optimized, no Rust compilation required)
+uv run nox -s docs_only
+
+# Full documentation build with API docs (requires Rust compilation)
 uv run nox -s docs
 
-# Serve documentation with live reloading
+# Serve documentation with live reloading (development mode)
 uv run nox -s docs_serve
+
+# Direct build using make (minimal dependencies)
+cd docs && make html
+```
+
+#### Documentation Build Options
+
+- **`docs_only`**: Fast build for CI environments, independent of Rust compilation (~2-3 minutes)
+- **`docs`**: Complete build including API documentation (requires maturin, ~10-15 minutes)
+- **`docs_serve`**: Development server with live reloading and API docs
+- **`make html`**: Direct Sphinx build with minimal dependencies
+
+#### Troubleshooting
+
+If you encounter build issues:
+
+```bash
+# Clean build artifacts
+cd docs && make clean
+
+# Verify Sphinx configuration
+cd docs && python -c "import sys; sys.path.append('source'); import conf; print('✅ Config OK')"
+
+# Check dependencies
+pip install sphinx>=7.0.0 pydata-sphinx-theme>=0.14.1
 ```
 
 ## Performance Benchmarks
