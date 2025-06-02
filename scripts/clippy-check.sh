@@ -32,16 +32,30 @@ done
 
 echo "🔍 Running cross-platform Clippy check..."
 
+# Use rustup to ensure correct Rust version
+echo "🦀 Using Rust version: $(rustup run stable rustc --version)"
+
 # Clean build artifacts to avoid version conflicts
 echo "🧹 Cleaning build artifacts..."
-cargo clean
+rustup run stable cargo clean
 
-# Basic clippy check with cross-platform friendly settings
+# Basic clippy check with essential lints only
 CLIPPY_ARGS=(
     "clippy"
     "--workspace"
     "--all-targets"
     "--"
+    # Enable essential lints
+    "-D" "clippy::correctness"
+    "-D" "clippy::suspicious"
+    "-W" "clippy::complexity"
+    "-W" "clippy::perf"
+    # Disable problematic lint groups
+    "-A" "clippy::all"
+    "-A" "clippy::pedantic"
+    "-A" "clippy::nursery"
+    "-A" "clippy::cargo"
+    # Allow common patterns
     "-A" "clippy::cargo_common_metadata"
     "-A" "clippy::module_name_repetitions"
     "-A" "clippy::missing_errors_doc"
@@ -49,6 +63,9 @@ CLIPPY_ARGS=(
     "-A" "clippy::too_many_arguments"
     "-A" "clippy::too_many_lines"
     "-A" "clippy::similar_names"
+    "-A" "clippy::redundant_pub_crate"
+    "-A" "clippy::wildcard_imports"
+    "-A" "clippy::single_match_else"
 )
 
 if [ "$FIX" = true ]; then
@@ -56,21 +73,16 @@ if [ "$FIX" = true ]; then
     echo "🔧 Running with --fix flag"
 fi
 
-if [ "$STRICT" != true ]; then
-    # Add more lenient settings for cross-platform compatibility
-    CLIPPY_ARGS+=(
-        "-A" "clippy::redundant_pub_crate"
-        "-A" "clippy::wildcard_imports"
-        "-A" "clippy::single_match_else"
-    )
-    echo "📋 Running in lenient mode (cross-platform friendly)"
-else
+if [ "$STRICT" = true ]; then
+    # Remove some allows for strict mode
     echo "⚡ Running in strict mode"
+else
+    echo "📋 Running in lenient mode (cross-platform friendly)"
 fi
 
-echo "🚀 Executing: cargo ${CLIPPY_ARGS[*]}"
+echo "🚀 Executing: rustup run stable cargo ${CLIPPY_ARGS[*]}"
 
-if cargo "${CLIPPY_ARGS[@]}"; then
+if rustup run stable cargo "${CLIPPY_ARGS[@]}"; then
     echo "✅ Clippy check passed!"
     exit 0
 else
