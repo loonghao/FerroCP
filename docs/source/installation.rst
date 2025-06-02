@@ -4,43 +4,44 @@ Installation
 Stable release
 -------------
 
-To install your-project-name, run this command in your terminal:
+To install FerroCP, run this command in your terminal:
 
 .. code-block:: console
 
-    $ pip install your-project-name
+    $ pip install ferrocp
 
-Or with Poetry:
+Or with uv:
 
 .. code-block:: console
 
-    $ poetry add your-project-name
+    $ uv add ferrocp
 
-This is the preferred method to install your-project-name, as it will always install the most recent stable release.
+This is the preferred method to install FerroCP, as it will always install the most recent stable release.
 
 From sources
 -----------
 
-The sources for your-project-name can be downloaded from the `Github repo`_.
+The sources for FerroCP can be downloaded from the `Github repo`_.
 
 You can either clone the public repository:
 
 .. code-block:: console
 
-    $ git clone git://github.com/yourusername/your-project-name
+    $ git clone https://github.com/loonghao/ferrocp.git
 
 Or download the `tarball`_:
 
 .. code-block:: console
 
-    $ curl -OJL https://github.com/yourusername/your-project-name/tarball/main
+    $ curl -OJL https://github.com/loonghao/ferrocp/tarball/main
 
 Once you have a copy of the source, you can install it with:
 
 .. code-block:: console
 
-    $ poetry install
+    $ uv sync
+    $ uv run maturin develop --release
 
 
-.. _Github repo: https://github.com/yourusername/your-project-name
-.. _tarball: https://github.com/yourusername/your-project-name/tarball/main
+.. _Github repo: https://github.com/loonghao/ferrocp
+.. _tarball: https://github.com/loonghao/ferrocp/tarball/main

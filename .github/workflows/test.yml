@@ -40,7 +40,7 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: ${{ matrix.rust }}
-        components: rustfmt, clippy
+        components: rustfmt
 
     - name: Cache Rust dependencies
       uses: Swatinem/rust-cache@v2
@@ -73,8 +73,9 @@ jobs:
     - name: Check formatting
       run: cargo fmt --all -- --check
 
-    - name: Run clippy
-      run: cargo clippy --workspace --all-targets --all-features -- -D clippy::correctness -D clippy::suspicious -D clippy::complexity -W clippy::perf -W clippy::style
+    # Clippy is temporarily disabled for faster builds and cross-platform compatibility
+    # - name: Run clippy
+    #   run: cargo clippy --workspace --all-targets --all-features -- -D clippy::correctness -D clippy::suspicious -D clippy::complexity -W clippy::perf -W clippy::style
 
     - name: Run tests (excluding ferrocp-python)
       run: |

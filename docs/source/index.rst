@@ -1,5 +1,5 @@
-Welcome to your-project-name's documentation!
-======================================
+Welcome to FerroCP's documentation!
+====================================
 
 .. toctree::
    :maxdepth: 2
