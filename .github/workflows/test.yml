@@ -31,6 +31,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y \
           build-essential \
+          binutils \
           pkg-config \
           libssl-dev \
           lld \
@@ -46,6 +47,21 @@ jobs:
       uses: Swatinem/rust-cache@v2
       with:
         key: ${{ matrix.os }}-${{ matrix.rust }}
+
+    # Verify linker availability
+    - name: Verify build tools
+      run: |
+        echo "🔍 Checking build tools availability..."
+        echo "Rust toolchain:"
+        rustc --version
+        cargo --version
+        echo ""
+        echo "Linkers:"
+        which ld && ld --version | head -1 || echo "ld not found"
+        which lld && lld --version | head -1 || echo "lld not found"
+        which clang && clang --version | head -1 || echo "clang not found"
+        echo ""
+        echo "✅ Build tools verification completed"
 
     # Clean build cache on macOS to avoid ring compilation issues
     - name: Clean build cache (macOS)
@@ -69,6 +85,13 @@ jobs:
       run: |
         echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
         echo "RUSTFLAGS=-C opt-level=3" >> $GITHUB_ENV
+        # Use clang as compiler and linker for better reliability
+        if command -v clang >/dev/null 2>&1; then
+          echo "CC=clang" >> $GITHUB_ENV
+          echo "CXX=clang++" >> $GITHUB_ENV
+          echo "RUSTFLAGS=-C opt-level=3 -C linker=clang" >> $GITHUB_ENV
+          echo "✅ Using clang as compiler and linker"
+        fi
 
     - name: Check formatting
       run: cargo fmt --all -- --check
@@ -105,6 +128,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y \
           build-essential \
+          binutils \
           pkg-config \
           libssl-dev \
           lld \
@@ -140,6 +164,13 @@ jobs:
       run: |
         echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
         echo "RUSTFLAGS=-C opt-level=3" >> $GITHUB_ENV
+        # Use clang as compiler and linker for better reliability
+        if command -v clang >/dev/null 2>&1; then
+          echo "CC=clang" >> $GITHUB_ENV
+          echo "CXX=clang++" >> $GITHUB_ENV
+          echo "RUSTFLAGS=-C opt-level=3 -C linker=clang" >> $GITHUB_ENV
+          echo "✅ Using clang as compiler and linker"
+        fi
 
     - name: Run Python tests and collect coverage
       run: |

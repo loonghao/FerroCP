@@ -31,6 +31,19 @@ jobs:
       with:
         python-version: ${{ inputs.python-version || '3.11' }}
     
+    # Install build tools for Linux
+    - name: Install build tools (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          binutils \
+          pkg-config \
+          libssl-dev \
+          lld \
+          clang
+
     - name: Set up Rust
       uses: dtolnay/rust-toolchain@stable
       with:
@@ -47,6 +60,19 @@ jobs:
         echo "RING_PREGENERATE_ASM=1" >> $GITHUB_ENV
         # Disable CPU feature detection for ring
         echo "CARGO_CFG_TARGET_FEATURE=" >> $GITHUB_ENV
+
+    # Set stable build environment for all platforms
+    - name: Set build environment
+      run: |
+        echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
+        echo "RUSTFLAGS=-C opt-level=3" >> $GITHUB_ENV
+        # Use clang as compiler and linker for better reliability
+        if command -v clang >/dev/null 2>&1; then
+          echo "CC=clang" >> $GITHUB_ENV
+          echo "CXX=clang++" >> $GITHUB_ENV
+          echo "RUSTFLAGS=-C opt-level=3 -C linker=clang" >> $GITHUB_ENV
+          echo "✅ Using clang as compiler and linker"
+        fi
 
     - name: Install dependencies
       run: |

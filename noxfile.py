@@ -5,6 +5,9 @@ the new dependency-groups format and uv package manager.
 """
 
 import os
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import nox
@@ -24,6 +27,151 @@ def install_with_groups(session, *groups):
             session.run("uv", "sync", "--group", group, external=True)
     else:
         session.run("uv", "sync", external=True)
+
+
+def check_build_environment(session):
+    """Check and setup build environment for maturin.
+
+    This function checks linker availability, sets environment variables,
+    and configures fallback options based on the logic from
+    scripts/build-python-wheels.sh.
+    """
+    session.log("Checking build environment...")
+
+    # Check if basic tools are available
+    tools_to_check = ["rustc", "cargo"]
+    missing_tools = []
+
+    for tool in tools_to_check:
+        if not shutil.which(tool):
+            missing_tools.append(tool)
+
+    if missing_tools:
+        session.error(f"Missing required tools: {', '.join(missing_tools)}. Please install Rust toolchain.")
+        return False
+
+    # Check linker availability
+    session.log("Checking linker availability...")
+
+    linker_found = False
+    preferred_linker = None
+
+    # Check for available linkers in order of preference
+    linkers = [
+        ("lld", "lld"),
+        ("clang", "clang"),
+        ("ld", "ld")
+    ]
+
+    for linker_name, command in linkers:
+        if shutil.which(command):
+            session.log(f"Found {linker_name}: {shutil.which(command)}")
+            if not linker_found:
+                preferred_linker = (linker_name, command)
+                linker_found = True
+
+    if not linker_found:
+        session.log("⚠️  No linker found. This may cause build failures.")
+        session.log("💡 Try installing build tools:")
+        session.log("   - Linux: sudo apt-get install build-essential binutils")
+        session.log("   - macOS: xcode-select --install")
+        session.log("   - Windows: Install Visual Studio Build Tools")
+        return False
+
+    # Set environment variables for stable builds
+    session.log("Setting up build environment...")
+
+    # Basic environment variables
+    env_vars = {
+        "CARGO_NET_GIT_FETCH_WITH_CLI": "true",
+        "RUSTFLAGS": "-C opt-level=3"
+    }
+
+    # Configure linker based on what's available
+    if preferred_linker:
+        linker_name, linker_cmd = preferred_linker
+
+        if linker_name == "clang":
+            # Use clang as both compiler and linker (most reliable)
+            env_vars.update({
+                "CC": "clang",
+                "CXX": "clang++",
+                "RUSTFLAGS": env_vars["RUSTFLAGS"] + " -C linker=clang"
+            })
+            session.log(f"✅ Using clang as compiler and linker")
+
+        elif linker_name == "lld":
+            # Use lld linker (fast and reliable)
+            env_vars["RUSTFLAGS"] += " -C link-arg=-fuse-ld=lld"
+            session.log(f"✅ Using lld linker")
+
+        else:
+            # Use system default linker
+            session.log(f"✅ Using system linker: {linker_cmd}")
+
+    # Apply environment variables to the session
+    for key, value in env_vars.items():
+        os.environ[key] = value
+        session.log(f"Set {key}={value}")
+
+    session.log("✅ Build environment check completed successfully")
+    return True
+
+
+def safe_maturin_build(session, *args, **kwargs):
+    """Build with maturin using environment checks and fallback strategies.
+
+    This function wraps maturin build calls with proper environment setup
+    and error handling, following the project's established patterns.
+    """
+    # Extract custom env from kwargs if provided
+    custom_env = kwargs.pop('env', None)
+
+    # Check build environment first (but skip if custom env is provided for PGO)
+    if not custom_env and not check_build_environment(session):
+        session.log("⚠️  Build environment check failed, attempting build anyway...")
+
+    try:
+        # Attempt the build with current environment
+        session.log("Building project with maturin...")
+        if custom_env:
+            session.run("maturin", *args, env=custom_env, **kwargs)
+        else:
+            session.run("maturin", *args, **kwargs)
+        session.log("✅ Maturin build completed successfully")
+
+    except Exception as e:
+        session.log(f"❌ Maturin build failed: {e}")
+        session.log("🔄 Attempting fallback build strategy...")
+
+        # Fallback strategy: try with minimal flags
+        try:
+            # Reset environment to minimal settings
+            fallback_env = {
+                "CARGO_NET_GIT_FETCH_WITH_CLI": "true",
+                "RUSTFLAGS": "-C opt-level=1"  # Lower optimization for compatibility
+            }
+
+            # If there was a custom env, merge it with fallback
+            if custom_env:
+                fallback_env.update(custom_env)
+
+            for key, value in fallback_env.items():
+                os.environ[key] = value
+                session.log(f"Fallback: Set {key}={value}")
+
+            session.log("Retrying maturin build with fallback settings...")
+            session.run("maturin", *args, env=fallback_env, **kwargs)
+            session.log("✅ Fallback build completed successfully")
+
+        except Exception as fallback_error:
+            session.log(f"❌ Fallback build also failed: {fallback_error}")
+            session.log("💡 Troubleshooting suggestions:")
+            session.log("   1. Check that Rust toolchain is properly installed")
+            session.log("   2. Ensure build tools are available (gcc, clang, or MSVC)")
+            session.log("   3. Try running: rustup update")
+            session.log("   4. Check for system-specific build requirements")
+            raise
 
 
 @nox.session(python=DEFAULT_PYTHON)
@@ -62,9 +210,8 @@ def test(session):
     """Run tests with pytest."""
     install_with_groups(session, "testing")
 
-    # Build the project first
-    session.log("Building project with maturin...")
-    session.run("maturin", "develop", "--release")
+    # Build the project first with environment checks
+    safe_maturin_build(session, "develop", "--release")
 
     session.log("Running tests...")
     session.run(
@@ -82,9 +229,8 @@ def benchmark(session):
     """Run performance benchmarks."""
     install_with_groups(session, "testing")
 
-    # Build the project first
-    session.log("Building project with maturin...")
-    session.run("maturin", "develop", "--release")
+    # Build the project first with environment checks
+    safe_maturin_build(session, "develop", "--release")
 
     # Ensure results directory exists
     os.makedirs("benchmarks/results", exist_ok=True)
@@ -104,9 +250,8 @@ def benchmark_compare(session):
     """Run comparison benchmarks against standard tools."""
     install_with_groups(session, "testing")
 
-    # Build the project first
-    session.log("Building project with maturin...")
-    session.run("maturin", "develop", "--release")
+    # Build the project first with environment checks
+    safe_maturin_build(session, "develop", "--release")
 
     session.log("Running comparison benchmarks...")
     session.run(
@@ -122,9 +267,8 @@ def profile(session):
     """Run performance profiling tools."""
     install_with_groups(session, "testing")
 
-    # Build the project first
-    session.log("Building project with maturin...")
-    session.run("maturin", "develop", "--release")
+    # Build the project first with environment checks
+    safe_maturin_build(session, "develop", "--release")
 
     session.log("Performance profiling tools available:")
     session.log("  py-spy record -o profile.svg -- python your_script.py")
@@ -137,9 +281,8 @@ def codspeed(session):
     """Run CodSpeed benchmarks locally."""
     install_with_groups(session, "testing")
 
-    # Build the project first
-    session.log("Building project with maturin...")
-    session.run("maturin", "develop", "--release")
+    # Build the project first with environment checks
+    safe_maturin_build(session, "develop", "--release")
 
     # Generate test data if needed
     os.makedirs("benchmarks/data/test_files", exist_ok=True)
@@ -155,9 +298,8 @@ def codspeed_all(session):
     """Run all benchmarks with CodSpeed locally."""
     install_with_groups(session, "testing")
 
-    # Build the project first
-    session.log("Building project with maturin...")
-    session.run("maturin", "develop", "--release")
+    # Build the project first with environment checks
+    safe_maturin_build(session, "develop", "--release")
 
     # Generate test data if needed
     os.makedirs("benchmarks/data/test_files", exist_ok=True)
@@ -227,9 +369,8 @@ def coverage_all(session):
     session.log("=== Running Python Coverage ===")
     install_with_groups(session, "testing")
 
-    # Build the project first
-    session.log("Building project with maturin...")
-    session.run("maturin", "develop", "--release")
+    # Build the project first with environment checks
+    safe_maturin_build(session, "develop", "--release")
 
     session.log("Running Python tests with coverage...")
     session.run(
@@ -264,9 +405,8 @@ def docs(session):
     """Build documentation."""
     install_with_groups(session, "docs")
 
-    # Build the project first for API documentation
-    session.log("Building project with maturin...")
-    session.run("maturin", "develop", "--release")
+    # Build the project first for API documentation with environment checks
+    safe_maturin_build(session, "develop", "--release")
 
     session.log("Building documentation...")
     with session.chdir("docs"):
@@ -278,12 +418,25 @@ def docs_serve(session):
     """Build and serve documentation with live reloading."""
     install_with_groups(session, "docs")
 
-    # Build the project first for API documentation
-    session.log("Building project with maturin...")
-    session.run("maturin", "develop", "--release")
+    # Build the project first for API documentation with environment checks
+    safe_maturin_build(session, "develop", "--release")
 
     session.log("Starting documentation server with live reloading...")
     session.run("sphinx-autobuild", "docs", "docs/_build/html", "--open-browser")
+
+
+@nox.session(python=DEFAULT_PYTHON)
+def docs_only(session):
+    """Build documentation without building the project (for CI environments)."""
+    install_with_groups(session, "docs")
+
+    session.log("Building documentation without project compilation...")
+    session.log("This session is optimized for CI environments and does not require Rust compilation.")
+
+    with session.chdir("docs"):
+        session.run("make", "html", external=True)
+
+    session.log("Documentation build completed successfully!")
 
 
 @nox.session(python=DEFAULT_PYTHON)
@@ -291,8 +444,8 @@ def build(session):
     """Build the project using maturin."""
     install_with_groups(session, "build")
 
-    session.log("Building project with maturin...")
-    session.run("maturin", "build", "--release")
+    # Build with environment checks
+    safe_maturin_build(session, "build", "--release")
 
     # List built wheels
     dist_dir = Path("target/wheels")
@@ -320,7 +473,7 @@ def build_pgo(session):
         # Step 1: Build with profile generation
         session.log("Step 1: Building with profile generation...")
         env = {"RUSTFLAGS": f"-Cprofile-generate={pgo_dir.absolute()}"}
-        session.run("maturin", "build", "--release", env=env)
+        safe_maturin_build(session, "build", "--release", env=env)
 
         # Step 2: Install and run benchmarks to collect profile data
         session.log("Step 2: Collecting profile data...")
@@ -381,12 +534,12 @@ print('Profile data collection completed')
             # Step 4: Build with profile use
             session.log("Step 4: Building optimized version...")
             env = {"RUSTFLAGS": f"-Cprofile-use={merged_profile.absolute()}"}
-            session.run("maturin", "build", "--release", env=env)
+            safe_maturin_build(session, "build", "--release", env=env)
 
         except Exception as e:
             session.log(f"PGO optimization failed: {e}")
             session.log("Falling back to regular build...")
-            session.run("maturin", "build", "--release")
+            safe_maturin_build(session, "build", "--release")
 
     finally:
         # Clean up PGO data
