@@ -82,15 +82,18 @@ jobs:
 
     # Set stable build environment for all platforms
     - name: Set build environment
+      shell: bash
       run: |
         echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
         echo "RUSTFLAGS=-C opt-level=3" >> $GITHUB_ENV
-        # Use clang as compiler and linker for better reliability
-        if command -v clang >/dev/null 2>&1; then
+        # Use clang as compiler and linker for better reliability (Unix only)
+        if [[ "${{ runner.os }}" != "Windows" ]] && command -v clang >/dev/null 2>&1; then
           echo "CC=clang" >> $GITHUB_ENV
           echo "CXX=clang++" >> $GITHUB_ENV
           echo "RUSTFLAGS=-C opt-level=3 -C linker=clang" >> $GITHUB_ENV
           echo "✅ Using clang as compiler and linker"
+        elif [[ "${{ runner.os }}" == "Windows" ]]; then
+          echo "✅ Using default Windows MSVC toolchain"
         fi
 
     - name: Check formatting
@@ -161,6 +164,7 @@ jobs:
 
     # Set environment variables for stable builds
     - name: Set build environment
+      shell: bash
       run: |
         echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
         echo "RUSTFLAGS=-C opt-level=3" >> $GITHUB_ENV
