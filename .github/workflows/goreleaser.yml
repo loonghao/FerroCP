@@ -112,6 +112,83 @@ jobs:
           echo "CC=clang" >> $GITHUB_ENV
           echo "CXX=clang++" >> $GITHUB_ENV
 
+      # Diagnose build environment before Python wheels construction
+      - name: Diagnose build environment
+        run: |
+          echo "=== Host Build Environment Diagnosis ==="
+
+          echo "--- System Information ---"
+          uname -a
+          echo "Available CPU cores: $(nproc)"
+          echo "Available memory: $(free -h | grep '^Mem:' | awk '{print $2}')"
+
+          echo "--- Toolchain Availability ---"
+          echo "Checking essential build tools..."
+
+          # Check compilers
+          if command -v gcc >/dev/null 2>&1; then
+            echo "✅ GCC: $(gcc --version | head -1)"
+          else
+            echo "❌ GCC: Not found"
+          fi
+
+          if command -v clang >/dev/null 2>&1; then
+            echo "✅ Clang: $(clang --version | head -1)"
+          else
+            echo "❌ Clang: Not found"
+          fi
+
+          # Check linkers
+          if command -v ld >/dev/null 2>&1; then
+            echo "✅ LD: $(ld --version | head -1)"
+          else
+            echo "❌ LD: Not found"
+          fi
+
+          if command -v lld >/dev/null 2>&1; then
+            echo "✅ LLD: $(lld --version | head -1)"
+          else
+            echo "❌ LLD: Not found"
+          fi
+
+          # Check Rust toolchain
+          if command -v rustc >/dev/null 2>&1; then
+            echo "✅ Rust: $(rustc --version)"
+            echo "✅ Cargo: $(cargo --version)"
+          else
+            echo "❌ Rust toolchain: Not found"
+          fi
+
+          # Check Python and maturin
+          if command -v python3 >/dev/null 2>&1; then
+            echo "✅ Python: $(python3 --version)"
+          else
+            echo "❌ Python3: Not found"
+          fi
+
+          if command -v maturin >/dev/null 2>&1; then
+            echo "✅ Maturin: $(maturin --version)"
+          else
+            echo "❌ Maturin: Not found"
+          fi
+
+          echo "--- Environment Variables ---"
+          echo "CC=${CC:-not set}"
+          echo "CXX=${CXX:-not set}"
+          echo "RUSTFLAGS=${RUSTFLAGS:-not set}"
+          echo "CARGO_NET_GIT_FETCH_WITH_CLI=${CARGO_NET_GIT_FETCH_WITH_CLI:-not set}"
+
+          echo "--- Compilation Test ---"
+          echo "Testing basic clang compilation..."
+          if command -v clang >/dev/null 2>&1; then
+            echo 'int main(){return 0;}' | clang -x c - -o /tmp/test_clang && echo "✅ Clang compilation test passed" || echo "❌ Clang compilation test failed"
+            rm -f /tmp/test_clang
+          else
+            echo "⚠️ Skipping clang test (clang not available)"
+          fi
+
+          echo "=== Environment Diagnosis Complete ==="
+
       # Build Python wheels using maturin-action with clang toolchain
       - name: Build Python wheels
         uses: PyO3/maturin-action@v1
