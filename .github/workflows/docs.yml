@@ -1,18 +1,25 @@
 name: Build and Deploy Docs
 
+# This workflow builds documentation independently of Rust compilation
+# to avoid complex build dependencies and reduce build time from 10-15 minutes to 2-3 minutes
+
 on:
   push:
     branches: [main]
     paths:
       - 'docs/**'
-      - 'src/**'
       - '.github/workflows/docs.yml'
+      - 'README*.md'
+      - 'CHANGELOG.md'
+      - 'CONTRIBUTING.md'
   pull_request:
     branches: [main]
     paths:
       - 'docs/**'
-      - 'src/**'
       - '.github/workflows/docs.yml'
+      - 'README*.md'
+      - 'CHANGELOG.md'
+      - 'CONTRIBUTING.md'
   release:
     types: [published]
   workflow_dispatch:
@@ -30,12 +37,17 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install dependencies
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Install docs dependencies only
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[docs]"
+          pip install sphinx>=7.0.0 pydata-sphinx-theme>=0.14.1
 
-      - name: Build docs
+      - name: Build docs (independent of Rust compilation)
         run: |
           cd docs
           make html
