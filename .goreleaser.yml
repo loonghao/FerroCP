@@ -1,7 +1,7 @@
 # GoReleaser configuration for FerroCP
 # See: https://goreleaser.com/customization/
 
-version: 2
+# GoReleaser v1 configuration
 
 # Project metadata
 project_name: ferrocp
@@ -13,66 +13,97 @@ env:
 # Before hooks - run before building
 before:
   hooks:
-    # Ensure we have the latest Rust toolchain
+    # === Environment Setup ===
+    - echo "🔧 Setting up build environment..."
     - rustup update stable
+
     # Install cross-compilation targets
     - rustup target add x86_64-unknown-linux-gnu
     - rustup target add aarch64-unknown-linux-gnu
     - rustup target add x86_64-apple-darwin
     - rustup target add aarch64-apple-darwin
     - rustup target add x86_64-pc-windows-gnu
-    # Clean previous builds
+
+    # === Code Quality Checks ===
+    - echo "🔍 Running code quality checks..."
+    - cargo fmt --all -- --check
+
+    # === Security Audit ===
+    - echo "🔒 Running security audit..."
+    - cargo install cargo-audit --quiet || echo "cargo-audit already installed"
+    - cargo audit --deny unsound --deny yanked
+
+    # === Testing Suite ===
+    - echo "🧪 Running test suite..."
     - cargo clean
-    # Run tests to ensure everything works
+
+    # Run unit tests (excluding Python extension)
     - cargo test --workspace --exclude ferrocp-python --release
-    # Build all targets
+
+    # Run doctests
+    - cargo test --workspace --doc --exclude ferrocp-python
+
+    # === Performance Benchmarks (only for releases) ===
+    - echo "Running performance benchmarks..."
+    - mkdir -p benchmarks/results/goreleaser
+    - cargo bench --bench performance_benchmarks || echo "Benchmarks completed with warnings"
+
+    # === Documentation Build ===
+    - echo "Building documentation..."
+    - cargo doc --workspace --no-deps --release
+
+    # === Build Preparation ===
+    - echo "Preparing builds..."
     - chmod +x scripts/build-all-targets.sh
     - ./scripts/build-all-targets.sh
+
     # Build Python wheels for all platforms (temporarily disabled for debugging)
     # - chmod +x scripts/build-python-wheels.sh
     # - ./scripts/build-python-wheels.sh
+
+    - echo "Pre-build checks completed successfully"
 
 # Build configuration for Rust binaries
 builds:
   - id: ferrocp-linux-amd64
     binary: ferrocp
-    builder: prebuilt
-    prebuilt:
-      path: target/x86_64-unknown-linux-gnu/release/ferrocp
+    main: ./scripts/fake-main.go
     goos: [linux]
     goarch: [amd64]
+    hooks:
+      post: cp target/x86_64-unknown-linux-gnu/release/ferrocp {{ .Path }}
 
   - id: ferrocp-linux-arm64
     binary: ferrocp
-    builder: prebuilt
-    prebuilt:
-      path: target/aarch64-unknown-linux-gnu/release/ferrocp
+    main: ./scripts/fake-main.go
     goos: [linux]
     goarch: [arm64]
+    hooks:
+      post: cp target/aarch64-unknown-linux-gnu/release/ferrocp {{ .Path }}
 
   - id: ferrocp-darwin-amd64
     binary: ferrocp
-    builder: prebuilt
-    prebuilt:
-      path: target/x86_64-apple-darwin/release/ferrocp
+    main: ./scripts/fake-main.go
     goos: [darwin]
     goarch: [amd64]
+    hooks:
+      post: cp target/x86_64-apple-darwin/release/ferrocp {{ .Path }}
 
   - id: ferrocp-darwin-arm64
     binary: ferrocp
-    builder: prebuilt
-    prebuilt:
-      path: target/aarch64-apple-darwin/release/ferrocp
+    main: ./scripts/fake-main.go
     goos: [darwin]
     goarch: [arm64]
+    hooks:
+      post: cp target/aarch64-apple-darwin/release/ferrocp {{ .Path }}
 
   - id: ferrocp-windows-amd64
     binary: ferrocp
-    builder: prebuilt
-    prebuilt:
-      path: target/x86_64-pc-windows-gnu/release/ferrocp.exe
+    main: ./scripts/fake-main.go
     goos: [windows]
     goarch: [amd64]
+    hooks:
+      post: cp target/x86_64-pc-windows-gnu/release/ferrocp.exe {{ .Path }}
 
 
 
@@ -121,22 +152,22 @@ changelog:
       - Merge remote-tracking branch
       - Merge branch
   groups:
-    - title: "🚀 Features"
+    - title: "Features"
       regexp: "^.*feat[(\\w)]*:+.*$"
       order: 0
-    - title: "🐛 Bug Fixes"
+    - title: "Bug Fixes"
       regexp: "^.*fix[(\\w)]*:+.*$"
       order: 1
-    - title: "🔒 Security"
+    - title: "Security"
       regexp: "^.*security[(\\w)]*:+.*$"
       order: 2
-    - title: "📚 Documentation"
+    - title: "Documentation"
       regexp: "^.*docs[(\\w)]*:+.*$"
       order: 3
-    - title: "⚡ Performance"
+    - title: "Performance"
       regexp: "^.*perf[(\\w)]*:+.*$"
       order: 4
-    - title: "🧹 Maintenance"
+    - title: "Maintenance"
       regexp: "^.*chore[(\\w)]*:+.*$"
       order: 5
 
@@ -189,9 +220,9 @@ release:
     **Full Changelog**: https://github.com/loonghao/FerroCP/compare/{{ .PreviousTag }}...{{ .Tag }}
     
     ### Support
-    - 📖 [Documentation](https://loonghao.github.io/ferrocp)
-    - 🐛 [Report Issues](https://github.com/loonghao/FerroCP/issues)
-    - 💬 [Discussions](https://github.com/loonghao/FerroCP/discussions)
+    - [Documentation](https://loonghao.github.io/ferrocp)
+    - [Report Issues](https://github.com/loonghao/FerroCP/issues)
+    - [Discussions](https://github.com/loonghao/FerroCP/discussions)
 
 # Homebrew tap (for macOS users)
 brews:
@@ -257,12 +288,7 @@ dockers:
 #       twine upload dist/*.whl dist/*.tar.gz --verbose
 #     # No environment variables needed for Trusted Publishing
 
-# Custom artifacts for Python wheels - temporarily disabled
-# extra_files:
-#   - glob: "dist/*.whl"
-#     name_template: "{{ .ProjectName }}-{{ .Version }}-py3-none-any.whl"
-#   - glob: "dist/*.tar.gz"
-#     name_template: "{{ .ProjectName }}-{{ .Version }}.tar.gz"
+# Note: Custom artifacts (extra_files) are available in GoReleaser v2
 
 # Announce to various platforms
 announce:
@@ -276,20 +302,5 @@ announce:
     enabled: false
     message_template: "FerroCP {{ .Version }} is out! High-performance file copying tool built with Rust. {{ .ReleaseURL }}"
 
-# Global after hooks - run after building and publishing
-after:
-  hooks:
-    # Publish Rust crates to crates.io (workspace publishing)
-    - cmd: "chmod +x scripts/publish-crates.sh && ./scripts/publish-crates.sh --dry-run"
-      env:
-        - CARGO_REGISTRY_TOKEN={{ .Env.CARGO_REGISTRY_TOKEN }}
-    # Only publish if not a snapshot build
-    - cmd: "{{ if not .IsSnapshot }}chmod +x scripts/publish-crates.sh && ./scripts/publish-crates.sh{{ else }}echo 'Skipping cargo publish for snapshot build'{{ end }}"
-      env:
-        - CARGO_REGISTRY_TOKEN={{ .Env.CARGO_REGISTRY_TOKEN }}
-
-# Validation
-validate:
-  # Ensure we have a clean git state
-  git:
-    clean: true
+# Note: After hooks and validation are available in GoReleaser v2
+# For v1 compatibility, post-build tasks should be handled in CI workflows

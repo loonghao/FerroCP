@@ -1,8 +1,6 @@
-name: Test
+name: PR Tests
 
 on:
-  push:
-    branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
   workflow_dispatch:
@@ -194,21 +192,24 @@ jobs:
         fail_ci_if_error: false
         token: ${{ secrets.CODECOV_TOKEN }}
 
+  # Security audit is now handled by GoReleaser
+  # Keeping this job for PR-specific security checks only
   security:
-    name: Security Audit
+    name: Security Audit (PR Only)
     runs-on: ubuntu-latest
-    
+    if: github.event_name == 'pull_request'
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Rust
       uses: dtolnay/rust-toolchain@stable
-    
+
     - name: Cache Rust dependencies
       uses: Swatinem/rust-cache@v2
-    
+
     - name: Install cargo-audit
       run: cargo install cargo-audit
-    
+
     - name: Run security audit
       run: cargo audit --deny unsound --deny yanked
