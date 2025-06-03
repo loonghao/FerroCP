@@ -20,7 +20,7 @@ class TestFileCopyPerformance:
         def copy_file():
             if dest.exists():
                 dest.unlink()
-            return ferrocp.copy(str(source), str(dest))
+            return ferrocp.copy_file(str(source), str(dest))
         
         result = benchmark(copy_file)
         assert dest.exists()
@@ -76,8 +76,8 @@ class TestFileCopyPerformance:
         assert dest.stat().st_size == 100 * 1024 * 1024
 
 
-class TestEACopyClassPerformance:
-    """Test EACopy class performance with different configurations."""
+class TestCopyEnginePerformance:
+    """Test CopyEngine class performance with different configurations."""
     
     @pytest.mark.benchmark(group="thread_counts")
     @pytest.mark.parametrize("thread_count", [1, 2, 4, 8])
@@ -90,8 +90,10 @@ class TestEACopyClassPerformance:
         def copy_with_threads():
             if dest.exists():
                 dest.unlink()
-            eacopy = ferrocp.EACopy(thread_count=thread_count)
-            return eacopy.copy_file(str(source), str(dest))
+            engine = ferrocp.CopyEngine()
+            options = ferrocp.CopyOptions()
+            options.thread_count = thread_count
+            return engine.copy_file(str(source), str(dest), options)
         
         result = benchmark(copy_with_threads)
         assert dest.exists()
@@ -107,8 +109,11 @@ class TestEACopyClassPerformance:
         def copy_with_compression():
             if dest.exists():
                 dest.unlink()
-            eacopy = ferrocp.EACopy(compression_level=compression_level)
-            return eacopy.copy_file(str(source), str(dest))
+            engine = ferrocp.CopyEngine()
+            options = ferrocp.CopyOptions()
+            options.compression_level = compression_level
+            options.enable_compression = compression_level > 0
+            return engine.copy_file(str(source), str(dest), options)
         
         result = benchmark(copy_with_compression)
         assert dest.exists()
@@ -124,8 +129,10 @@ class TestEACopyClassPerformance:
         def copy_with_buffer():
             if dest.exists():
                 dest.unlink()
-            eacopy = ferrocp.EACopy(buffer_size=buffer_size)
-            return eacopy.copy_file(str(source), str(dest))
+            engine = ferrocp.CopyEngine()
+            options = ferrocp.CopyOptions()
+            options.buffer_size = buffer_size
+            return engine.copy_file(str(source), str(dest), options)
         
         result = benchmark(copy_with_buffer)
         assert dest.exists()
@@ -202,8 +209,10 @@ class TestZeroCopyPerformance:
         def copy_with_zerocopy():
             if dest.exists():
                 dest.unlink()
-            eacopy = ferrocp.EACopy()
-            return eacopy.copy_file_zerocopy(str(source), str(dest))
+            engine = ferrocp.CopyEngine()
+            options = ferrocp.CopyOptions()
+            options.enable_zerocopy = True
+            return engine.copy_file(str(source), str(dest), options)
         
         result = benchmark(copy_with_zerocopy)
         assert dest.exists()

@@ -54,12 +54,13 @@ before:
 
     # === Build Preparation ===
     - echo "Preparing builds..."
-    - chmod +x scripts/build-all-targets.sh
-    - ./scripts/build-all-targets.sh
+    - chmod +x scripts/build-cross.sh
 
-    # Build Python wheels for all platforms (temporarily disabled for debugging)
-    # - chmod +x scripts/build-python-wheels.sh
-    # - ./scripts/build-python-wheels.sh
+    # Install cross for reliable cross-compilation
+    - cargo install cross --git https://github.com/cross-rs/cross
+
+    # Build all targets using cross
+    - ./scripts/build-cross.sh
 
     - echo "Pre-build checks completed successfully"
 

@@ -78,12 +78,14 @@ runs:
                 test_file.write_text(f'Test content {i}' * 1000)
             
             # Run copy operations to generate profile data
-            eacopy = ferrocp.EACopy()
+            engine = ferrocp.CopyEngine()
+            options = ferrocp.CopyOptions()
             for i in range(10):
                 try:
-                    eacopy.copy_file(
-                        source_dir / f'test_{i}.txt',
-                        dest_dir / f'test_{i}.txt'
+                    engine.copy_file(
+                        str(source_dir / f'test_{i}.txt'),
+                        str(dest_dir / f'test_{i}.txt'),
+                        options
                     )
                 except Exception as e:
                     print(f'Copy operation {i} failed: {e}')

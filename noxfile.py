@@ -501,12 +501,14 @@ with tempfile.TemporaryDirectory() as temp_dir:
         test_file.write_text(f'Test content {i}' * 100)
 
     # Run copy operations
-    eacopy = ferrocp.EACopy()
+    engine = ferrocp.CopyEngine()
+    options = ferrocp.CopyOptions()
     for i in range(20):
         try:
-            eacopy.copy_file(
-                source_dir / f'test_{i}.txt',
-                dest_dir / f'test_{i}.txt'
+            engine.copy_file(
+                str(source_dir / f'test_{i}.txt'),
+                str(dest_dir / f'test_{i}.txt'),
+                options
             )
         except Exception:
             continue
@@ -610,8 +612,9 @@ with tempfile.TemporaryDirectory() as temp_dir:
 
     source_file.write_text('Hello, World!')
 
-    eacopy = ferrocp.EACopy()
-    eacopy.copy_file(source_file, dest_file)
+    engine = ferrocp.CopyEngine()
+    options = ferrocp.CopyOptions()
+    engine.copy_file(str(source_file), str(dest_file), options)
 
     if dest_file.exists() and dest_file.read_text() == 'Hello, World!':
         print('✅ Basic copy functionality works!')

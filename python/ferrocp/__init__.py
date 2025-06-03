@@ -9,10 +9,15 @@ This library provides fast, efficient file copying capabilities with support for
 - Progress reporting and monitoring
 - Cross-platform compatibility
 
-Basic Usage:
+Basic Usage (shutil-compatible):
     >>> import ferrocp
     >>>
-    >>> # Simple file copy
+    >>> # Drop-in replacement for shutil
+    >>> ferrocp.copy("source.txt", "destination.txt")  # Like shutil.copy
+    >>> ferrocp.copytree("src_dir", "dest_dir")        # Like shutil.copytree
+    >>> ferrocp.move("old_path", "new_path")           # Like shutil.move
+    >>>
+    >>> # Or use the explicit API
     >>> ferrocp.copy_file("source.txt", "destination.txt")
     >>>
     >>> # Copy with options
@@ -110,6 +115,11 @@ __author__ = "FerroCP Team"
 __email__ = "team@ferrocp.dev"
 __license__ = "MIT OR Apache-2.0"
 
+# Shutil-compatible API aliases for easy migration
+copy = copy_file  # shutil.copy equivalent
+copy2 = copy_file  # shutil.copy2 equivalent (preserves metadata by default)
+copytree = copy_directory  # shutil.copytree equivalent
+
 # Public API
 __all__ = [
     # Core functionality
@@ -119,6 +129,12 @@ __all__ = [
     "copy_with_verification",
     "copy_with_compression",
     "sync_directories",
+
+    # Shutil-compatible aliases
+    "copy",
+    "copy2",
+    "copytree",
+    "move",
 
     # Async functionality
     "copy_file_async",
@@ -203,3 +219,43 @@ def get_statistics() -> dict:
     """
     engine = CopyEngine()
     return engine.get_statistics()
+
+
+def move(src, dst, copy_function=copy_file):
+    """
+    Move a file or directory tree to another location.
+
+    This is similar to shutil.move() but uses FerroCP for better performance.
+
+    Args:
+        src: Source path
+        dst: Destination path
+        copy_function: Function to use for copying (default: copy_file)
+
+    Returns:
+        The destination path
+    """
+    import os
+    from pathlib import Path
+
+    src_path = Path(src)
+    dst_path = Path(dst)
+
+    # If destination is a directory, move source into it
+    if dst_path.is_dir():
+        dst_path = dst_path / src_path.name
+
+    # Copy the file/directory
+    if src_path.is_dir():
+        copy_directory(str(src_path), str(dst_path))
+    else:
+        copy_file(str(src_path), str(dst_path))
+
+    # Remove the source
+    if src_path.is_dir():
+        import shutil
+        shutil.rmtree(src_path)
+    else:
+        src_path.unlink()
+
+    return str(dst_path)

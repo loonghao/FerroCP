@@ -51,48 +51,26 @@ jobs:
         with:
           key: goreleaser
 
-      # Install complete build toolchain for cross-compilation
-      - name: Install complete build toolchain
+      # Set up Docker for cross-compilation
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Install basic build tools (cross will handle the rest via Docker)
+      - name: Install basic build tools
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             build-essential \
-            gcc-multilib \
-            gcc-aarch64-linux-gnu \
-            gcc-mingw-w64-x86-64 \
-            libc6-dev-arm64-cross \
-            binutils \
-            binutils-aarch64-linux-gnu \
-            binutils-mingw-w64-x86-64 \
-            binutils-multiarch \
-            lld \
-            clang \
             pkg-config \
             libssl-dev
 
-          # Ensure linker is available in all standard locations
-          sudo ln -sf /usr/bin/ld.bfd /usr/bin/ld || true
-          sudo ln -sf /usr/bin/ld.bfd /usr/local/bin/ld || true
-          sudo ln -sf /usr/bin/ld.bfd /usr/local/bin/ld.bfd || true
-          sudo ln -sf /usr/bin/ld.gold /usr/local/bin/ld.gold || true
+          # Verify Docker is available for cross
+          echo "=== Verifying Docker for cross-compilation ==="
+          docker --version
+          docker info | grep "Server Version" || echo "Docker daemon not accessible"
 
-          # Ensure gcc can find the linker
-          sudo ln -sf /usr/bin/ld.bfd /usr/lib/gcc/x86_64-linux-gnu/*/ld || true
-
-          # Verify complete toolchain installation
-          echo "=== Verifying build toolchain ==="
-          which ld && ld --version | head -1
-          which gcc && gcc --version | head -1
-          which clang && clang --version | head -1
-          which lld && lld --version | head -1
-
-          echo "=== Verifying cross-compilation tools ==="
-          aarch64-linux-gnu-gcc --version | head -1
-          x86_64-w64-mingw32-gcc --version | head -1
-
-          echo "=== Testing basic linking capability ==="
-          echo 'int main(){return 0;}' | gcc -x c - -o /tmp/test_link && echo "✅ Basic linking test passed" || echo "❌ Basic linking test failed"
-          rm -f /tmp/test_link
+          # Test Docker functionality
+          docker run --rm hello-world || echo "Docker test failed"
 
       # Set up Go (required by GoReleaser)
       - name: Set up Go

@@ -1,7 +1,7 @@
-"""Configuration handling for EACopy."""
+"""Configuration handling for FerroCP."""
 
 class Config:
-    """Global configuration options for EACopy.
+    """Global configuration options for FerroCP.
     
     Attributes:
         thread_count: Default number of threads to use for copy operations.
