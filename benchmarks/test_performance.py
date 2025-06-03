@@ -92,7 +92,7 @@ class TestCopyEnginePerformance:
                 dest.unlink()
             engine = ferrocp.CopyEngine()
             options = ferrocp.CopyOptions()
-            options.thread_count = thread_count
+            options.num_threads = thread_count
             return engine.copy_file(str(source), str(dest), options)
         
         result = benchmark(copy_with_threads)

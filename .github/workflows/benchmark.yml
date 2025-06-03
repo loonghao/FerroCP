@@ -98,13 +98,25 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv sync --group testing
+        uv sync --group testing --group dev
 
     - name: Verify pytest-benchmark installation
       run: |
-        uv run python -c "import pytest_benchmark; print('pytest-benchmark installed successfully')"
+        echo "=== Checking uv environment ==="
+        uv run python -c "import sys; print('Python path:', sys.executable)"
+        uv run python -c "import sys; print('Python version:', sys.version)"
+
+        echo "=== Checking pytest installation ==="
         uv run pytest --version
-        uv run pytest --help | grep -E "(benchmark|codspeed)" || echo "Benchmark plugins not found"
+
+        echo "=== Checking pytest-benchmark installation ==="
+        uv run python -c "import pytest_benchmark; print('pytest-benchmark version:', pytest_benchmark.__version__)"
+
+        echo "=== Checking available pytest plugins ==="
+        uv run pytest --help | grep -E "(benchmark|codspeed)" || echo "Benchmark plugins not found in help"
+
+        echo "=== Testing benchmark arguments ==="
+        uv run pytest --benchmark-only --help > /dev/null && echo "✅ --benchmark-only argument recognized" || echo "❌ --benchmark-only argument not recognized"
 
     - name: Build project
       run: |
