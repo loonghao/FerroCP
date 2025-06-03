@@ -38,7 +38,11 @@ runs:
           --interpreter ${{ inputs.interpreter }}
           ${{ inputs.target && format('--target {0}', inputs.target) || '' }}
         rust-toolchain: ${{ inputs.rust-toolchain }}
-        docker-options: -e CI
+        before-script-linux: |
+          # Install clang in manylinux container for PGO support
+          yum install -y clang || (apt-get update && apt-get install -y clang)
+          which clang && clang --version | head -1
+        docker-options: -e CI -e CC=clang -e CXX=clang++
       env:
         RUSTFLAGS: '-Cprofile-generate=${{ github.workspace }}/profdata'
     
@@ -146,7 +150,11 @@ runs:
           --interpreter ${{ inputs.interpreter }}
           ${{ inputs.target && format('--target {0}', inputs.target) || '' }}
         rust-toolchain: ${{ inputs.rust-toolchain }}
-        docker-options: -e CI
+        before-script-linux: |
+          # Install clang in manylinux container for PGO support
+          yum install -y clang || (apt-get update && apt-get install -y clang)
+          which clang && clang --version | head -1
+        docker-options: -e CI -e CC=clang -e CXX=clang++
       env:
         RUSTFLAGS: '-Cprofile-use=${{ github.workspace }}/merged.profdata'
     

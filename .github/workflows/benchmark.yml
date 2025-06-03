@@ -100,6 +100,12 @@ jobs:
       run: |
         uv sync --group testing
 
+    - name: Verify pytest-benchmark installation
+      run: |
+        uv run python -c "import pytest_benchmark; print('pytest-benchmark installed successfully')"
+        uv run pytest --version
+        uv run pytest --help | grep -E "(benchmark|codspeed)" || echo "Benchmark plugins not found"
+
     - name: Build project
       run: |
         uv run nox -s build
