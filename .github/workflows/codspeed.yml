@@ -1,12 +1,7 @@
 name: CodSpeed Performance Monitoring
 
 on:
-  # Run on pushes to main branch
-  push:
-    branches:
-      - main
-      - rust-native-implementation
-  # Run on all pull requests
+  # Run on all pull requests for performance monitoring
   pull_request:
   # Allow manual triggering for backtest analysis
   workflow_dispatch:
@@ -19,7 +14,6 @@ on:
         options:
           - standard
           - comprehensive
-          - parallel
 
 env:
   # Performance optimization flags
@@ -253,102 +247,5 @@ jobs:
         # Additional Rust performance flags
         RUSTFLAGS: "-C target-cpu=native -C opt-level=3"
 
-  # Parallel benchmarks for faster execution (if needed)
-  parallel-benchmarks:
-    name: Run parallel benchmarks
-    runs-on: ubuntu-latest
-    # Only run when explicitly requested
-    if: github.event_name == 'workflow_dispatch' && inputs.benchmark_type == 'parallel'
-    strategy:
-      matrix:
-        shard: [1, 2, 3, 4]
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
-
-    - name: Install uv
-      uses: astral-sh/setup-uv@v5
-      with:
-        enable-cache: true
-        cache-dependency-glob: "pyproject.toml"
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.11"
-
-    # Install build tools for Linux
-    - name: Install build tools
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          build-essential \
-          binutils \
-          pkg-config \
-          libssl-dev \
-          lld \
-          clang
-
-    - name: Set up Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        components: rustfmt, clippy
-
-    # Set stable build environment
-    - name: Set build environment
-      shell: bash
-      run: |
-        echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
-        echo "RUSTFLAGS=-C opt-level=3" >> $GITHUB_ENV
-        # Use clang as compiler and linker for better reliability
-        if command -v clang >/dev/null 2>&1; then
-          echo "CC=clang" >> $GITHUB_ENV
-          echo "CXX=clang++" >> $GITHUB_ENV
-          echo "RUSTFLAGS=-C opt-level=3 -C linker=clang" >> $GITHUB_ENV
-          echo "✅ Using clang as compiler and linker"
-        fi
-
-    - name: Install dependencies
-      run: |
-        uv sync --group testing
-        uv add pytest-test-groups
-
-    - name: Build PGO-optimized project
-      uses: ./.github/actions/build-pgo-wheel
-      with:
-        interpreter: python3.11
-        rust-toolchain: stable
-
-    - name: Install PGO wheel
-      run: |
-        wheel_file=$(ls dist/*.whl | head -1)
-        if [ -n "$wheel_file" ]; then
-          echo "Installing PGO wheel: $wheel_file"
-          uv pip install "$wheel_file" --force-reinstall
-        else
-          echo "No PGO wheel found, falling back to regular build"
-          uv run nox -s build
-        fi
-
-    - name: Generate test data for parallel benchmarks
-      run: |
-        mkdir -p benchmarks/data/test_files
-        uv run python benchmarks/data/generate_test_data.py --output-dir benchmarks/data/test_files
-
-    - name: Run sharded benchmarks
-      uses: CodSpeedHQ/action@v3
-      with:
-        run: uv run pytest benchmarks/test_codspeed.py --codspeed --test-group=${{ matrix.shard }} --test-group-count=4 --benchmark-sort=mean
-        token: ${{ secrets.CODSPEED_TOKEN }}
-      env:
-        # Enable PGO-specific optimizations
-        CODSPEED_PGO_ENABLED: true
-        # Standard threshold for parallel benchmarks
-        CODSPEED_REGRESSION_THRESHOLD: ${{ env.CODSPEED_REGRESSION_THRESHOLD }}
-        # Additional Rust performance flags
-        RUSTFLAGS: "-C target-cpu=native"
-        # Shard identifier for CodSpeed
-        CODSPEED_SHARD: ${{ matrix.shard }}
+  # Note: Parallel benchmarks removed - comprehensive performance testing
+  # is now handled by GoReleaser during releases

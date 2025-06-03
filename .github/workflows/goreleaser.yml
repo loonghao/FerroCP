@@ -1,4 +1,4 @@
-name: GoReleaser
+name: Build & Release (GoReleaser)
 
 # Permissions needed for this workflow
 permissions:
@@ -10,6 +10,8 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - main  # Run comprehensive builds on main branch pushes
   workflow_dispatch:
     inputs:
       dry-run:
@@ -17,11 +19,22 @@ on:
         required: false
         default: false
         type: boolean
+      skip-tests:
+        description: 'Skip comprehensive test suite (faster builds)'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  # Control GoReleaser behavior based on trigger
+  SKIP_COMPREHENSIVE_TESTS: ${{ github.event.inputs.skip-tests == 'true' || github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/') }}
+  IS_RELEASE: ${{ startsWith(github.ref, 'refs/tags/') }}
+  IS_DRY_RUN: ${{ github.event.inputs.dry-run == 'true' }}
 
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
