@@ -33,7 +33,12 @@ passthrough = [
     "CARGO_NET_TIMEOUT",
     "RUST_BACKTRACE",
     "RUST_LOG",
+    "BLAKE3_NO_ASM",
 ]
+
+# Set blake3 to use pure Rust implementation
+[env]
+BLAKE3_NO_ASM = "1"
 
 # Docker configuration
 [build.docker]

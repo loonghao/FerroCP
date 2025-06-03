@@ -135,6 +135,6 @@ def test_copy_multi_thread(large_test_file, temp_dir):
     dest = temp_dir / get_unique_filename("multi_thread_dest")
     engine = ferrocp.CopyEngine()
     options = ferrocp.CopyOptions()
-    options.thread_count = 4
+    options.num_threads = 4
     engine.copy_file(str(large_test_file), str(dest), options)
     assert dest.exists()

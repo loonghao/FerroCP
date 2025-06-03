@@ -59,6 +59,9 @@ before:
     # Install cross for reliable cross-compilation
     - cargo install cross --git https://github.com/cross-rs/cross
 
+    # Set environment variables for blake3 compatibility
+    - export BLAKE3_NO_ASM=1
+
     # Build all targets using cross
     - ./scripts/build-cross.sh
 

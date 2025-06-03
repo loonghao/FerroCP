@@ -39,12 +39,13 @@ runs:
           ${{ inputs.target && format('--target {0}', inputs.target) || '' }}
         rust-toolchain: ${{ inputs.rust-toolchain }}
         before-script-linux: |
-          # Install clang in manylinux container for PGO support
-          yum install -y clang || (apt-get update && apt-get install -y clang)
-          which clang && clang --version | head -1
-        docker-options: -e CI -e CC=clang -e CXX=clang++
+          # Install build tools in manylinux container
+          yum install -y gcc gcc-c++ || (apt-get update && apt-get install -y gcc g++)
+          which gcc && gcc --version | head -1
+        docker-options: -e CI -e CC=gcc -e CXX=g++ -e BLAKE3_NO_ASM=1
       env:
         RUSTFLAGS: '-Cprofile-generate=${{ github.workspace }}/profdata'
+        BLAKE3_NO_ASM: '1'
     
     - name: Detect Rust host
       shell: bash
@@ -151,12 +152,13 @@ runs:
           ${{ inputs.target && format('--target {0}', inputs.target) || '' }}
         rust-toolchain: ${{ inputs.rust-toolchain }}
         before-script-linux: |
-          # Install clang in manylinux container for PGO support
-          yum install -y clang || (apt-get update && apt-get install -y clang)
-          which clang && clang --version | head -1
-        docker-options: -e CI -e CC=clang -e CXX=clang++
+          # Install build tools in manylinux container
+          yum install -y gcc gcc-c++ || (apt-get update && apt-get install -y gcc g++)
+          which gcc && gcc --version | head -1
+        docker-options: -e CI -e CC=gcc -e CXX=g++ -e BLAKE3_NO_ASM=1
       env:
         RUSTFLAGS: '-Cprofile-use=${{ github.workspace }}/merged.profdata'
+        BLAKE3_NO_ASM: '1'
     
     - name: Find built wheel
       id: find_wheel
