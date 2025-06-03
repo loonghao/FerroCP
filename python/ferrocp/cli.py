@@ -53,11 +53,11 @@ def copy(
     # Create CopyEngine instance with configuration
     engine = CopyEngine()
     options = CopyOptions()
-    options.thread_count = threads
+    options.num_threads = threads
     options.buffer_size = buffer_size
     options.compression_level = compression
     options.enable_compression = compression > 0
-    options.preserve_metadata = preserve_metadata
+    options.preserve_timestamps = preserve_metadata
     options.follow_symlinks = follow_symlinks
 
     # Set up progress callback if requested

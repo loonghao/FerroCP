@@ -111,6 +111,7 @@ from ._ferrocp import (
 
 # Version information
 __version__ = get_version()
+__eacopy_version__ = get_version()  # Backward compatibility
 __author__ = "FerroCP Team"
 __email__ = "team@ferrocp.dev"
 __license__ = "MIT OR Apache-2.0"
@@ -172,8 +173,12 @@ __all__ = [
     # Utilities
     "get_version",
 
+    # Backward compatibility
+    "EACopy",
+
     # Metadata
     "__version__",
+    "__eacopy_version__",
     "__author__",
     "__email__",
     "__license__",
@@ -259,3 +264,35 @@ def move(src, dst, copy_function=copy_file):
         src_path.unlink()
 
     return str(dst_path)
+
+
+# Backward compatibility class for EACopy
+class EACopy:
+    """
+    Backward compatibility wrapper for the old EACopy API.
+
+    This class provides compatibility with existing code that uses the EACopy interface.
+    """
+
+    def __init__(self, thread_count=4, buffer_size=64*1024, compression_level=0, verify_integrity=False):
+        """Initialize EACopy with configuration options."""
+        self.engine = CopyEngine()
+        self.default_options = CopyOptions()
+        self.default_options.num_threads = thread_count
+        self.default_options.buffer_size = buffer_size
+        self.default_options.compression_level = compression_level
+        self.default_options.enable_compression = compression_level > 0
+        self.default_options.verify = verify_integrity
+
+    def copy_file(self, source, destination, options=None):
+        """Copy a single file."""
+        copy_options = options or self.default_options
+        result = self.engine.copy_file(source, destination, copy_options)
+        return result
+
+    def copy_with_server(self, source, destination, server, port=8080):
+        """Copy file using a server (mock implementation for compatibility)."""
+        # For backward compatibility, just do a regular copy
+        # In a real implementation, this would use network transfer
+        result = self.copy_file(source, destination)
+        return result
