@@ -43,6 +43,7 @@ pub struct PlatformFeatures {
 }
 
 #[cfg(target_os = "linux")]
+/// Linux-specific zero-copy features
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct LinuxFeatures {
@@ -72,6 +73,7 @@ pub struct WindowsFeatures {
 }
 
 #[cfg(target_os = "macos")]
+/// macOS-specific zero-copy features
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MacOSFeatures {
