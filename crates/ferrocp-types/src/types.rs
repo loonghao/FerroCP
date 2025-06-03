@@ -545,9 +545,16 @@ mod tests {
                 Just(ZeroCopyMethod::Fallback),
             ]
         ) {
+            // Ensure logical consistency: if method is Fallback, zerocopy_used should be false
+            let consistent_zerocopy_used = if matches!(method, ZeroCopyMethod::Fallback) {
+                false
+            } else {
+                zerocopy_used
+            };
+
             let result = ZeroCopyResult {
                 bytes_copied,
-                zerocopy_used,
+                zerocopy_used: consistent_zerocopy_used,
                 method,
             };
 

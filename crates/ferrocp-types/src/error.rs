@@ -206,7 +206,9 @@ impl Error {
                 // Check if the error message indicates a recoverable condition
                 message.contains("Interrupted")
                     || message.contains("WouldBlock")
+                    || message.contains("would block")
                     || message.contains("TimedOut")
+                    || message.contains("timed out")
             }
             Self::Network { .. }
             | Self::Timeout { .. }
@@ -263,6 +265,13 @@ impl Error {
     /// Create a new sync error
     pub fn sync<S: Into<String>>(message: S) -> Self {
         Self::Sync {
+            message: message.into(),
+        }
+    }
+
+    /// Create a new I/O error
+    pub fn io<S: Into<String>>(message: S) -> Self {
+        Self::Io {
             message: message.into(),
         }
     }
