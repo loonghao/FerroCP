@@ -1,5 +1,6 @@
 """Command-line interface for ferrocp."""
 
+import asyncio
 import sys
 import time
 from pathlib import Path
@@ -75,11 +76,14 @@ def copy(
     try:
         start_time = time.time()
 
-        if source.is_file():
-            stats = engine.copy_file(str(source), str(destination), options)
-        else:
-            stats = engine.copy_directory(str(source), str(destination), options)
+        # Run the async copy operation
+        async def run_copy():
+            if source.is_file():
+                return await engine.copy_file(str(source), str(destination), options)
+            else:
+                return await engine.copy_directory(str(source), str(destination), options)
 
+        stats = asyncio.run(run_copy())
         end_time = time.time()
 
         if progress:
@@ -95,12 +99,10 @@ def copy(
         click.echo(f"  Duration: {duration:.2f}s")
         click.echo(f"  Speed: {speed_mbps:.2f} MB/s")
 
-        if stats.zerocopy_used > 0:
-            zerocopy_percent = (stats.zerocopy_bytes / stats.bytes_copied) * 100
-            click.echo(f"  Zero-copy: {zerocopy_percent:.1f}% of data")
-
-        if stats.errors > 0:
-            click.echo(f"  Errors: {stats.errors}", err=True)
+        # Check if operation was successful
+        if not stats.success:
+            error_msg = stats.error_message or "Unknown error"
+            click.echo(f"  Error: {error_msg}", err=True)
             sys.exit(1)
 
     except Exception as e:
@@ -135,10 +137,11 @@ def copy_with_server(
     options = CopyOptions()
 
     try:
-        # TODO: Implement network copy functionality
-        # stats = engine.copy_with_server(str(source), str(destination), server, port, options)
-        click.echo("Network copy functionality not yet implemented")
-        # click.echo(f"✓ Network copy completed! Copied {stats.bytes_copied:,} bytes")
+        # Use EACopy for server-based copying
+        from . import EACopy
+        eacopy = EACopy(thread_count=4, buffer_size=64*1024)
+        stats = eacopy.copy_with_server(str(source), str(destination), server, port)
+        click.echo(f"✓ Network copy completed! Copied {stats.bytes_copied:,} bytes")
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
@@ -175,7 +178,12 @@ def benchmark() -> None:
             dest = test_dir / f"copy_{filename}"
 
             start_time = time.time()
-            engine.copy_file(str(source), str(dest), options)
+
+            # Run async copy operation
+            async def run_benchmark_copy():
+                return await engine.copy_file(str(source), str(dest), options)
+
+            asyncio.run(run_benchmark_copy())
             duration = time.time() - start_time
 
             speed_mbps = (size / (1024 * 1024)) / duration if duration > 0 else 0

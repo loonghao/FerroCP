@@ -26,6 +26,9 @@ def test_cli_copy():
             f.write("test content")
 
         result = runner.invoke(cli.cli, ["copy", "source.txt", "dest.txt", "--no-progress"])
+        if result.exit_code != 0:
+            print(f"CLI Error Output: {result.output}")
+            print(f"CLI Exception: {result.exception}")
         assert result.exit_code == 0
         assert "Copy completed successfully" in result.output
         assert "Files copied: 1" in result.output
