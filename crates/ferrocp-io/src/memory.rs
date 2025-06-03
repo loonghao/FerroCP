@@ -157,7 +157,8 @@ impl MemoryMonitor {
     /// Get memory usage statistics over a time period
     pub fn get_usage_stats(&self, duration: Duration) -> MemoryUsageStats {
         let history = self.usage_history.lock().unwrap();
-        let cutoff_time = Instant::now() - duration;
+        let now = Instant::now();
+        let cutoff_time = now.checked_sub(duration).unwrap_or(self.start_time);
 
         let recent_samples: Vec<_> = history
             .iter()
@@ -198,7 +199,12 @@ impl MemoryMonitor {
     /// Get optimization recommendations based on usage patterns
     pub fn get_optimization_recommendations(&self) -> Vec<String> {
         let mut recommendations = Vec::new();
-        let recent_stats = self.get_usage_stats(Duration::from_secs(300)); // Last 5 minutes
+        // Use a reasonable time window that won't cause overflow in tests
+        let analysis_duration = std::cmp::min(
+            Duration::from_secs(300), // 5 minutes max
+            self.monitoring_duration().saturating_add(Duration::from_secs(1)) // At least current duration + 1s
+        );
+        let recent_stats = self.get_usage_stats(analysis_duration);
 
         if recent_stats.avg_efficiency < 70.0 {
             recommendations.push(format!(
