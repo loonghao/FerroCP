@@ -5,7 +5,7 @@ build-backend = "maturin"
 [project]
 name = "ferrocp"
 dynamic = ["version"]
-description = "Python bindings for EACopy, a high-performance file copy tool"
+description = "FerroCP - A high-performance file copy tool with Python bindings"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "Apache-2.0"}

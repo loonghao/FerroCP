@@ -7,7 +7,7 @@ from typing import Optional
 
 import click
 
-from . import EACopy, __version__
+from . import CopyEngine, CopyOptions, __version__
 
 
 @click.group()
@@ -50,14 +50,15 @@ def copy(
         click.echo(f"Copying {source} to {destination}")
         click.echo(f"Threads: {threads}, Buffer: {buffer_size}, Compression: {compression}")
 
-    # Create EACopy instance with configuration
-    eacopy = EACopy(
-        thread_count=threads,
-        buffer_size=buffer_size,
-        compression_level=compression,
-        preserve_metadata=preserve_metadata,
-        follow_symlinks=follow_symlinks,
-    )
+    # Create CopyEngine instance with configuration
+    engine = CopyEngine()
+    options = CopyOptions()
+    options.thread_count = threads
+    options.buffer_size = buffer_size
+    options.compression_level = compression
+    options.enable_compression = compression > 0
+    options.preserve_metadata = preserve_metadata
+    options.follow_symlinks = follow_symlinks
 
     # Set up progress callback if requested
     if progress:
@@ -68,23 +69,16 @@ def copy(
             else:
                 click.echo(f"\rCopying: {filename}", nl=False)
 
-        # Note: Progress callback is set during EACopy construction
-        eacopy = EACopy(
-            thread_count=threads,
-            buffer_size=buffer_size,
-            compression_level=compression,
-            preserve_metadata=preserve_metadata,
-            follow_symlinks=follow_symlinks,
-            progress_callback=progress_callback,
-        )
+        # Note: Progress callback would be set on options
+        # options.progress_callback = progress_callback  # TODO: Implement progress callback
 
     try:
         start_time = time.time()
 
         if source.is_file():
-            stats = eacopy.copy_file(str(source), str(destination))
+            stats = engine.copy_file(str(source), str(destination), options)
         else:
-            stats = eacopy.copy_directory(str(source), str(destination))
+            stats = engine.copy_directory(str(source), str(destination), options)
 
         end_time = time.time()
 
@@ -137,11 +131,14 @@ def copy_with_server(
     if verbose:
         click.echo(f"Copying {source} to {destination} via server {server}:{port}")
 
-    eacopy = EACopy()
+    engine = CopyEngine()
+    options = CopyOptions()
 
     try:
-        stats = eacopy.copy_with_server(str(source), str(destination), server, port)
-        click.echo(f"✓ Network copy completed! Copied {stats.bytes_copied:,} bytes")
+        # TODO: Implement network copy functionality
+        # stats = engine.copy_with_server(str(source), str(destination), server, port, options)
+        click.echo("Network copy functionality not yet implemented")
+        # click.echo(f"✓ Network copy completed! Copied {stats.bytes_copied:,} bytes")
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
@@ -170,14 +167,15 @@ def benchmark() -> None:
                 f.write(b"x" * size)
 
         # Run benchmarks
-        eacopy = EACopy()
+        engine = CopyEngine()
+        options = CopyOptions()
 
         for filename, size in test_files:
             source = test_dir / filename
             dest = test_dir / f"copy_{filename}"
 
             start_time = time.time()
-            eacopy.copy_file(str(source), str(dest))
+            engine.copy_file(str(source), str(dest), options)
             duration = time.time() - start_time
 
             speed_mbps = (size / (1024 * 1024)) / duration if duration > 0 else 0

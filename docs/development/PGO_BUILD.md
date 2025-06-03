@@ -66,11 +66,13 @@ with tempfile.TemporaryDirectory() as temp_dir:
         test_file.write_text(f'Test content {i}' * 1000)
     
     # Run copy operations
-    eacopy = ferrocp.EACopy()
+    engine = ferrocp.CopyEngine()
+    options = ferrocp.CopyOptions()
     for i in range(50):
-        eacopy.copy_file(
-            source_dir / f'test_{i}.txt',
-            dest_dir / f'test_{i}.txt'
+        engine.copy_file(
+            str(source_dir / f'test_{i}.txt'),
+            str(dest_dir / f'test_{i}.txt'),
+            options
         )
 "
 
@@ -211,14 +213,15 @@ from pathlib import Path
 
 def collect_profile_data():
     """Custom workload for profile data collection."""
-    eacopy = ferrocp.EACopy()
-    
+    engine = ferrocp.CopyEngine()
+    options = ferrocp.CopyOptions()
+
     # Your specific use case scenarios
     # - Large file operations
     # - Network transfers
     # - Compression scenarios
     # - etc.
-    
+
     pass
 
 if __name__ == "__main__":

@@ -1,0 +1,41 @@
+# Cross.toml - Configuration for cross-compilation using the cross tool
+# See: https://github.com/cross-rs/cross
+
+[build]
+# Use the latest cross images for better compatibility
+default-target = "x86_64-unknown-linux-gnu"
+
+[target.x86_64-unknown-linux-gnu]
+# Linux x86_64 target configuration
+image = "ghcr.io/cross-rs/x86_64-unknown-linux-gnu:main"
+
+[target.aarch64-unknown-linux-gnu]
+# Linux ARM64 target configuration
+image = "ghcr.io/cross-rs/aarch64-unknown-linux-gnu:main"
+
+[target.x86_64-apple-darwin]
+# macOS x86_64 target configuration
+image = "ghcr.io/cross-rs/x86_64-apple-darwin:main"
+
+[target.aarch64-apple-darwin]
+# macOS ARM64 target configuration
+image = "ghcr.io/cross-rs/aarch64-apple-darwin:main"
+
+[target.x86_64-pc-windows-gnu]
+# Windows x86_64 target configuration
+image = "ghcr.io/cross-rs/x86_64-pc-windows-gnu:main"
+
+# Environment variables for all targets
+[build.env]
+passthrough = [
+    "CARGO_INCREMENTAL",
+    "CARGO_NET_RETRY",
+    "CARGO_NET_TIMEOUT",
+    "RUST_BACKTRACE",
+    "RUST_LOG",
+]
+
+# Docker configuration
+[build.docker]
+# Use buildkit for better performance
+buildkit = true

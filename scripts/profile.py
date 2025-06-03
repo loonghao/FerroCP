@@ -169,9 +169,12 @@ source.write_bytes(full_data)
 for level in [0, 1, 3, 6, 9]:
     if dest.exists():
         dest.unlink()
-    
-    eacopy = ferrocp.EACopy(compression_level=level)
-    eacopy.copy_file(str(source), str(dest))
+
+    engine = ferrocp.CopyEngine()
+    options = ferrocp.CopyOptions()
+    options.compression_level = level
+    options.enable_compression = level > 0
+    engine.copy_file(str(source), str(dest), options)
     print(f"Compression level {{level}} completed")
 '''
     
