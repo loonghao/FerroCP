@@ -120,11 +120,11 @@ def test_shutil_copy_comparison(medium_test_file, temp_dir):
 def test_copy_with_compression(medium_test_file, temp_dir):
     """Benchmark file copying with compression."""
     dest = temp_dir / get_unique_filename("compressed_dest")
-    engine = ferrocp.CopyEngine()
+    # Use the copy function with compression options
     options = ferrocp.CopyOptions()
     options.compression_level = 3
     options.enable_compression = True
-    engine.copy_file(str(medium_test_file), str(dest), options)
+    ferrocp.copy_file(str(medium_test_file), str(dest), options=options)
     assert dest.exists()
 
 
@@ -133,8 +133,8 @@ def test_copy_with_compression(medium_test_file, temp_dir):
 def test_copy_multi_thread(large_test_file, temp_dir):
     """Benchmark multi-threaded file copying."""
     dest = temp_dir / get_unique_filename("multi_thread_dest")
-    engine = ferrocp.CopyEngine()
+    # Use the copy function with threading options
     options = ferrocp.CopyOptions()
     options.num_threads = 4
-    engine.copy_file(str(large_test_file), str(dest), options)
+    ferrocp.copy_file(str(large_test_file), str(dest), options=options)
     assert dest.exists()
