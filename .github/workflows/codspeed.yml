@@ -69,14 +69,12 @@ jobs:
       shell: bash
       run: |
         echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
+        echo "BLAKE3_NO_ASM=1" >> $GITHUB_ENV
         echo "RUSTFLAGS=-C opt-level=3" >> $GITHUB_ENV
-        # Use clang as compiler and linker for better reliability
-        if command -v clang >/dev/null 2>&1; then
-          echo "CC=clang" >> $GITHUB_ENV
-          echo "CXX=clang++" >> $GITHUB_ENV
-          echo "RUSTFLAGS=-C opt-level=3 -C linker=clang" >> $GITHUB_ENV
-          echo "✅ Using clang as compiler and linker"
-        fi
+        # Use gcc as compiler for better compatibility with blake3
+        echo "CC=gcc" >> $GITHUB_ENV
+        echo "CXX=g++" >> $GITHUB_ENV
+        echo "✅ Using gcc as compiler for blake3 compatibility"
 
     - name: Cache Rust dependencies
       uses: actions/cache@v4
@@ -130,6 +128,8 @@ jobs:
         CODSPEED_PGO_ENABLED: true
         # Set performance regression threshold (5% by default)
         CODSPEED_REGRESSION_THRESHOLD: ${{ env.CODSPEED_REGRESSION_THRESHOLD }}
+        # Blake3 compatibility
+        BLAKE3_NO_ASM: '1'
         # Additional Rust performance flags
         RUSTFLAGS: "-C target-cpu=native -C opt-level=3"
 
@@ -199,14 +199,12 @@ jobs:
       shell: bash
       run: |
         echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
+        echo "BLAKE3_NO_ASM=1" >> $GITHUB_ENV
         echo "RUSTFLAGS=-C opt-level=3" >> $GITHUB_ENV
-        # Use clang as compiler and linker for better reliability
-        if command -v clang >/dev/null 2>&1; then
-          echo "CC=clang" >> $GITHUB_ENV
-          echo "CXX=clang++" >> $GITHUB_ENV
-          echo "RUSTFLAGS=-C opt-level=3 -C linker=clang" >> $GITHUB_ENV
-          echo "✅ Using clang as compiler and linker"
-        fi
+        # Use gcc as compiler for better compatibility with blake3
+        echo "CC=gcc" >> $GITHUB_ENV
+        echo "CXX=g++" >> $GITHUB_ENV
+        echo "✅ Using gcc as compiler for blake3 compatibility"
 
     - name: Install dependencies
       run: |
@@ -244,6 +242,8 @@ jobs:
         CODSPEED_PGO_ENABLED: true
         # More strict threshold for comprehensive benchmarks
         CODSPEED_REGRESSION_THRESHOLD: 3
+        # Blake3 compatibility
+        BLAKE3_NO_ASM: '1'
         # Additional Rust performance flags
         RUSTFLAGS: "-C target-cpu=native -C opt-level=3"
 
