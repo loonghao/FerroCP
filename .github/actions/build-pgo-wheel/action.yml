@@ -101,10 +101,15 @@ runs:
         print('Profile data collection completed')
         "
         
-        # Also run pytest benchmarks if they exist
+        # Also run pytest benchmarks if they exist and pytest-benchmark is available
         if [ -d "benchmarks" ]; then
-          echo "Running pytest benchmarks..."
-          uv run pytest benchmarks/ --benchmark-only --benchmark-sort=mean || echo "Benchmark tests failed, continuing..."
+          echo "Checking for pytest-benchmark availability..."
+          if uv run python -c "import pytest_benchmark" 2>/dev/null; then
+            echo "Running pytest benchmarks for PGO data collection..."
+            uv run pytest benchmarks/ --benchmark-only --benchmark-sort=mean || echo "Benchmark tests failed, continuing..."
+          else
+            echo "pytest-benchmark not available, skipping pytest benchmarks"
+          fi
         fi
     
     - name: Setup LLVM tools
