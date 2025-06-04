@@ -11,6 +11,21 @@ import click
 from . import CopyEngine, CopyOptions, __version__
 
 
+def run_async_safely(coro):
+    """Run an async coroutine safely, handling existing event loops."""
+    try:
+        # Try to get the current event loop
+        loop = asyncio.get_running_loop()
+        # If we're in an existing loop, we need to run in a thread
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(asyncio.run, coro)
+            return future.result()
+    except RuntimeError:
+        # No event loop running, safe to use asyncio.run()
+        return asyncio.run(coro)
+
+
 @click.group()
 @click.version_option(version=__version__, prog_name="ferrocp")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
@@ -83,7 +98,8 @@ def copy(
             else:
                 return await engine.copy_directory(str(source), str(destination), options)
 
-        stats = asyncio.run(run_copy())
+        # Run the async operation safely
+        stats = run_async_safely(run_copy())
         end_time = time.time()
 
         if progress:
@@ -183,7 +199,8 @@ def benchmark() -> None:
             async def run_benchmark_copy():
                 return await engine.copy_file(str(source), str(dest), options)
 
-            asyncio.run(run_benchmark_copy())
+            # Run the async operation safely
+            run_async_safely(run_benchmark_copy())
             duration = time.time() - start_time
 
             speed_mbps = (size / (1024 * 1024)) / duration if duration > 0 else 0
