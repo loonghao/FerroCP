@@ -42,7 +42,9 @@ runs:
           # Install build tools in manylinux container
           yum install -y gcc gcc-c++ || (apt-get update && apt-get install -y gcc g++)
           which gcc && gcc --version | head -1
-        docker-options: -e CI -e CC=gcc -e CXX=g++ -e BLAKE3_NO_ASM=1
+          # Verify BLAKE3_NO_ASM is set
+          echo "BLAKE3_NO_ASM=${BLAKE3_NO_ASM:-1}"
+        docker-options: -e CI -e CC=gcc -e CXX=g++ -e BLAKE3_NO_ASM=1 -e RUSTFLAGS
       env:
         RUSTFLAGS: '-Cprofile-generate=${{ github.workspace }}/profdata'
         BLAKE3_NO_ASM: '1'
@@ -155,7 +157,9 @@ runs:
           # Install build tools in manylinux container
           yum install -y gcc gcc-c++ || (apt-get update && apt-get install -y gcc g++)
           which gcc && gcc --version | head -1
-        docker-options: -e CI -e CC=gcc -e CXX=g++ -e BLAKE3_NO_ASM=1
+          # Verify BLAKE3_NO_ASM is set
+          echo "BLAKE3_NO_ASM=${BLAKE3_NO_ASM:-1}"
+        docker-options: -e CI -e CC=gcc -e CXX=g++ -e BLAKE3_NO_ASM=1 -e RUSTFLAGS
       env:
         RUSTFLAGS: '-Cprofile-use=${{ github.workspace }}/merged.profdata'
         BLAKE3_NO_ASM: '1'
