@@ -14,13 +14,38 @@ from . import CopyEngine, CopyOptions, __version__
 def run_async_safely(coro):
     """Run an async coroutine safely, handling existing event loops."""
     try:
-        # Try to get the current event loop
+        # Check if there's already a running event loop
         loop = asyncio.get_running_loop()
-        # If we're in an existing loop, we need to run in a thread
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(asyncio.run, coro)
-            return future.result()
+        # If we're here, there's already a loop running
+        # We need to use a different approach - run in a new thread with a new loop
+        import threading
+        import queue
+
+        result_queue = queue.Queue()
+        exception_queue = queue.Queue()
+
+        def run_in_thread():
+            try:
+                # Create a new event loop for this thread
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                try:
+                    result = new_loop.run_until_complete(coro)
+                    result_queue.put(result)
+                finally:
+                    new_loop.close()
+            except Exception as e:
+                exception_queue.put(e)
+
+        thread = threading.Thread(target=run_in_thread)
+        thread.start()
+        thread.join()
+
+        if not exception_queue.empty():
+            raise exception_queue.get()
+
+        return result_queue.get()
+
     except RuntimeError:
         # No event loop running, safe to use asyncio.run()
         return asyncio.run(coro)

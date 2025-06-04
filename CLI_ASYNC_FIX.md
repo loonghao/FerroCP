@@ -1,49 +1,95 @@
-# CLI异步操作修复报告
+# CLI异步操作和PGO构建修复报告
 
 ## 🚨 问题描述
 
-在运行pytest测试时遇到"Fatal Python error: Aborted"错误，具体表现为：
+### 1. CLI异步操作问题
+在运行pytest测试时遇到"Fatal Python error: Aborted"错误：
 
 ```
 Fatal Python error: Aborted
+Thread 0x00007f6b36fb4b80 (most recent call first):
+  File "/home/runner/work/FerroCP/FerroCP/python/ferrocp/cli.py", line 26 in run_async_safely
+```
 
-Thread 0x00007f5952fc8b80 (most recent call first):
-  File "/opt/hostedtoolcache/Python/3.11.12/x64/lib/python3.11/selectors.py", line 468 in select
-  File "/opt/hostedtoolcache/Python/3.11.12/x64/lib/python3.11/asyncio/base_events.py", line 1898 in _run_once
-  ...
-  File "/home/runner/work/FerroCP/FerroCP/python/ferrocp/cli.py", line 86 in copy
+### 2. PGO构建问题
+llvm-profdata工具路径错误：
+
+```
+/home/runner/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-profdata: No such file or directory
+Error: Process completed with exit code 127.
 ```
 
 ## 🔍 问题根因
 
-**核心问题**：CLI代码在第86行调用`asyncio.run()`，但pytest可能已经在运行一个事件循环。
+### CLI异步问题
+**核心问题**：CLI代码试图在已有事件循环的环境中创建新的事件循环。
 
 **技术细节**：
 - `asyncio.run()`会创建一个新的事件循环
-- 如果已经有事件循环在运行，会导致冲突
-- 这在测试环境中特别常见，因为pytest可能使用异步插件
+- pytest环境可能已经有运行中的事件循环
+- 即使使用ThreadPoolExecutor，仍然在同一个线程中调用`asyncio.run()`
+
+### PGO构建问题
+**核心问题**：llvm-profdata工具的路径检测不准确。
+
+**技术细节**：
+- Rust工具链的目录结构可能因版本而异
+- 需要更灵活的工具查找策略
 
 ## 🔧 修复方案
 
-### 1. 创建安全的异步运行函数
+### 1. CLI异步操作修复
 
-添加了`run_async_safely()`辅助函数来处理事件循环：
+**改进的异步运行函数**：使用独立线程和新事件循环
 
 ```python
 def run_async_safely(coro):
     """Run an async coroutine safely, handling existing event loops."""
     try:
-        # Try to get the current event loop
+        # Check if there's already a running event loop
         loop = asyncio.get_running_loop()
-        # If we're in an existing loop, we need to run in a thread
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(asyncio.run, coro)
-            return future.result()
+        # Create a new thread with its own event loop
+        import threading
+        import queue
+
+        result_queue = queue.Queue()
+        exception_queue = queue.Queue()
+
+        def run_in_thread():
+            try:
+                # Create a new event loop for this thread
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                try:
+                    result = new_loop.run_until_complete(coro)
+                    result_queue.put(result)
+                finally:
+                    new_loop.close()
+            except Exception as e:
+                exception_queue.put(e)
+
+        thread = threading.Thread(target=run_in_thread)
+        thread.start()
+        thread.join()
+
+        if not exception_queue.empty():
+            raise exception_queue.get()
+
+        return result_queue.get()
+
     except RuntimeError:
         # No event loop running, safe to use asyncio.run()
         return asyncio.run(coro)
 ```
+
+### 2. PGO构建修复
+
+**改进的llvm-profdata查找策略**：
+
+1. **标准路径检查**：检查标准rustup工具链路径
+2. **目录搜索**：在rustup目录中搜索llvm-profdata
+3. **系统工具**：使用系统安装的llvm-profdata
+4. **优雅降级**：如果找不到工具，跳过PGO优化但继续构建
 
 ### 2. 修复copy命令
 
