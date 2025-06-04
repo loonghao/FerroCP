@@ -110,36 +110,55 @@ runs:
     - name: Setup LLVM tools
       shell: bash
       run: |
-        # Get LLVM profdata tool path
-        LLVM_PROFDATA=$(rustup run ${{ inputs.rust-toolchain }} bash -c 'echo $RUSTUP_HOME/toolchains/$RUSTUP_TOOLCHAIN/lib/rustlib/${{ env.RUST_HOST }}/bin/llvm-profdata')
-        echo "LLVM_PROFDATA=$LLVM_PROFDATA" >> "$GITHUB_ENV"
-        echo "LLVM profdata tool: $LLVM_PROFDATA"
-        
-        # Verify tool exists
+        # Try multiple approaches to find llvm-profdata
+        echo "Searching for llvm-profdata tool..."
+
+        # Method 1: Standard rustup location
+        RUST_HOST=$(rustc -Vv | grep host | cut -d ' ' -f 2)
+        LLVM_PROFDATA="$HOME/.rustup/toolchains/${{ inputs.rust-toolchain }}-$RUST_HOST/lib/rustlib/$RUST_HOST/bin/llvm-profdata"
+
         if [ -f "$LLVM_PROFDATA" ]; then
-          echo "LLVM profdata tool found"
+          echo "Found llvm-profdata at: $LLVM_PROFDATA"
         else
-          echo "Warning: LLVM profdata tool not found at expected location"
-          # Try alternative locations
-          LLVM_PROFDATA=$(find $RUSTUP_HOME -name "llvm-profdata*" -type f | head -1)
-          if [ -n "$LLVM_PROFDATA" ]; then
-            echo "Found alternative LLVM profdata: $LLVM_PROFDATA"
-            echo "LLVM_PROFDATA=$LLVM_PROFDATA" >> "$GITHUB_ENV"
+          # Method 2: Search in rustup directory
+          echo "Searching in rustup directory..."
+          LLVM_PROFDATA=$(find $HOME/.rustup -name "llvm-profdata*" -type f 2>/dev/null | head -1)
+
+          if [ -n "$LLVM_PROFDATA" ] && [ -f "$LLVM_PROFDATA" ]; then
+            echo "Found llvm-profdata at: $LLVM_PROFDATA"
+          else
+            # Method 3: Use system llvm-profdata if available
+            if command -v llvm-profdata >/dev/null 2>&1; then
+              LLVM_PROFDATA=$(which llvm-profdata)
+              echo "Using system llvm-profdata: $LLVM_PROFDATA"
+            else
+              echo "Warning: llvm-profdata not found, PGO will be skipped"
+              LLVM_PROFDATA=""
+            fi
           fi
         fi
+
+        echo "LLVM_PROFDATA=$LLVM_PROFDATA" >> "$GITHUB_ENV"
     
     - name: Merge PGO data
       shell: bash
       run: |
         echo "Merging profile data..."
         ls -la ${{ github.workspace }}/profdata/
-        
-        if [ -n "$(ls -A ${{ github.workspace }}/profdata/)" ]; then
-          ${{ env.LLVM_PROFDATA }} merge -o ${{ github.workspace }}/merged.profdata ${{ github.workspace }}/profdata/*
-          echo "Profile data merged successfully"
-          ls -la ${{ github.workspace }}/merged.profdata
+
+        if [ -n "${{ env.LLVM_PROFDATA }}" ] && [ -f "${{ env.LLVM_PROFDATA }}" ]; then
+          if [ -n "$(ls -A ${{ github.workspace }}/profdata/ 2>/dev/null)" ]; then
+            echo "Merging profile data with llvm-profdata..."
+            ${{ env.LLVM_PROFDATA }} merge -o ${{ github.workspace }}/merged.profdata ${{ github.workspace }}/profdata/*
+            echo "Profile data merged successfully"
+            ls -la ${{ github.workspace }}/merged.profdata
+          else
+            echo "Warning: No profile data found, creating empty profile"
+            touch ${{ github.workspace }}/merged.profdata
+          fi
         else
-          echo "Warning: No profile data found, creating empty profile"
+          echo "Warning: llvm-profdata not available, skipping PGO data merge"
+          echo "Creating empty profile file for compatibility"
           touch ${{ github.workspace }}/merged.profdata
         fi
     
