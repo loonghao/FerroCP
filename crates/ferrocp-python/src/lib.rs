@@ -64,8 +64,10 @@ use sync::*;
 /// Python module for FerroCP
 #[pymodule]
 fn _ferrocp(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
-    // Initialize async runtime with proper configuration
-    let builder = tokio::runtime::Builder::new_multi_thread();
+    // Initialize async runtime with proper configuration including timers
+    let mut builder = tokio::runtime::Builder::new_multi_thread();
+    builder.enable_all(); // Enable all features including timers
+    builder.thread_name("ferrocp-worker");
     pyo3_async_runtimes::tokio::init(builder);
 
     // Add classes

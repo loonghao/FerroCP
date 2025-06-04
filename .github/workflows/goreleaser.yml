@@ -1,35 +1,19 @@
-name: Build & Release (GoReleaser)
+name: Release
 
-# Permissions needed for this workflow
 permissions:
-  contents: write    # For creating releases
-  packages: write    # For publishing Docker images
-  id-token: write    # For PyPI Trusted Publishing and signing artifacts
+  contents: write
 
 on:
   push:
     tags:
       - 'v*'
-    branches:
-      - main  # Run comprehensive builds on main branch pushes
   workflow_dispatch:
     inputs:
       dry-run:
-        description: 'Run in dry-run mode (no release created)'
+        description: 'Run in dry-run mode'
         required: false
         default: false
         type: boolean
-      skip-tests:
-        description: 'Skip comprehensive test suite (faster builds)'
-        required: false
-        default: false
-        type: boolean
-
-env:
-  # Control GoReleaser behavior based on trigger
-  SKIP_COMPREHENSIVE_TESTS: ${{ github.event.inputs.skip-tests == 'true' || github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/') }}
-  IS_RELEASE: ${{ startsWith(github.ref, 'refs/tags/') }}
-  IS_DRY_RUN: ${{ github.event.inputs.dry-run == 'true' }}
 
 jobs:
   goreleaser:
@@ -44,175 +28,16 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
+          components: rustfmt
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
-        with:
-          key: goreleaser
 
-      # Set up Docker for cross-compilation
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      # Install basic build tools (cross will handle the rest via Docker)
-      - name: Install basic build tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            pkg-config \
-            libssl-dev
-
-          # Verify Docker is available for cross
-          echo "=== Verifying Docker for cross-compilation ==="
-          docker --version
-          docker info | grep "Server Version" || echo "Docker daemon not accessible"
-
-          # Test Docker functionality
-          docker run --rm hello-world || echo "Docker test failed"
-
-      # Set up Go (required by GoReleaser)
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.21'
 
-      # Install GoReleaser
-      - name: Install GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser
-          install-only: true
-
-      # Set up Python for wheel building
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      # Install Python dependencies with proper environment setup
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip setuptools wheel
-          pip install maturin[patchelf] twine build
-
-          # Configure environment for maturin
-          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
-          echo "RUSTFLAGS=-C linker=clang -C link-arg=-fuse-ld=lld" >> $GITHUB_ENV
-          echo "CC=clang" >> $GITHUB_ENV
-          echo "CXX=clang++" >> $GITHUB_ENV
-
-      # Diagnose build environment before Python wheels construction
-      - name: Diagnose build environment
-        run: |
-          echo "=== Host Build Environment Diagnosis ==="
-
-          echo "--- System Information ---"
-          uname -a
-          echo "Available CPU cores: $(nproc)"
-          echo "Available memory: $(free -h | grep '^Mem:' | awk '{print $2}')"
-
-          echo "--- Toolchain Availability ---"
-          echo "Checking essential build tools..."
-
-          # Check compilers
-          if command -v gcc >/dev/null 2>&1; then
-            echo "✅ GCC: $(gcc --version | head -1)"
-          else
-            echo "❌ GCC: Not found"
-          fi
-
-          if command -v clang >/dev/null 2>&1; then
-            echo "✅ Clang: $(clang --version | head -1)"
-          else
-            echo "❌ Clang: Not found"
-          fi
-
-          # Check linkers
-          if command -v ld >/dev/null 2>&1; then
-            echo "✅ LD: $(ld --version | head -1)"
-          else
-            echo "❌ LD: Not found"
-          fi
-
-          if command -v lld >/dev/null 2>&1; then
-            echo "✅ LLD: $(lld --version | head -1)"
-          else
-            echo "❌ LLD: Not found"
-          fi
-
-          # Check Rust toolchain
-          if command -v rustc >/dev/null 2>&1; then
-            echo "✅ Rust: $(rustc --version)"
-            echo "✅ Cargo: $(cargo --version)"
-          else
-            echo "❌ Rust toolchain: Not found"
-          fi
-
-          # Check Python and maturin
-          if command -v python3 >/dev/null 2>&1; then
-            echo "✅ Python: $(python3 --version)"
-          else
-            echo "❌ Python3: Not found"
-          fi
-
-          if command -v maturin >/dev/null 2>&1; then
-            echo "✅ Maturin: $(maturin --version)"
-          else
-            echo "❌ Maturin: Not found"
-          fi
-
-          echo "--- Environment Variables ---"
-          echo "CC=${CC:-not set}"
-          echo "CXX=${CXX:-not set}"
-          echo "RUSTFLAGS=${RUSTFLAGS:-not set}"
-          echo "CARGO_NET_GIT_FETCH_WITH_CLI=${CARGO_NET_GIT_FETCH_WITH_CLI:-not set}"
-
-          echo "--- Compilation Test ---"
-          echo "Testing basic clang compilation..."
-          if command -v clang >/dev/null 2>&1; then
-            echo 'int main(){return 0;}' | clang -x c - -o /tmp/test_clang && echo "✅ Clang compilation test passed" || echo "❌ Clang compilation test failed"
-            rm -f /tmp/test_clang
-          else
-            echo "⚠️ Skipping clang test (clang not available)"
-          fi
-
-          echo "=== Environment Diagnosis Complete ==="
-
-      # Build Python wheels using maturin-action with clang toolchain
-      - name: Build Python wheels
-        uses: PyO3/maturin-action@v1
-        with:
-          command: build
-          args: --release --out dist --interpreter python3.11
-          rust-toolchain: stable
-          manylinux: auto
-          before-script-linux: |
-            # Install clang toolchain in manylinux container
-            yum install -y clang lld || (apt-get update && apt-get install -y clang lld)
-
-            # Verify clang installation
-            which clang && clang --version | head -1
-            which lld && lld --version | head -1
-
-            # Set up clang environment in container
-            export CC=clang
-            export CXX=clang++
-            export RUSTFLAGS="-C linker=clang -C link-arg=-fuse-ld=lld"
-
-            echo "✅ Clang toolchain configured in container"
-          docker-options: -e CC=clang -e CXX=clang++ -e RUSTFLAGS="-C linker=clang -C link-arg=-fuse-ld=lld"
-        env:
-          CARGO_NET_GIT_FETCH_WITH_CLI: true
-
-      # Make scripts executable
-      - name: Make scripts executable
-        run: |
-          chmod +x scripts/build-all-targets.sh
-          chmod +x scripts/build-cross.sh
-
-      # Run GoReleaser (excluding Python wheels)
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -221,82 +46,3 @@ jobs:
           args: release --clean ${{ github.event.inputs.dry-run == 'true' && '--snapshot' || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-      # Verify built artifacts
-      - name: Verify built artifacts
-        run: |
-          echo "=== Verifying GoReleaser artifacts ==="
-          ls -la dist/ || echo "No dist directory found"
-
-          echo "=== Verifying Python wheels ==="
-          ls -la dist/*.whl || echo "No Python wheels found"
-
-          echo "=== Testing Python wheel import ==="
-          if ls dist/*.whl 1> /dev/null 2>&1; then
-            pip install dist/*.whl
-            python -c "import ferrocp; print(f'FerroCP version: {ferrocp.__version__}')"
-          else
-            echo "No Python wheels to test"
-          fi
-
-      # Upload artifacts for dry-run
-      - name: Upload artifacts (dry-run)
-        if: github.event.inputs.dry-run == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: goreleaser-artifacts
-          path: |
-            dist/*.tar.gz
-            dist/*.zip
-            dist/*.whl
-            dist/*checksums.txt
-          if-no-files-found: error
-
-  # Test the released binaries
-  test-binaries:
-    needs: goreleaser
-    if: github.event.inputs.dry-run != 'true'
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    
-    steps:
-      - name: Download release assets
-        run: |
-          # Get the latest release
-          RELEASE_TAG=${GITHUB_REF#refs/tags/}
-          
-          # Determine the correct binary name for this OS
-          case "${{ matrix.os }}" in
-            ubuntu-latest)
-              BINARY_NAME="ferrocp-${RELEASE_TAG#v}-linux-amd64.tar.gz"
-              EXTRACT_CMD="tar -xzf"
-              BINARY_FILE="ferrocp"
-              ;;
-            windows-latest)
-              BINARY_NAME="ferrocp-${RELEASE_TAG#v}-windows-amd64.zip"
-              EXTRACT_CMD="unzip"
-              BINARY_FILE="ferrocp.exe"
-              ;;
-            macos-latest)
-              BINARY_NAME="ferrocp-${RELEASE_TAG#v}-darwin-amd64.tar.gz"
-              EXTRACT_CMD="tar -xzf"
-              BINARY_FILE="ferrocp"
-              ;;
-          esac
-          
-          # Download and extract
-          curl -L -o "$BINARY_NAME" "https://github.com/loonghao/FerroCP/releases/download/$RELEASE_TAG/$BINARY_NAME"
-          $EXTRACT_CMD "$BINARY_NAME"
-          
-          # Make executable (Unix systems)
-          if [[ "${{ matrix.os }}" != "windows-latest" ]]; then
-            chmod +x "$BINARY_FILE"
-          fi
-          
-          # Test the binary
-          ./"$BINARY_FILE" --version
-          ./"$BINARY_FILE" --help | head -10
-        shell: bash

@@ -197,7 +197,9 @@ where
     py.allow_threads(|| {
         // Create a new Tokio runtime for this operation if needed
         let rt = tokio::runtime::Handle::try_current().unwrap_or_else(|_| {
-            tokio::runtime::Runtime::new()
+            tokio::runtime::Builder::new_multi_thread()
+                .enable_all() // Enable all features including timers
+                .build()
                 .expect("Failed to create Tokio runtime")
                 .handle()
                 .clone()

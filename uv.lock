@@ -629,6 +629,7 @@ source = { editable = "." }
 dependencies = [
     { name = "click", version = "8.1.8", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "click", version = "8.2.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "nox" },
     { name = "typing-extensions" },
 ]
 
@@ -713,6 +714,7 @@ testing = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.0.0" },
+    { name = "nox", specifier = ">=2025.5.1" },
     { name = "typing-extensions", specifier = ">=4.6.0,!=4.7.0" },
 ]
 
