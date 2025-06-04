@@ -202,7 +202,8 @@ impl MemoryMonitor {
         // Use a reasonable time window that won't cause overflow in tests
         let analysis_duration = std::cmp::min(
             Duration::from_secs(300), // 5 minutes max
-            self.monitoring_duration().saturating_add(Duration::from_secs(1)) // At least current duration + 1s
+            self.monitoring_duration()
+                .saturating_add(Duration::from_secs(1)), // At least current duration + 1s
         );
         let recent_stats = self.get_usage_stats(analysis_duration);
 

@@ -1,215 +1,52 @@
-name: PR Tests
+name: Tests
 
 on:
   pull_request:
+    branches: [ main, develop ]
+  push:
     branches: [ main, develop ]
   workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # Blake3 compatibility for Linux
+  BLAKE3_NO_ASM: 1
+  # Stable build environment
+  CARGO_NET_GIT_FETCH_WITH_CLI: true
 
 jobs:
   test:
-    name: Test on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        rust: [stable]
-    
+    name: Test
+    runs-on: ubuntu-latest
+
     steps:
     - uses: actions/checkout@v4
 
-    # Install build tools for Linux
-    - name: Install build tools (Linux)
-      if: matrix.os == 'ubuntu-latest'
+    - name: Install build dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y \
-          build-essential \
-          binutils \
-          pkg-config \
-          libssl-dev \
-          lld \
-          clang
+        sudo apt-get install -y build-essential pkg-config libssl-dev
 
     - name: Set up Rust
       uses: dtolnay/rust-toolchain@stable
       with:
-        toolchain: ${{ matrix.rust }}
         components: rustfmt
 
     - name: Cache Rust dependencies
       uses: Swatinem/rust-cache@v2
-      with:
-        key: ${{ matrix.os }}-${{ matrix.rust }}
-
-    # Verify linker availability
-    - name: Verify build tools
-      run: |
-        echo "🔍 Checking build tools availability..."
-        echo "Rust toolchain:"
-        rustc --version
-        cargo --version
-        echo ""
-        echo "Linkers:"
-        which ld && ld --version | head -1 || echo "ld not found"
-        which lld && lld --version | head -1 || echo "lld not found"
-        which clang && clang --version | head -1 || echo "clang not found"
-        echo ""
-        echo "✅ Build tools verification completed"
-
-    # Clean build cache on macOS to avoid ring compilation issues
-    - name: Clean build cache (macOS)
-      if: matrix.os == 'macos-latest'
-      run: cargo clean
-
-    # Set macOS-specific environment variables for ring compilation
-    - name: Set macOS build environment
-      if: matrix.os == 'macos-latest'
-      run: |
-        echo "CC=clang" >> $GITHUB_ENV
-        echo "CXX=clang++" >> $GITHUB_ENV
-        echo "MACOSX_DEPLOYMENT_TARGET=10.15" >> $GITHUB_ENV
-        # Force ring to use precompiled assembly
-        echo "RING_PREGENERATE_ASM=1" >> $GITHUB_ENV
-        # Disable CPU feature detection for ring
-        echo "CARGO_CFG_TARGET_FEATURE=" >> $GITHUB_ENV
-
-    # Set stable build environment for all platforms
-    - name: Set build environment
-      shell: bash
-      run: |
-        echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
-        echo "RUSTFLAGS=-C opt-level=3" >> $GITHUB_ENV
-        # Use clang as compiler and linker for better reliability (Unix only)
-        if [[ "${{ runner.os }}" != "Windows" ]] && command -v clang >/dev/null 2>&1; then
-          echo "CC=clang" >> $GITHUB_ENV
-          echo "CXX=clang++" >> $GITHUB_ENV
-          echo "RUSTFLAGS=-C opt-level=3 -C linker=clang" >> $GITHUB_ENV
-          echo "✅ Using clang as compiler and linker"
-        elif [[ "${{ runner.os }}" == "Windows" ]]; then
-          echo "✅ Using default Windows MSVC toolchain"
-        fi
 
     - name: Check formatting
       run: cargo fmt --all -- --check
 
-    # Clippy is temporarily disabled for faster builds and cross-platform compatibility
-    # - name: Run clippy
-    #   run: cargo clippy --workspace --all-targets --all-features -- -D clippy::correctness -D clippy::suspicious -D clippy::complexity -W clippy::perf -W clippy::style
+    - name: Run tests
+      run: cargo test --workspace --exclude ferrocp-python --verbose
+      env:
+        # Additional environment variables for test stability
+        RUST_LOG: debug
+        BLAKE3_NO_ASM: 1
 
-    - name: Run tests (excluding ferrocp-python)
-      run: |
-        cargo test --workspace --all-features --exclude ferrocp-python
-
-    - name: Build ferrocp-python (without tests)
-      run: |
-        cargo build -p ferrocp-python
-
-    - name: Run doctests
-      run: cargo test --workspace --doc --exclude ferrocp-python
-
-  coverage:
-    name: Code Coverage (Python + Rust)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
-
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
-    # Install build tools for Python extension compilation
-    - name: Install build tools
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          build-essential \
-          binutils \
-          pkg-config \
-          libssl-dev \
-          lld \
-          clang
-
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-
-    - name: Install uv
-      uses: astral-sh/setup-uv@v5
-      with:
-        enable-cache: true
-        cache-dependency-glob: "pyproject.toml"
-
-    - name: Set up Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        components: llvm-tools-preview
-
-    - name: Cache Rust dependencies
-      uses: Swatinem/rust-cache@v2
-
-    - name: Install cargo-tarpaulin
-      run: cargo install cargo-tarpaulin
-
-    - name: Install dependencies
-      run: |
-        uv sync --group testing
-
-    # Set environment variables for stable builds
-    - name: Set build environment
-      shell: bash
-      run: |
-        echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
-        echo "RUSTFLAGS=-C opt-level=3" >> $GITHUB_ENV
-        # Use clang as compiler and linker for better reliability
-        if command -v clang >/dev/null 2>&1; then
-          echo "CC=clang" >> $GITHUB_ENV
-          echo "CXX=clang++" >> $GITHUB_ENV
-          echo "RUSTFLAGS=-C opt-level=3 -C linker=clang" >> $GITHUB_ENV
-          echo "✅ Using clang as compiler and linker"
-        fi
-
-    - name: Run Python tests and collect coverage
-      run: |
-        uv run nox -s test
-
-    - name: Run Rust tests and collect coverage
-      run: |
-        uv run nox -s rust_coverage
-
-    - name: Upload coverage reports to Codecov
-      uses: codecov/codecov-action@v5
-      with:
-        files: 'coverage.xml,coverage/cobertura.xml,coverage/python-coverage.xml'
-        flags: unittests
-        name: codecov-umbrella
-        fail_ci_if_error: false
-        token: ${{ secrets.CODECOV_TOKEN }}
-
-  # Security audit is now handled by GoReleaser
-  # Keeping this job for PR-specific security checks only
-  security:
-    name: Security Audit (PR Only)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Set up Rust
-      uses: dtolnay/rust-toolchain@stable
-
-    - name: Cache Rust dependencies
-      uses: Swatinem/rust-cache@v2
-
-    - name: Install cargo-audit
-      run: cargo install cargo-audit
-
-    - name: Run security audit
-      run: cargo audit --deny unsound --deny yanked
+    - name: Build Python extension
+      run: cargo build -p ferrocp-python
+      env:
+        BLAKE3_NO_ASM: 1

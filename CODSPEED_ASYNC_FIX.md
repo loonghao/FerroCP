@@ -13,13 +13,13 @@ benchmarks/test_codspeed.py:127: RuntimeError
 
 ## 🔍 问题根因
 
-### 1. API使用错误
-**核心问题**：基准测试代码混用了同步和异步API
+### 1. API理解错误
+**核心问题**：误认为FerroCP有同步API，实际上所有API都是异步的
 
 **技术细节**：
-- `ferrocp.copy()` 和 `ferrocp.copy_file()` 是同步函数
-- `engine.copy_file()` 是异步方法，需要在事件循环中运行
-- CodSpeed基准测试环境不支持异步函数
+- `ferrocp.copy()` 和 `ferrocp.copy_file()` 都返回 `asyncio.Future[CopyResult]`
+- 所有FerroCP函数都需要在事件循环中运行
+- CodSpeed基准测试环境可能已有运行中的事件循环，导致冲突
 
 ### 2. 参数传递方式错误
 **问题**：尝试直接向同步函数传递配置参数
@@ -30,31 +30,71 @@ benchmarks/test_codspeed.py:127: RuntimeError
 
 ## 🔧 修复方案
 
-### 1. 统一使用同步API
+### 1. 正确理解FerroCP API
 
-**修改前（错误的异步调用）**：
+**关键发现**：FerroCP的所有Python API都是异步的
+- 从类型存根文件可以看到：`def copy_file(...) -> asyncio.Future[CopyResult]`
+- 正确的使用方式：`asyncio.run(ferrocp.copy_file(...))`
+
+### 2. 添加异步安全运行函数
+
+**新增的异步处理函数**：
+```python
+def run_async_safely(coro):
+    """Run an async coroutine safely, handling existing event loops."""
+    try:
+        # Check if there's already a running event loop
+        loop = asyncio.get_running_loop()
+        # Create a new thread with its own event loop
+        import threading
+        import queue
+
+        result_queue = queue.Queue()
+        exception_queue = queue.Queue()
+
+        def run_in_thread():
+            try:
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                try:
+                    result = new_loop.run_until_complete(coro)
+                    result_queue.put(result)
+                finally:
+                    new_loop.close()
+            except Exception as e:
+                exception_queue.put(e)
+
+        thread = threading.Thread(target=run_in_thread)
+        thread.start()
+        thread.join()
+
+        if not exception_queue.empty():
+            raise exception_queue.get()
+
+        return result_queue.get()
+
+    except RuntimeError:
+        # No event loop running, safe to use asyncio.run()
+        return asyncio.run(coro)
+```
+
+### 3. 修复基准测试调用
+
+**修改前（直接调用异步函数）**：
 ```python
 @pytest.mark.benchmark
-def test_copy_with_compression(medium_test_file, temp_dir):
-    dest = temp_dir / get_unique_filename("compressed_dest")
-    engine = ferrocp.CopyEngine()
-    options = ferrocp.CopyOptions()
-    options.compression_level = 3
-    options.enable_compression = True
-    engine.copy_file(str(medium_test_file), str(dest), options)  # 异步方法！
+def test_copy_small_file_codspeed(small_test_file, temp_dir):
+    dest = temp_dir / get_unique_filename("small_dest")
+    ferrocp.copy(str(small_test_file), str(dest))  # 错误：异步函数！
     assert dest.exists()
 ```
 
-**修改后（正确的同步调用）**：
+**修改后（使用异步安全包装）**：
 ```python
 @pytest.mark.benchmark
-def test_copy_with_compression(medium_test_file, temp_dir):
-    dest = temp_dir / get_unique_filename("compressed_dest")
-    # 使用同步API和CopyOptions
-    options = ferrocp.CopyOptions()
-    options.compression_level = 3
-    options.enable_compression = True
-    ferrocp.copy_file(str(medium_test_file), str(dest), options=options)
+def test_copy_small_file_codspeed(small_test_file, temp_dir):
+    dest = temp_dir / get_unique_filename("small_dest")
+    run_async_safely(ferrocp.copy_file(str(small_test_file), str(dest)))
     assert dest.exists()
 ```
 
