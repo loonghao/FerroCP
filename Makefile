@@ -1,15 +1,19 @@
 # Makefile for ferrocp development and benchmarking
 
-.PHONY: help install test benchmark profile clean docs build rust-lint rust-fix
+.PHONY: help install test benchmark profile clean docs build rust-lint rust-fix format format-check setup pre-commit
 
 # Default target
 help:
 	@echo "Available targets:"
+	@echo "  setup            - Set up development environment and git hooks"
 	@echo "  install          - Install development dependencies"
+	@echo "  format           - Format all code"
+	@echo "  format-check     - Check code formatting"
 	@echo "  test             - Run unit tests"
 	@echo "  lint             - Run code quality checks"
 	@echo "  rust-lint        - Run Rust code quality checks"
 	@echo "  rust-fix         - Fix Rust code issues automatically"
+	@echo "  pre-commit       - Run all pre-commit checks"
 	@echo "  benchmark        - Run all performance benchmarks"
 	@echo "  benchmark-quick  - Run quick benchmarks (small files only)"
 	@echo "  benchmark-compare - Run comparison benchmarks vs standard tools"
@@ -21,6 +25,21 @@ help:
 	@echo "  docs             - Build documentation"
 	@echo "  clean            - Clean build artifacts"
 
+# Setup development environment
+setup:
+	@echo "Setting up FerroCP development environment..."
+	@chmod +x scripts/setup-hooks.sh scripts/pre-commit.sh scripts/format-check.ps1
+	@./scripts/setup-hooks.sh
+
+# Code formatting
+format:
+	@echo "Formatting all code..."
+	@cargo fmt --all
+
+format-check:
+	@echo "Checking code formatting..."
+	@cargo fmt --all -- --check
+
 # Install development dependencies
 install:
 	uv sync --group all
@@ -28,6 +47,11 @@ install:
 # Run unit tests
 test:
 	uv run nox -s test
+
+# Run unit tests (Rust only, fast)
+test-rust:
+	@echo "Running Rust tests..."
+	@BLAKE3_NO_ASM=1 cargo test --workspace --exclude ferrocp-python
 
 # Run linting
 lint:
@@ -39,12 +63,16 @@ lint-fix:
 
 # Rust code quality
 rust-lint:
-	cargo dev-clippy
+	cargo clippy --workspace --exclude ferrocp-python --all-targets --all-features -- -D warnings
 
 rust-fix:
-	cargo dev-fmt
+	cargo fmt --all
 	cargo fix --workspace --allow-dirty --allow-staged
-	cargo dev-clippy
+	cargo clippy --workspace --exclude ferrocp-python --all-targets --all-features -- -D warnings
+
+# Pre-commit checks
+pre-commit: format-check rust-lint test-rust
+	@echo "All pre-commit checks passed!"
 
 # Run all benchmarks
 benchmark:

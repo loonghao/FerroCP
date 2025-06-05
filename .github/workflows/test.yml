@@ -14,11 +14,28 @@ env:
   BLAKE3_NO_ASM: 1
   # Stable build environment
   CARGO_NET_GIT_FETCH_WITH_CLI: true
+  # Fix linker issues
+  RUSTFLAGS: "-C link-arg=-fuse-ld=gold"
 
 jobs:
+  format-check:
+    name: Format Check
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt
+
+    - name: Check formatting
+      run: cargo fmt --all -- --check
+
   test:
     name: Test
     runs-on: ubuntu-latest
+    needs: format-check
 
     steps:
     - uses: actions/checkout@v4
@@ -26,18 +43,20 @@ jobs:
     - name: Install build dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential pkg-config libssl-dev
+        sudo apt-get install -y \
+          build-essential \
+          pkg-config \
+          libssl-dev \
+          binutils \
+          binutils-gold \
+          lld \
+          clang
 
     - name: Set up Rust
       uses: dtolnay/rust-toolchain@stable
-      with:
-        components: rustfmt
 
     - name: Cache Rust dependencies
       uses: Swatinem/rust-cache@v2
-
-    - name: Check formatting
-      run: cargo fmt --all -- --check
 
     - name: Run tests
       run: cargo test --workspace --exclude ferrocp-python --verbose
@@ -45,8 +64,11 @@ jobs:
         # Additional environment variables for test stability
         RUST_LOG: debug
         BLAKE3_NO_ASM: 1
+        # Use gold linker to avoid ld issues
+        RUSTFLAGS: "-C link-arg=-fuse-ld=gold"
 
     - name: Build Python extension
       run: cargo build -p ferrocp-python
       env:
         BLAKE3_NO_ASM: 1
+        RUSTFLAGS: "-C link-arg=-fuse-ld=gold"
