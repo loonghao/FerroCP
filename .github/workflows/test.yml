@@ -91,11 +91,19 @@ jobs:
         # Install cross-compilation tools for ARM64
         if [ "${{ matrix.cross_compile }}" = "true" ]; then
           echo "🔧 Installing cross-compilation tools for ${{ matrix.arch }}"
+
+          # Add ARM64 architecture for cross-compilation
+          sudo dpkg --add-architecture arm64
+          sudo apt-get update
+
+          # Install cross-compilation toolchain
           sudo apt-get install -y \
             gcc-aarch64-linux-gnu \
             g++-aarch64-linux-gnu \
-            libc6-dev-arm64-cross \
-            libssl-dev:arm64
+            libc6-dev-arm64-cross
+
+          # Note: We'll use static linking for OpenSSL to avoid cross-compilation issues
+          echo "📋 Using static OpenSSL linking for ARM64 cross-compilation"
         fi
 
         # Verify VFX Platform compatibility (Ubuntu 22.04 has glibc 2.35, gcc 11.2+)
@@ -141,10 +149,15 @@ jobs:
             echo "AR=aarch64-linux-gnu-ar" >> $GITHUB_ENV
             echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
             echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
-            echo "PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig" >> $GITHUB_ENV
+
+            # Use static linking for OpenSSL to avoid cross-compilation issues
+            echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
+            echo "OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+            echo "OPENSSL_INCLUDE_DIR=/usr/include/openssl" >> $GITHUB_ENV
 
             # Additional cross-compilation flags
             echo "BINDGEN_EXTRA_CLANG_ARGS=--sysroot=/usr/aarch64-linux-gnu" >> $GITHUB_ENV
+            echo "RUSTFLAGS=-C link-arg=-fuse-ld=lld -C target-feature=+crt-static" >> $GITHUB_ENV
           fi
 
           # VFX Platform glibc compatibility note
