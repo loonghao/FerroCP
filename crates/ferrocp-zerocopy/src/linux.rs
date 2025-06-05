@@ -373,10 +373,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_zero_copy_availability() {
+        use std::path::Path;
+
         let linux_zc = LinuxZeroCopy::new();
 
         // Test availability check
-        let available = linux_zc.is_zero_copy_available("/tmp/source", "/tmp/dest");
+        let available =
+            linux_zc.is_zero_copy_available(Path::new("/tmp/source"), Path::new("/tmp/dest"));
         // Should be available if any method is supported
         assert_eq!(
             available,

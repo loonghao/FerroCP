@@ -178,8 +178,22 @@ impl MacOSZeroCopy {
         }
 
         // Compare filesystem IDs
-        Ok(source_statfs.f_fsid.val[0] == dest_statfs.f_fsid.val[0]
-            && source_statfs.f_fsid.val[1] == dest_statfs.f_fsid.val[1])
+        // Note: fsid_t structure varies between macOS versions and architectures
+        // On some systems it has 'val' field, on others it's different
+        #[cfg(target_arch = "aarch64")]
+        {
+            // On Apple Silicon, fsid_t might have different field names
+            // Use unsafe transmute to access the raw bytes for comparison
+            let source_fsid_bytes: [u8; 8] = unsafe { std::mem::transmute(source_statfs.f_fsid) };
+            let dest_fsid_bytes: [u8; 8] = unsafe { std::mem::transmute(dest_statfs.f_fsid) };
+            Ok(source_fsid_bytes == dest_fsid_bytes)
+        }
+        #[cfg(not(target_arch = "aarch64"))]
+        {
+            // On Intel Macs, use the traditional val field access
+            Ok(source_statfs.f_fsid.val[0] == dest_statfs.f_fsid.val[0]
+                && source_statfs.f_fsid.val[1] == dest_statfs.f_fsid.val[1])
+        }
     }
 
     /// Check if a path exists
