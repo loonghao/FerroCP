@@ -119,14 +119,47 @@ jobs:
           echo "   - x86_64 uses archive.ubuntu.com + security.ubuntu.com"
           echo "   - arm64 uses ports.ubuntu.com"
 
-          # Update package lists
-          sudo apt-get update
+          # Update package lists with error handling
+          echo "📦 Updating package lists..."
+          sudo apt-get update || {
+            echo "❌ apt-get update failed, trying to fix..."
+            sudo apt-get clean
+            sudo rm -rf /var/lib/apt/lists/*
+            sudo apt-get update
+          }
 
-          # Install cross-compilation toolchain
+          # Install cross-compilation toolchain and dependencies
+          echo "📦 Installing ARM64 cross-compilation toolchain..."
           sudo apt-get install -y \
             gcc-aarch64-linux-gnu \
             g++-aarch64-linux-gnu \
-            libc6-dev-arm64-cross
+            libc6-dev-arm64-cross \
+            pkg-config \
+            build-essential || {
+            echo "❌ Failed to install basic toolchain, trying alternative approach..."
+            sudo apt-get install -y crossbuild-essential-arm64
+          }
+
+          # Try to install ARM64 development libraries (may fail, that's OK)
+          sudo apt-get install -y \
+            libssl-dev:arm64 \
+            zlib1g-dev:arm64 || {
+            echo "⚠️ Failed to install ARM64 libraries, will use static linking"
+          }
+
+          # Verify cross-compilation toolchain installation
+          echo "🔍 Verifying cross-compilation toolchain..."
+          if aarch64-linux-gnu-gcc --version; then
+            echo "✅ ARM64 GCC found"
+          else
+            echo "❌ ARM64 GCC not found, cross-compilation may fail"
+          fi
+
+          if aarch64-linux-gnu-g++ --version; then
+            echo "✅ ARM64 G++ found"
+          else
+            echo "❌ ARM64 G++ not found, cross-compilation may fail"
+          fi
 
           # Note: We'll use static linking for OpenSSL to avoid cross-compilation issues
           echo "📋 Using static OpenSSL linking for ARM64 cross-compilation"
@@ -178,12 +211,36 @@ jobs:
 
             # Use static linking for OpenSSL to avoid cross-compilation issues
             echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
-            echo "OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+            echo "OPENSSL_NO_VENDOR=1" >> $GITHUB_ENV
+
+            # Try to find ARM64 OpenSSL libraries
+            if [ -d "/usr/lib/aarch64-linux-gnu" ]; then
+              echo "OPENSSL_LIB_DIR=/usr/lib/aarch64-linux-gnu" >> $GITHUB_ENV
+            else
+              echo "OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+            fi
             echo "OPENSSL_INCLUDE_DIR=/usr/include/openssl" >> $GITHUB_ENV
+
+            # Additional environment variables for cross-compilation
+            echo "PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig" >> $GITHUB_ENV
+            echo "PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig" >> $GITHUB_ENV
 
             # Additional cross-compilation flags
             echo "BINDGEN_EXTRA_CLANG_ARGS=--sysroot=/usr/aarch64-linux-gnu" >> $GITHUB_ENV
-            echo "RUSTFLAGS=-C link-arg=-fuse-ld=lld -C target-feature=+crt-static" >> $GITHUB_ENV
+
+            # Use more aggressive static linking for ARM64
+            echo "RUSTFLAGS=-C link-arg=-fuse-ld=lld -C target-feature=+crt-static -C link-arg=-static-libgcc" >> $GITHUB_ENV
+
+            # Fallback environment variables for problematic dependencies
+            echo "LIBZ_SYS_STATIC=1" >> $GITHUB_ENV
+            echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
+            echo "OPENSSL_NO_VENDOR=1" >> $GITHUB_ENV
+
+            # Debug information
+            echo "🔧 Cross-compilation environment configured for ARM64"
+            echo "   CC: aarch64-linux-gnu-gcc"
+            echo "   CXX: aarch64-linux-gnu-g++"
+            echo "   OPENSSL_STATIC: 1"
           fi
 
           # VFX Platform glibc compatibility note
