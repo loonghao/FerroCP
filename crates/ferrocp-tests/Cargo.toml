@@ -14,10 +14,25 @@ categories = ["filesystem", "development-tools::testing"]
 # This is a test-only crate, not published
 publish = false
 
+# Disable automatic example discovery to avoid cross-compilation issues
+autoexamples = false
+
+# Features for conditional compilation
+[features]
+default = []
+# Feature to enable examples that may not work in cross-compilation
+native-only = []
+
 # Integration tests configuration
 [[test]]
 name = "integration_tests"
 path = "tests/integration_tests.rs"
+
+# Example configuration - only build on native platforms
+[[example]]
+name = "usage_example"
+path = "examples/usage_example.rs"
+required-features = ["native-only"]
 
 # Performance benchmarks configuration
 [[bench]]
