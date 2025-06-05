@@ -96,13 +96,28 @@ jobs:
           sudo dpkg --add-architecture arm64
 
           # Configure apt sources for ARM64 cross-compilation
-          # Remove problematic security sources for ARM64
-          sudo sed -i '/^deb.*security\.ubuntu\.com.*arm64/d' /etc/apt/sources.list
+          # Backup original sources.list
+          sudo cp /etc/apt/sources.list /etc/apt/sources.list.backup
 
-          # Add proper ARM64 sources
+          # Create a new sources.list with architecture-specific sources
+          # First, clear the existing sources.list
+          sudo truncate -s 0 /etc/apt/sources.list
+
+          # Add x86_64 sources (original Ubuntu repositories)
+          echo "deb [arch=amd64] http://archive.ubuntu.com/ubuntu jammy main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          echo "deb [arch=amd64] http://archive.ubuntu.com/ubuntu jammy-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          echo "deb [arch=amd64] http://archive.ubuntu.com/ubuntu jammy-backports main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          echo "deb [arch=amd64] http://security.ubuntu.com/ubuntu jammy-security main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+
+          # Add ARM64 sources (Ubuntu Ports)
           echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
           echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
           echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+
+          echo "📋 Configured architecture-specific apt sources"
+          echo "   - x86_64 uses archive.ubuntu.com + security.ubuntu.com"
+          echo "   - arm64 uses ports.ubuntu.com"
 
           # Update package lists
           sudo apt-get update
