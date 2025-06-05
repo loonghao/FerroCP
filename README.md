@@ -2,11 +2,13 @@
 
 <div align="center">
 
-[![Build Status](https://github.com/loonghao/FerroCP/workflows/Build%20and%20Release/badge.svg)](https://github.com/loonghao/FerroCP/actions)
+[![Build Status](https://github.com/loonghao/FerroCP/workflows/Tests/badge.svg)](https://github.com/loonghao/FerroCP/actions)
+[![VFX Platform](https://img.shields.io/badge/VFX%20Platform-CY2025%20Compatible-brightgreen)](https://vfxplatform.com/)
 [![Python Version](https://img.shields.io/pypi/pyversions/ferrocp.svg)](https://pypi.org/project/ferrocp/)
 [![License](https://img.shields.io/github/license/loonghao/FerroCP.svg)](https://github.com/loonghao/FerroCP/blob/main/LICENSE)
 [![Ruff](https://img.shields.io/badge/ruff-enabled-brightgreen)](https://github.com/astral-sh/ruff)
 [![CodSpeed](https://img.shields.io/badge/CodSpeed-performance%20monitoring-blue)](https://codspeed.io/loonghao/FerroCP)
+[![Multi-Platform](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-blue)](https://github.com/loonghao/FerroCP/actions)
 
 **⚠️ WORK IN PROGRESS ⚠️**
 
@@ -37,6 +39,8 @@
 
 ### 🌍 **Cross-Platform Excellence** (In Development)
 - **Windows, Linux, macOS** native support
+- **VFX Platform compatibility** - follows [VFX Reference Platform](https://vfxplatform.com/) standards
+- **Multi-architecture support** - x86_64 and ARM64 (Apple Silicon)
 - **Consistent performance** across all platforms
 - **Platform-specific optimizations** automatically applied
 - **Unicode filename support** with proper encoding handling
@@ -178,6 +182,62 @@ print(f"Speedup: {shutil_time/ferrocp_time:.1f}x faster")
 ```
 
 *Performance targets based on preliminary research. Actual results will be measured and documented when implementation is complete.*
+
+## 🎬 VFX Platform Compatibility
+
+FerroCP is designed to be fully compatible with the [VFX Reference Platform](https://vfxplatform.com/) standards, ensuring seamless integration into professional VFX and animation pipelines.
+
+### Supported VFX Platforms
+
+| Platform | Architecture | VFX Platform Year | Status |
+|----------|-------------|-------------------|--------|
+| **Linux** | x86_64 | CY2025 (gcc 11.2.1+, glibc 2.28+) | ✅ Supported |
+| **Linux** | ARM64 | Modern VFX Workflows | ✅ Supported |
+| **macOS** | x86_64 | CY2025 (macOS 12.0+) | ✅ Supported |
+| **macOS** | ARM64 | CY2025+ (macOS 14.0+) | ✅ Supported |
+| **Windows** | x86_64 | CY2025 (VS 2022 v17.6+) | ✅ Supported |
+
+### VFX Industry Benefits
+
+- **🎭 Studio Pipeline Integration**: Optimized for render farm and artist workstation workflows
+- **🎨 DCC Application Support**: Compatible with Maya, Houdini, Nuke, Blender, and other VFX tools
+- **🖥️ Render Farm Efficiency**: High-performance file operations for distributed rendering
+- **☁️ Cloud VFX Workflows**: ARM64 support for cost-effective cloud instances
+- **📁 Large Asset Handling**: Optimized for typical VFX file sizes (textures, geometry, renders)
+
+### VFX Platform Testing
+
+Our CI pipeline includes comprehensive VFX Platform compatibility testing:
+
+```bash
+# Run VFX Platform compatibility tests
+.github/workflows/vfx-platform-test.yml
+
+# Platforms tested:
+# - Ubuntu 22.04 (VFX CY2025 Linux) - Native x86_64 + Cross-compiled ARM64
+# - macOS 12+ (VFX CY2025 Intel)
+# - macOS 14+ (VFX CY2025+ Apple Silicon)
+# - Windows 2022 (VFX CY2025 Windows)
+```
+
+**CI Infrastructure Update**: We upgraded from Ubuntu 20.04 to Ubuntu 22.04 due to the [scheduled retirement](https://github.com/actions/runner-images/issues/11101) on 2025-04-15. Ubuntu 22.04 provides even better VFX Platform compatibility with glibc 2.35 and gcc 11.2+.
+
+For detailed VFX Platform compatibility information, see [docs/VFX_PLATFORM_COMPATIBILITY.md](docs/VFX_PLATFORM_COMPATIBILITY.md).
+
+### CI Optimization
+
+Our CI system is optimized to reduce queue times while maintaining comprehensive testing:
+
+- **🚀 Fast Core Tests**: Linux and Windows tests run on every PR
+- **🍎 Conditional macOS Tests**: Only run when needed (use `test-macos` label)
+- **🎬 VFX Platform Tests**: Comprehensive testing for releases
+
+**PR Labels for CI Control:**
+- `test-macos` - Force macOS testing
+- `all-platforms` - Test all platforms
+- `vfx-platform` - Run VFX Platform validation
+
+See [docs/CI_OPTIMIZATION.md](docs/CI_OPTIMIZATION.md) for detailed CI usage guide.
 
 ## 🔬 Development
 

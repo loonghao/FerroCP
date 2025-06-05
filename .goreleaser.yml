@@ -13,38 +13,121 @@ env:
 # Before hooks - run before building
 before:
   hooks:
-    - echo "🔧 Setting up build environment..."
+    - echo "🔧 Setting up VFX Platform compatible build environment..."
+    # Add all VFX Platform supported targets
     - rustup target add x86_64-unknown-linux-gnu
-    - rustup target add x86_64-pc-windows-gnu
+    - rustup target add aarch64-unknown-linux-gnu
+    - rustup target add x86_64-apple-darwin
+    - rustup target add aarch64-apple-darwin
+    - rustup target add x86_64-pc-windows-msvc
+    # Install cross-compilation tools for Linux ARM64
+    - |
+      if [ "$(uname)" = "Linux" ]; then
+        echo "🔧 Installing cross-compilation tools..."
+        sudo apt-get update
+        sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+      fi
     - cargo fmt --all -- --check
     - cargo test --workspace --exclude ferrocp-python
-    - cargo build --release --bin ferrocp
+    - echo "🎬 Building for VFX Platform compatibility..."
 
-# Build configuration for Rust binaries
+# Build configuration for Rust binaries following VFX Platform standards
 builds:
+  # Linux x86_64 - VFX Platform CY2025: gcc 11.2.1+, glibc 2.28+
   - id: ferrocp-linux-amd64
     binary: ferrocp
     main: ./scripts/fake-main.go
     goos: [linux]
     goarch: [amd64]
+    env:
+      - CGO_ENABLED=0
+      - BLAKE3_NO_ASM=1
     hooks:
-      post: cp target/release/ferrocp {{ .Path }}
+      pre: |
+        echo "🐧 Building Linux x86_64 binary for VFX Platform..."
+        cargo build --release --bin ferrocp --target x86_64-unknown-linux-gnu
+      post: cp target/x86_64-unknown-linux-gnu/release/ferrocp {{ .Path }}
 
+  # Linux ARM64 - Modern VFX workflows (Cross-compiled)
+  - id: ferrocp-linux-arm64
+    binary: ferrocp
+    main: ./scripts/fake-main.go
+    goos: [linux]
+    goarch: [arm64]
+    env:
+      - CGO_ENABLED=0
+      - BLAKE3_NO_ASM=1
+      # Cross-compilation environment
+      - CC=aarch64-linux-gnu-gcc
+      - CXX=aarch64-linux-gnu-g++
+      - AR=aarch64-linux-gnu-ar
+      - CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+      - PKG_CONFIG_ALLOW_CROSS=1
+    hooks:
+      pre: |
+        echo "🐧 Cross-compiling Linux ARM64 binary..."
+        export CC=aarch64-linux-gnu-gcc
+        export CXX=aarch64-linux-gnu-g++
+        export AR=aarch64-linux-gnu-ar
+        export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+        export PKG_CONFIG_ALLOW_CROSS=1
+        cargo build --release --bin ferrocp --target aarch64-unknown-linux-gnu
+      post: cp target/aarch64-unknown-linux-gnu/release/ferrocp {{ .Path }}
+
+  # macOS x86_64 - VFX Platform CY2025: macOS 12.0+ minimum deployment target
+  - id: ferrocp-darwin-amd64
+    binary: ferrocp
+    main: ./scripts/fake-main.go
+    goos: [darwin]
+    goarch: [amd64]
+    env:
+      - CGO_ENABLED=0
+      - MACOSX_DEPLOYMENT_TARGET=12.0
+    hooks:
+      pre: |
+        echo "🍎 Building macOS x86_64 binary for VFX Platform..."
+        cargo build --release --bin ferrocp --target x86_64-apple-darwin
+      post: cp target/x86_64-apple-darwin/release/ferrocp {{ .Path }}
+
+  # macOS ARM64 (Apple Silicon) - VFX Platform CY2025+
+  - id: ferrocp-darwin-arm64
+    binary: ferrocp
+    main: ./scripts/fake-main.go
+    goos: [darwin]
+    goarch: [arm64]
+    env:
+      - CGO_ENABLED=0
+      - MACOSX_DEPLOYMENT_TARGET=14.0
+    hooks:
+      pre: |
+        echo "🍎 Building macOS ARM64 binary for Apple Silicon..."
+        cargo build --release --bin ferrocp --target aarch64-apple-darwin
+      post: cp target/aarch64-apple-darwin/release/ferrocp {{ .Path }}
+
+  # Windows x86_64 - VFX Platform CY2025: VS 2022 v17.6+, Windows SDK 10.0.20348+
   - id: ferrocp-windows-amd64
     binary: ferrocp
     main: ./scripts/fake-main.go
     goos: [windows]
     goarch: [amd64]
+    env:
+      - CGO_ENABLED=0
     hooks:
-      post: cp target/release/ferrocp.exe {{ .Path }}
+      pre: |
+        echo "🪟 Building Windows x86_64 binary for VFX Platform..."
+        cargo build --release --bin ferrocp --target x86_64-pc-windows-msvc
+      post: cp target/x86_64-pc-windows-msvc/release/ferrocp.exe {{ .Path }}
 
 
 
-# Archive configuration
+# Archive configuration for VFX Platform distributions
 archives:
   - id: ferrocp-archives
     builds:
       - ferrocp-linux-amd64
+      - ferrocp-linux-arm64
+      - ferrocp-darwin-amd64
+      - ferrocp-darwin-arm64
       - ferrocp-windows-amd64
     name_template: "{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
     format: tar.gz
@@ -53,7 +136,9 @@ archives:
         format: zip
     files:
       - README.md
+      - README_zh.md
       - LICENSE*
+      - docs/VFX_PLATFORM_COMPATIBILITY.md
 
 # Checksum configuration
 checksum:

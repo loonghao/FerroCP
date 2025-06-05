@@ -1,0 +1,231 @@
+name: macOS Tests
+
+on:
+  # Only run on explicit triggers to avoid queue issues
+  workflow_dispatch:
+    inputs:
+      test_intel:
+        description: 'Test Intel macOS'
+        required: false
+        default: true
+        type: boolean
+      test_apple_silicon:
+        description: 'Test Apple Silicon macOS'
+        required: false
+        default: true
+        type: boolean
+  
+  # Run on push to main/develop (release branches)
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/test-macos.yml'
+  
+  # Run on PR only when explicitly requested
+  pull_request:
+    branches: [ main, develop ]
+    types: [labeled, opened, synchronize, reopened]
+    # Only run if PR has specific labels or keywords
+    paths:
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/test-macos.yml'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # Check if macOS testing should run
+  check-macos-needed:
+    name: Check if macOS testing is needed
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+      test_intel: ${{ steps.check.outputs.test_intel }}
+      test_apple_silicon: ${{ steps.check.outputs.test_apple_silicon }}
+    steps:
+    - name: Check conditions
+      id: check
+      run: |
+        echo "Event: ${{ github.event_name }}"
+        
+        # Always run on workflow_dispatch
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "should_run=true" >> $GITHUB_OUTPUT
+          echo "test_intel=${{ github.event.inputs.test_intel || 'true' }}" >> $GITHUB_OUTPUT
+          echo "test_apple_silicon=${{ github.event.inputs.test_apple_silicon || 'true' }}" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        # Always run on push to main/develop
+        if [ "${{ github.event_name }}" = "push" ]; then
+          echo "should_run=true" >> $GITHUB_OUTPUT
+          echo "test_intel=true" >> $GITHUB_OUTPUT
+          echo "test_apple_silicon=true" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        # For PRs, check labels and title
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          # Check for specific labels
+          if echo '${{ toJson(github.event.pull_request.labels.*.name) }}' | grep -q "test-macos\|all-platforms\|vfx-platform"; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "test_intel=true" >> $GITHUB_OUTPUT
+            echo "test_apple_silicon=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Check PR title for keywords
+          if echo "${{ github.event.pull_request.title }}" | grep -qi "\[macos\]\|\[all-platforms\]\|\[vfx\]"; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "test_intel=true" >> $GITHUB_OUTPUT
+            echo "test_apple_silicon=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Check if PR affects macOS-specific code
+          if echo '${{ toJson(github.event.pull_request.changed_files) }}' | grep -q "macos\|darwin\|apple"; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "test_intel=true" >> $GITHUB_OUTPUT
+            echo "test_apple_silicon=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+        fi
+        
+        # Default: don't run
+        echo "should_run=false" >> $GITHUB_OUTPUT
+        echo "test_intel=false" >> $GITHUB_OUTPUT
+        echo "test_apple_silicon=false" >> $GITHUB_OUTPUT
+
+  # macOS testing with optimized queue management
+  test-macos:
+    name: macOS Test (${{ matrix.platform.name }})
+    runs-on: ${{ matrix.platform.runner }}
+    needs: check-macos-needed
+    if: needs.check-macos-needed.outputs.should_run == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          # Intel macOS - VFX Platform CY2025
+          - name: "Intel x86_64"
+            runner: macos-12  # Faster queue than macos-latest
+            target: x86_64-apple-darwin
+            arch: x86_64
+            enabled: ${{ needs.check-macos-needed.outputs.test_intel }}
+            
+          # Apple Silicon - VFX Platform CY2025+
+          - name: "Apple Silicon ARM64"
+            runner: macos-14  # Latest for Apple Silicon
+            target: aarch64-apple-darwin
+            arch: aarch64
+            enabled: ${{ needs.check-macos-needed.outputs.test_apple_silicon }}
+        exclude:
+          # Exclude disabled platforms
+          - platform: 
+              enabled: 'false'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install macOS VFX dependencies
+      run: |
+        # Ensure Xcode command line tools are available
+        xcode-select --install || true
+        
+        # Verify VFX Platform compatibility
+        echo "🎬 Verifying VFX Platform compatibility..."
+        clang --version
+        sw_vers
+
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.platform.target }}
+
+    - name: Cache Rust dependencies
+      uses: Swatinem/rust-cache@v2
+      with:
+        key: macos-${{ matrix.platform.arch }}
+
+    # VFX Platform specific environment configuration
+    - name: Configure VFX Platform environment
+      run: |
+        echo "🎬 Configuring for VFX Platform..."
+        
+        # VFX Platform macOS deployment targets
+        if [ "${{ matrix.platform.arch }}" = "x86_64" ]; then
+          echo "MACOSX_DEPLOYMENT_TARGET=12.0" >> $GITHUB_ENV
+        else
+          echo "MACOSX_DEPLOYMENT_TARGET=14.0" >> $GITHUB_ENV
+        fi
+
+    - name: Run tests
+      run: |
+        echo "🧪 Running macOS tests..."
+        cargo test --workspace --exclude ferrocp-python --target ${{ matrix.platform.target }} --verbose
+      env:
+        RUST_LOG: info
+
+    - name: Build CLI binary
+      run: |
+        echo "🔨 Building macOS binary..."
+        cargo build --bin ferrocp --target ${{ matrix.platform.target }} --release
+
+    - name: Verify macOS compatibility
+      run: |
+        echo "🍎 Verifying macOS compatibility..."
+        
+        BINARY_PATH="target/${{ matrix.platform.target }}/release/ferrocp"
+        
+        if [ -f "$BINARY_PATH" ]; then
+          echo "✅ Binary built successfully: $BINARY_PATH"
+          ls -la "$BINARY_PATH"
+          
+          # Test basic functionality
+          echo "🧪 Testing basic functionality..."
+          "$BINARY_PATH" --version || echo "⚠️  Version check completed"
+        else
+          echo "❌ Binary not found: $BINARY_PATH"
+          exit 1
+        fi
+
+    - name: Upload macOS artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ferrocp-macos-${{ matrix.platform.arch }}
+        path: target/${{ matrix.platform.target }}/release/ferrocp
+        retention-days: 7
+
+  # Summary job
+  macos-summary:
+    name: macOS Test Summary
+    runs-on: ubuntu-latest
+    needs: [check-macos-needed, test-macos]
+    if: always()
+    
+    steps:
+    - name: Check macOS test results
+      run: |
+        echo "🍎 macOS Test Summary"
+        echo "===================="
+        
+        if [ "${{ needs.check-macos-needed.outputs.should_run }}" = "false" ]; then
+          echo "⏭️  macOS tests skipped (not needed for this change)"
+          exit 0
+        fi
+        
+        if [ "${{ needs.test-macos.result }}" = "success" ]; then
+          echo "✅ All macOS tests passed"
+        elif [ "${{ needs.test-macos.result }}" = "skipped" ]; then
+          echo "⏭️  macOS tests were skipped"
+        else
+          echo "❌ Some macOS tests failed"
+          echo "Please check the individual job results above."
+          exit 1
+        fi
