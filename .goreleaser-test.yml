@@ -1,0 +1,66 @@
+# GoReleaser test configuration for FerroCP (Windows only)
+# This is a simplified configuration for local testing
+
+version: 2
+
+project_name: ferrocp
+
+env:
+  - GO111MODULE=on
+
+before:
+  hooks:
+    - rustup target add x86_64-pc-windows-msvc
+
+builds:
+  # Windows x86_64 only for testing
+  - id: ferrocp-windows-amd64
+    binary: ferrocp
+    main: ./scripts/fake-main.go
+    goos: [windows]
+    goarch: [amd64]
+    env:
+      - CGO_ENABLED=0
+    hooks:
+      pre: cargo build --release --bin ferrocp
+      post: powershell -Command "Copy-Item target\release\ferrocp.exe {{ .Path }}"
+
+archives:
+  - id: ferrocp-archives
+    builds:
+      - ferrocp-windows-amd64
+    name_template: "{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+    format: zip
+    files:
+      - README.md
+      - README_zh.md
+      - LICENSE*
+
+checksum:
+  name_template: "{{ .ProjectName }}-{{ .Version }}-checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+      - "^style:"
+      - "^refactor:"
+  groups:
+    - title: "Features"
+      regexp: "^.*feat[(\\w)]*:+.*$"
+      order: 0
+    - title: "Bug Fixes"
+      regexp: "^.*fix[(\\w)]*:+.*$"
+      order: 1
+
+release:
+  disable: true  # Disable release for testing

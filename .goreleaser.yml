@@ -1,7 +1,8 @@
 # GoReleaser configuration for FerroCP
 # See: https://goreleaser.com/customization/
 
-# GoReleaser v1 configuration
+# GoReleaser v2 configuration
+version: 2
 
 # Project metadata
 project_name: ferrocp
@@ -13,23 +14,15 @@ env:
 # Before hooks - run before building
 before:
   hooks:
-    - echo "🔧 Setting up VFX Platform compatible build environment..."
     # Add all VFX Platform supported targets
+    - rustup target add x86_64-pc-windows-msvc
     - rustup target add x86_64-unknown-linux-gnu
     - rustup target add aarch64-unknown-linux-gnu
     - rustup target add x86_64-apple-darwin
     - rustup target add aarch64-apple-darwin
-    - rustup target add x86_64-pc-windows-msvc
-    # Install cross-compilation tools for Linux ARM64
-    - |
-      if [ "$(uname)" = "Linux" ]; then
-        echo "🔧 Installing cross-compilation tools..."
-        sudo apt-get update
-        sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-      fi
+    # Run basic checks
     - cargo fmt --all -- --check
     - cargo test --workspace --exclude ferrocp-python
-    - echo "🎬 Building for VFX Platform compatibility..."
 
 # Build configuration for Rust binaries following VFX Platform standards
 builds:
@@ -113,10 +106,8 @@ builds:
     env:
       - CGO_ENABLED=0
     hooks:
-      pre: |
-        echo "🪟 Building Windows x86_64 binary for VFX Platform..."
-        cargo build --release --bin ferrocp --target x86_64-pc-windows-msvc
-      post: cp target/x86_64-pc-windows-msvc/release/ferrocp.exe {{ .Path }}
+      pre: cargo build --release --bin ferrocp --target x86_64-pc-windows-msvc
+      post: copy target\x86_64-pc-windows-msvc\release\ferrocp.exe {{ .Path }}
 
 
 
@@ -147,7 +138,7 @@ checksum:
 
 # Snapshot configuration (for non-tag builds)
 snapshot:
-  name_template: "{{ .Version }}-next"
+  version_template: "{{ .Version }}-next"
 
 # Changelog configuration
 changelog:
