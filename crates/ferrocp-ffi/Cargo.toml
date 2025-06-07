@@ -1,0 +1,47 @@
+[package]
+name = "ferrocp-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
+description = "C-compatible FFI interface for FerroCP"
+
+[lib]
+name = "ferrocp_ffi"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+# Core FerroCP dependencies
+ferrocp-types = { path = "../ferrocp-types" }
+ferrocp-engine = { path = "../ferrocp-engine" }
+ferrocp-device = { path = "../ferrocp-device" }
+ferrocp-config = { path = "../ferrocp-config" }
+
+# Async runtime for FFI
+tokio = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Serialization for data exchange
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[features]
+default = []
+
+# Features for different language bindings
+python-compat = []
+cpp-compat = []
+c-compat = []
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio-test = { workspace = true }
