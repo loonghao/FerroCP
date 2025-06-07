@@ -1,0 +1,210 @@
+name: Build and Test
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+  push:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # Quick format and lint checks
+  format-check:
+    name: Format Check
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+
+    - name: Check formatting
+      run: cargo fmt --all -- --check
+
+    - name: Run clippy
+      run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  # Unit tests (fast feedback)
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: format-check
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache Rust dependencies
+      uses: Swatinem/rust-cache@v2
+
+    - name: Run unit tests
+      run: cargo test --workspace --exclude ferrocp-python --lib
+
+  # GoReleaser build test (snapshot mode)
+  build-test:
+    name: Build Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: [format-check, unit-tests]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux
+          - os: macos-latest
+            target: darwin
+          - os: windows-latest
+            target: windows
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt
+
+    - name: Cache Rust dependencies
+      uses: Swatinem/rust-cache@v2
+      with:
+        key: ${{ matrix.os }}
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+
+    # Platform-specific dependency installation
+    - name: Install Linux dependencies
+      if: matrix.target == 'linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          pkg-config \
+          libssl-dev \
+          binutils \
+          lld \
+          clang \
+          gcc-aarch64-linux-gnu \
+          g++-aarch64-linux-gnu
+
+    - name: Install macOS dependencies
+      if: matrix.target == 'darwin'
+      run: |
+        # Ensure we have the latest Xcode command line tools
+        xcode-select --install || true
+
+    # Run GoReleaser in snapshot mode (no release)
+    - name: Run GoReleaser Build Test
+      uses: goreleaser/goreleaser-action@v6
+      with:
+        distribution: goreleaser
+        version: latest
+        args: build --snapshot --clean --single-target
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # Test the built binary
+    - name: Test Binary Functionality
+      shell: bash
+      run: |
+        echo "🧪 Testing built binaries..."
+        
+        # Find the built binary
+        if [ "${{ matrix.target }}" = "windows" ]; then
+          BINARY=$(find dist -name "ferrocp.exe" | head -1)
+        else
+          BINARY=$(find dist -name "ferrocp" | head -1)
+        fi
+        
+        if [ -f "$BINARY" ]; then
+          echo "✅ Binary found: $BINARY"
+          ls -la "$BINARY"
+          
+          # Test basic functionality
+          echo "🔍 Testing --version..."
+          "$BINARY" --version
+          
+          echo "🔍 Testing --help..."
+          "$BINARY" --help | head -10
+          
+          echo "✅ Binary tests passed"
+        else
+          echo "❌ Binary not found"
+          echo "Contents of dist directory:"
+          find dist -type f
+          exit 1
+        fi
+
+  # Integration tests with real file operations
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: build-test
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache Rust dependencies
+      uses: Swatinem/rust-cache@v2
+
+    - name: Run integration tests
+      run: cargo test --workspace --exclude ferrocp-python --test '*'
+
+  # Performance benchmarks (optional, only on main branch)
+  benchmarks:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    needs: build-test
+    if: github.ref == 'refs/heads/main'
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache Rust dependencies
+      uses: Swatinem/rust-cache@v2
+
+    - name: Run benchmarks
+      run: |
+        # Run a subset of benchmarks for CI
+        cargo bench --workspace --exclude ferrocp-python -- --sample-size 10
+
+  # Summary job
+  build-summary:
+    name: Build Summary
+    runs-on: ubuntu-latest
+    needs: [format-check, unit-tests, build-test, integration-tests]
+    if: always()
+    steps:
+    - name: Check results
+      run: |
+        echo "🎯 Build and Test Summary:"
+        echo "  Format Check: ${{ needs.format-check.result }}"
+        echo "  Unit Tests: ${{ needs.unit-tests.result }}"
+        echo "  Build Test: ${{ needs.build-test.result }}"
+        echo "  Integration Tests: ${{ needs.integration-tests.result }}"
+        
+        if [ "${{ needs.format-check.result }}" != "success" ] || \
+           [ "${{ needs.unit-tests.result }}" != "success" ] || \
+           [ "${{ needs.build-test.result }}" != "success" ] || \
+           [ "${{ needs.integration-tests.result }}" != "success" ]; then
+          echo "❌ Some checks failed"
+          exit 1
+        else
+          echo "✅ All checks passed"
+        fi

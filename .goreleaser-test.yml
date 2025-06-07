@@ -22,7 +22,7 @@ builds:
     env:
       - CGO_ENABLED=0
     hooks:
-      pre: cargo build --release --bin ferrocp
+      pre: powershell -ExecutionPolicy Bypass -File scripts/pgo-build-windows.ps1 -Target x86_64-pc-windows-msvc
       post: powershell -Command "Copy-Item target\release\ferrocp.exe {{ .Path }}"
 
 archives:
