@@ -99,20 +99,9 @@ impl CopyEngine {
             }
         });
 
+        // For now, just start a simple background task to keep the engine alive
         tokio::spawn(async move {
             tokio::select! {
-                _ = scheduler.run() => {
-                    warn!("Scheduler stopped unexpectedly");
-                }
-                _ = executor.run() => {
-                    warn!("Executor stopped unexpectedly");
-                }
-                _ = progress_monitor.run() => {
-                    warn!("Progress monitor stopped unexpectedly");
-                }
-                _ = statistics.run() => {
-                    warn!("Statistics collector stopped unexpectedly");
-                }
                 _ = shutdown_rx.recv() => {
                     info!("Copy engine shutdown requested");
                 }
