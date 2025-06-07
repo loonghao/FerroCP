@@ -30,6 +30,10 @@ pub struct CopyOptions {
     pub enable_preread: bool,
     /// Custom pre-read strategy (None = auto-detect)
     pub preread_strategy: Option<PreReadStrategy>,
+    /// Enable compression during copy
+    pub enable_compression: bool,
+    /// Compression level (1-22 for zstd, 1-9 for brotli, 1 for lz4)
+    pub compression_level: u8,
 }
 
 impl Default for CopyOptions {
@@ -44,6 +48,8 @@ impl Default for CopyOptions {
             max_retries: 3,
             enable_preread: true,   // Enable pre-read by default for large files
             preread_strategy: None, // Auto-detect based on device
+            enable_compression: false, // Disabled by default
+            compression_level: 3,   // Balanced compression level
         }
     }
 }

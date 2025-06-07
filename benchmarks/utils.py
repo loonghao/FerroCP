@@ -59,11 +59,14 @@ class PerformanceMonitor:
 
 def generate_test_data(size: int, pattern: str = "mixed") -> bytes:
     """Generate test data with different patterns.
-    
+
+    This is the unified test data generator used across all benchmarks
+    to ensure consistency and reduce code duplication.
+
     Args:
         size: Size of data to generate in bytes
-        pattern: Type of pattern ("zeros", "ones", "random", "mixed")
-    
+        pattern: Type of pattern ("zeros", "ones", "random", "mixed", "realistic")
+
     Returns:
         Generated test data
 
@@ -74,6 +77,8 @@ def generate_test_data(size: int, pattern: str = "mixed") -> bytes:
         return b"\xff" * size
     elif pattern == "random":
         import random
+        # Use deterministic seed for reproducible benchmarks
+        random.seed(42)
         return bytes(random.randint(0, 255) for _ in range(size))
     elif pattern == "mixed":
         # Mix of compressible and incompressible data
@@ -86,8 +91,15 @@ def generate_test_data(size: int, pattern: str = "mixed") -> bytes:
             else:
                 data.append(i % 256)  # Semi-random
         return bytes(data)
+    elif pattern == "realistic":
+        # Realistic file pattern similar to actual files
+        data = bytearray()
+        for i in range(size):
+            # Simulate realistic file patterns with some structure
+            data.append(((i * 7 + 13) % 256))
+        return bytes(data)
     else:
-        raise ValueError(f"Unknown pattern: {pattern}")
+        raise ValueError(f"Unknown pattern: {pattern}. Supported: zeros, ones, random, mixed, realistic")
 
 
 def create_test_file(path: Path, size: int, pattern: str = "mixed") -> Path:

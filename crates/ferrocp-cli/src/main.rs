@@ -6,12 +6,18 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use console::style;
+use ferrocp_device::PerformanceAnalyzer;
 use ferrocp_engine::{CopyEngine, CopyRequest};
-use ferrocp_types::{CopyMode, CopyStats, DeviceType};
-use indicatif::{ProgressBar, ProgressStyle};
+use ferrocp_types::CopyMode;
 use std::path::PathBuf;
-use std::time::Duration;
 use tracing::info;
+
+mod display;
+mod json_output;
+mod progress;
+
+use display::*;
+use json_output::CopyResultJson;
 
 /// FerroCP - High-performance cross-platform file copying tool
 #[derive(Parser)]
@@ -76,6 +82,10 @@ enum Commands {
         /// Include patterns
         #[arg(long)]
         include: Vec<String>,
+
+        /// Output results in JSON format
+        #[arg(long)]
+        json: bool,
     },
     /// Synchronize directories
     Sync {
@@ -152,6 +162,7 @@ async fn main() -> Result<()> {
             mirror,
             exclude,
             include,
+            json,
         } => {
             let copy_mode = if mirror {
                 CopyMode::Mirror
@@ -169,6 +180,7 @@ async fn main() -> Result<()> {
                 exclude,
                 include,
                 cli.quiet,
+                json,
             )
             .await?;
         }
@@ -232,13 +244,14 @@ async fn copy_command(
     exclude: Vec<String>,
     include: Vec<String>,
     quiet: bool,
+    json: bool,
 ) -> Result<()> {
     info!("Starting copy operation");
     info!("Source: {}", source.display());
     info!("Destination: {}", destination.display());
     info!("Mode: {:?}", mode);
 
-    if !quiet {
+    if !quiet && !json {
         println!(
             "{} Copying {} to {}",
             style("→").green().bold(),
@@ -247,26 +260,40 @@ async fn copy_command(
         );
     }
 
-    // Create a progress bar
-    let pb = if !quiet {
-        let pb = ProgressBar::new_spinner();
-        pb.set_style(
-            ProgressStyle::default_spinner()
-                .template("{spinner:.green} {msg}")
-                .unwrap(),
-        );
-        pb.set_message("Analyzing files...");
-        pb.enable_steady_tick(Duration::from_millis(100));
-        Some(pb)
+    // Analyze devices before starting copy
+    let analyzer = PerformanceAnalyzer::new();
+    let analysis_pb = if !quiet && !json {
+        Some(create_analysis_spinner("Analyzing devices..."))
     } else {
         None
     };
+
+    let source_info = analyzer.analyze_device(&source).await?;
+    let dest_info = analyzer.analyze_device(&destination).await?;
+    let comparison = analyzer.compare_devices(&source_info, &dest_info);
+
+    if let Some(pb) = analysis_pb {
+        pb.finish_and_clear();
+    }
+
+    if !quiet && !json {
+        display_device_info("Source Device", &source_info);
+        display_device_info("Destination Device", &dest_info);
+        display_device_comparison(&comparison);
+    }
+
+    // Create a progress bar for the actual copy (not in JSON mode)
+    let pb = create_progress_bar(quiet || json);
 
     // Create copy engine
     let mut engine = CopyEngine::new().await?;
 
     // Start the engine
     engine.start().await?;
+
+    // Store paths for JSON output before moving them
+    let source_path = source.to_string_lossy().to_string();
+    let destination_path = destination.to_string_lossy().to_string();
 
     // Create copy request using builder pattern
     let request = CopyRequest::new(source, destination)
@@ -281,11 +308,38 @@ async fn copy_command(
     // These CLI options could be used to configure the engine in the future
 
     if let Some(pb) = &pb {
-        pb.set_message("Copying files...");
+        pb.set_message("Starting copy operation...");
     }
 
-    // Execute copy operation
-    let result = engine.execute(request).await?;
+    // Execute copy operation with progress updates
+    let result = tokio::select! {
+        result = engine.execute(request) => {
+            result?
+        }
+        _ = async {
+            // Simple progress simulation
+            if let Some(pb) = &pb {
+                let mut counter = 0;
+                loop {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                    counter += 1;
+                    match counter % 4 {
+                        0 => pb.set_message("Copying files..."),
+                        1 => pb.set_message("Processing files..."),
+                        2 => pb.set_message("Transferring data..."),
+                        _ => pb.set_message("Finalizing..."),
+                    }
+                }
+            } else {
+                // If no progress bar, just wait indefinitely
+                std::future::pending::<()>().await;
+            }
+        } => {
+            // This branch should never be reached
+            return Err(anyhow::anyhow!("Progress task completed unexpectedly"));
+        }
+    };
+
     let stats = result.stats;
 
     // Stop the engine
@@ -295,8 +349,34 @@ async fn copy_command(
         pb.finish_with_message("Copy completed");
     }
 
-    if !quiet {
-        print_copy_stats(&stats);
+    if json {
+        // Output JSON format
+        let json_result = CopyResultJson::new(
+            source_path,
+            destination_path,
+            &source_info,
+            &dest_info,
+            &comparison,
+            &stats,
+        );
+
+        let json_output = serde_json::to_string_pretty(&json_result)?;
+        println!("{}", json_output);
+    } else if !quiet {
+        display_enhanced_copy_stats(&stats, Some(&comparison));
+
+        // Show final performance summary
+        let actual_speed = stats.transfer_rate() / 1024.0 / 1024.0;
+        let efficiency = (actual_speed / comparison.expected_speed_mbps) * 100.0;
+
+        if efficiency < 60.0 {
+            display_warning(&format!(
+                "Performance was lower than expected ({:.1}% efficiency). Consider checking disk health or system load.",
+                efficiency
+            ));
+        } else if efficiency >= 90.0 {
+            display_success("Excellent performance achieved!");
+        }
     }
 
     info!("Copy operation completed successfully");
@@ -350,11 +430,42 @@ async fn device_command(path: PathBuf) -> Result<()> {
         style(path.display()).cyan()
     );
 
-    // TODO: Implement actual device detection
-    let device_type = DeviceType::SSD; // Placeholder
-    println!("Device type: {:?}", device_type);
-    println!("Zero-copy support: Yes");
-    println!("Optimal buffer size: 8MB");
+    let analyzer = PerformanceAnalyzer::new();
+    let analysis_pb = create_analysis_spinner("Analyzing device...");
+
+    let device_info = analyzer.analyze_device(&path).await?;
+    analysis_pb.finish_and_clear();
+
+    display_device_info("Device Information", &device_info);
+
+    // Additional technical details
+    println!();
+    println!(
+        "{} {}",
+        style("🔧").blue().bold(),
+        style("Technical Details").bold().underlined()
+    );
+    println!(
+        "  Random Read IOPS: {:.0}",
+        device_info.performance.random_read_iops
+    );
+    println!(
+        "  Random Write IOPS: {:.0}",
+        device_info.performance.random_write_iops
+    );
+    println!(
+        "  Average Latency: {:.1} μs",
+        device_info.performance.average_latency
+    );
+    println!("  Queue Depth: {}", device_info.performance.queue_depth);
+    println!(
+        "  TRIM Support: {}",
+        if device_info.performance.supports_trim {
+            "Yes"
+        } else {
+            "No"
+        }
+    );
 
     Ok(())
 }
@@ -373,71 +484,4 @@ async fn config_command(default: bool) -> Result<()> {
         println!("No configuration file found");
     }
     Ok(())
-}
-
-fn print_copy_stats(stats: &CopyStats) {
-    println!();
-    println!("{}", style("Copy Statistics:").bold().underlined());
-    println!("  Files copied: {}", style(stats.files_copied).green());
-    println!(
-        "  Directories created: {}",
-        style(stats.directories_created).green()
-    );
-    println!(
-        "  Bytes copied: {}",
-        style(format_bytes(stats.bytes_copied)).green()
-    );
-    println!("  Files skipped: {}", style(stats.files_skipped).yellow());
-    println!(
-        "  Errors: {}",
-        if stats.errors > 0 {
-            style(stats.errors).red()
-        } else {
-            style(stats.errors).green()
-        }
-    );
-    println!(
-        "  Duration: {}",
-        style(format_duration(stats.duration)).blue()
-    );
-    println!(
-        "  Transfer rate: {}",
-        style(format!(
-            "{:.2} MB/s",
-            stats.transfer_rate() / 1024.0 / 1024.0
-        ))
-        .blue()
-    );
-    println!(
-        "  Zero-copy operations: {}",
-        style(stats.zerocopy_operations).cyan()
-    );
-    println!(
-        "  Zero-copy efficiency: {:.1}%",
-        style(stats.zerocopy_efficiency() * 100.0).cyan()
-    );
-}
-
-fn format_bytes(bytes: u64) -> String {
-    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
-    let mut size = bytes as f64;
-    let mut unit_index = 0;
-
-    while size >= 1024.0 && unit_index < UNITS.len() - 1 {
-        size /= 1024.0;
-        unit_index += 1;
-    }
-
-    format!("{:.2} {}", size, UNITS[unit_index])
-}
-
-fn format_duration(duration: Duration) -> String {
-    let secs = duration.as_secs();
-    if secs < 60 {
-        format!("{:.2}s", duration.as_secs_f64())
-    } else if secs < 3600 {
-        format!("{}m {}s", secs / 60, secs % 60)
-    } else {
-        format!("{}h {}m {}s", secs / 3600, (secs % 3600) / 60, secs % 60)
-    }
 }

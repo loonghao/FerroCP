@@ -20,6 +20,12 @@ pub mod comprehensive_benchmark_suite {
 /// resource contention, and thread scalability.
 pub mod concurrency_utils;
 
+/// Unified test utilities
+///
+/// This module provides common utilities used across all test files
+/// to ensure consistency and reduce code duplication.
+pub mod test_utils;
+
 /// Internal benchmark framework implementation
 mod benchmark_framework {
     use criterion::Criterion;

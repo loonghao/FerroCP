@@ -235,6 +235,8 @@ impl TaskExecutor {
             },
             enable_preread: true,   // Enable pre-read by default
             preread_strategy: None, // Auto-detect based on device
+            enable_compression: Self::should_enable_compression(&task.request),
+            compression_level: 3, // Use balanced compression level
         };
 
         // Execute copy with retry logic
@@ -296,13 +298,20 @@ impl TaskExecutor {
 
         // Use high-performance engines for directory copying
         match Self::copy_directory_recursive(source, destination, engine_selector, config).await {
-            Ok(stats) => {
+            Ok(mut stats) => {
+                // Update the duration to reflect the total time from task start
+                let total_duration = start_time.elapsed();
+                stats.duration = total_duration;
+
                 info!(
-                    "Directory copy completed: {} -> {}",
+                    "Directory copy completed: {} -> {} ({} files, {} bytes in {:?})",
                     source.display(),
-                    destination.display()
+                    destination.display(),
+                    stats.files_copied,
+                    stats.bytes_copied,
+                    total_duration
                 );
-                CopyResult::success(task_id, stats, start_time.elapsed())
+                CopyResult::success(task_id, stats, total_duration)
             }
             Err(error) => {
                 error!("Directory copy failed: {}", error);
@@ -322,14 +331,17 @@ impl TaskExecutor {
     > {
         Box::pin(async move {
             use ferrocp_types::CopyStats;
-            use std::time::Duration;
+            use std::time::{Duration, Instant};
             use tokio::fs;
 
+            let start_time = Instant::now();
             let mut files_copied = 0;
             let mut directories_created = 0;
             let mut bytes_copied = 0;
             let mut files_skipped = 0;
             let mut errors = 0;
+            let mut zerocopy_operations = 0;
+            let mut zerocopy_bytes = 0;
 
             // Create destination directory
             if let Err(e) = fs::create_dir_all(destination).await {
@@ -392,8 +404,10 @@ impl TaskExecutor {
                     .await
                     {
                         Ok(stats) => {
-                            files_copied += 1;
+                            files_copied += stats.files_copied;
                             bytes_copied += stats.bytes_copied;
+                            zerocopy_operations += stats.zerocopy_operations;
+                            zerocopy_bytes += stats.zerocopy_bytes;
                             debug!(
                                 "Copied file: {} -> {} ({} bytes)",
                                 source_path.display(),
@@ -422,6 +436,8 @@ impl TaskExecutor {
                             bytes_copied += sub_stats.bytes_copied;
                             files_skipped += sub_stats.files_skipped;
                             errors += sub_stats.errors;
+                            zerocopy_operations += sub_stats.zerocopy_operations;
+                            zerocopy_bytes += sub_stats.zerocopy_bytes;
                         }
                         Err(e) => {
                             warn!(
@@ -438,17 +454,64 @@ impl TaskExecutor {
                 }
             }
 
+            let total_duration = start_time.elapsed();
+
+            debug!(
+                "Directory copy completed: {} files, {} dirs, {} bytes in {:?}",
+                files_copied, directories_created, bytes_copied, total_duration
+            );
+
             Ok(CopyStats {
                 files_copied,
                 directories_created,
                 bytes_copied,
                 files_skipped,
                 errors,
-                duration: Duration::from_secs(0), // Will be set by caller
-                zerocopy_operations: 0,
-                zerocopy_bytes: 0,
+                duration: total_duration,
+                zerocopy_operations,
+                zerocopy_bytes,
             })
         })
+    }
+
+    /// Determine if compression should be enabled based on intelligent analysis
+    fn should_enable_compression(request: &crate::task::CopyRequest) -> bool {
+        // Only enable compression if explicitly requested AND it makes sense
+        if !request.enable_compression {
+            return false;
+        }
+
+        // Check if source and destination are on different devices (network transfer)
+        let source_str = request.source.to_string_lossy();
+        let dest_str = request.destination.to_string_lossy();
+
+        // Enable compression for network transfers
+        if source_str.starts_with("\\\\")
+            || dest_str.starts_with("\\\\")
+            || source_str.starts_with("//")
+            || dest_str.starts_with("//")
+        {
+            return true;
+        }
+
+        // Check file extensions - only compress text-like files
+        if let Some(extension) = request.source.extension() {
+            let ext = extension.to_string_lossy().to_lowercase();
+            match ext.as_str() {
+                // Text files that benefit from compression
+                "txt" | "log" | "csv" | "json" | "xml" | "html" | "css" | "js" | "py" | "rs"
+                | "c" | "cpp" | "h" => true,
+                // Already compressed files - no benefit
+                "zip" | "gz" | "7z" | "rar" | "jpg" | "png" | "mp4" | "mp3" | "avi" | "mkv" => {
+                    false
+                }
+                // Default: disable for local copies
+                _ => false,
+            }
+        } else {
+            // No extension: disable compression for local copies
+            false
+        }
     }
 
     /// Copy a single file using the optimal engine selected by EngineSelector

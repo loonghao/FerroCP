@@ -193,7 +193,7 @@ impl ProgressMonitor {
     }
 
     /// Run the progress monitor
-    pub async fn run(&self) -> Result<()> {
+    pub async fn run(&mut self) -> Result<()> {
         let mut update_rx = self
             .update_rx
             .write()
@@ -202,9 +202,12 @@ impl ProgressMonitor {
             .ok_or_else(|| ferrocp_types::Error::other("Progress monitor already running"))?;
 
         let progress_info = Arc::clone(&self.progress_info);
-        let (_shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
+        let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
 
-        tokio::spawn(async move {
+        // Store the shutdown sender for later use
+        self.shutdown_tx = Some(shutdown_tx);
+
+        let handle = tokio::spawn(async move {
             loop {
                 tokio::select! {
                     update = update_rx.recv() => {
@@ -230,7 +233,12 @@ impl ProgressMonitor {
                     }
                 }
             }
+            debug!("Progress monitor task completed");
         });
+
+        // Don't await the handle here - let it run in the background
+        // Store the handle if needed for later cleanup
+        std::mem::forget(handle);
 
         Ok(())
     }
@@ -367,14 +375,17 @@ impl StatisticsCollector {
     }
 
     /// Run the statistics collector
-    pub async fn run(&self) -> Result<()> {
+    pub async fn run(&mut self) -> Result<()> {
         let mut update_rx =
             self.update_rx.write().await.take().ok_or_else(|| {
                 ferrocp_types::Error::other("Statistics collector already running")
             })?;
 
         let statistics = Arc::clone(&self.statistics);
-        let (_shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
+        let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
+
+        // Store the shutdown sender for later use
+        self.shutdown_tx = Some(shutdown_tx);
 
         tokio::spawn(async move {
             loop {

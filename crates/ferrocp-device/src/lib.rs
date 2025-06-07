@@ -36,6 +36,7 @@ pub mod analyzer;
 pub mod cache;
 pub mod detector;
 pub mod optimization;
+pub mod performance;
 
 #[cfg(windows)]
 pub mod windows;
@@ -51,3 +52,4 @@ pub use cache::{
 };
 pub use detector::DeviceDetector;
 pub use optimization::{DeviceOptimizer, OptimizationStrategy};
+pub use performance::{Bottleneck, DeviceComparison, DeviceInfo, PerformanceAnalyzer};
