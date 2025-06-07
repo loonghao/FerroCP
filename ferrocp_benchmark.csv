@@ -1,0 +1,5 @@
+test_name,files_copied,bytes_copied,duration_seconds,actual_transfer_rate_mbps,expected_speed_mbps,efficiency_percent,performance_rating,bottleneck_device,errors,source_device_type,destination_device_type,compression_used
+Test_1,10,10240,0.0104117,0.9379472132312687,450.0,0.20843271405139302,poor,destination,0,ssd,ssd,False
+Test_2,5,5242880,0.0210765,237.2310393091832,450.0,52.71800873537404,fair,destination,0,ssd,ssd,False
+Test_3,2,20971520,0.0208311,960.102923033349,450.0,213.356205118522,excellent,destination,0,ssd,ssd,False
+Test_4,5,5242880,0.0278163,179.75072169914762,450.0,39.9446048220328,poor,destination,0,ssd,ssd,True

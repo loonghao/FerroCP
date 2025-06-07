@@ -67,13 +67,27 @@ impl CopyStats {
     }
 
     /// Merge statistics from another instance
+    /// Note: Duration is taken as the maximum to avoid cumulative time issues
     pub fn merge(&mut self, other: &CopyStats) {
         self.files_copied += other.files_copied;
         self.directories_created += other.directories_created;
         self.bytes_copied += other.bytes_copied;
         self.files_skipped += other.files_skipped;
         self.errors += other.errors;
-        self.duration += other.duration;
+        // Take the maximum duration instead of adding them to avoid cumulative time
+        self.duration = self.duration.max(other.duration);
+        self.zerocopy_operations += other.zerocopy_operations;
+        self.zerocopy_bytes += other.zerocopy_bytes;
+    }
+
+    /// Merge statistics with proper duration handling for parallel operations
+    pub fn merge_with_duration(&mut self, other: &CopyStats, total_duration: Duration) {
+        self.files_copied += other.files_copied;
+        self.directories_created += other.directories_created;
+        self.bytes_copied += other.bytes_copied;
+        self.files_skipped += other.files_skipped;
+        self.errors += other.errors;
+        self.duration = total_duration; // Use the actual total duration
         self.zerocopy_operations += other.zerocopy_operations;
         self.zerocopy_bytes += other.zerocopy_bytes;
     }

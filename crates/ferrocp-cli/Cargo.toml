@@ -22,6 +22,7 @@ path = "src/main.rs"
 [dependencies]
 ferrocp-types = { path = "../ferrocp-types" }
 ferrocp-engine = { path = "../ferrocp-engine" }
+ferrocp-device = { path = "../ferrocp-device" }
 
 # System info
 num_cpus = "1.16"
@@ -47,8 +48,12 @@ tracing-subscriber = { workspace = true }
 
 # Configuration
 serde = { workspace = true }
+serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 toml = { workspace = true }
+
+# Time and date
+chrono = { workspace = true, features = ["serde"] }
 
 # File operations
 walkdir = { workspace = true }

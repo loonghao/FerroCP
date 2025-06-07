@@ -22,8 +22,8 @@ builds:
     env:
       - CGO_ENABLED=0
     hooks:
-      pre: powershell -ExecutionPolicy Bypass -File scripts/pgo-build-windows.ps1 -Target x86_64-pc-windows-msvc
-      post: powershell -Command "Copy-Item target\release\ferrocp.exe {{ .Path }}"
+      pre: cargo build --release --bin ferrocp
+      post: powershell -Command "Copy-Item target\release\ferrocp.exe '{{ .Path }}'"
 
 archives:
   - id: ferrocp-archives

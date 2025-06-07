@@ -490,6 +490,8 @@ impl EngineSelector {
             max_retries: 1,          // Minimal retries for speed
             enable_preread: false,   // No pre-read for micro files
             preread_strategy: None,
+            enable_compression: false, // No compression for micro files
+            compression_level: 1,      // Minimal compression level
         }
     }
 
@@ -511,6 +513,8 @@ impl EngineSelector {
             max_retries: 2,
             enable_preread: false, // No pre-read for small files
             preread_strategy: None,
+            enable_compression: false, // Disable compression for local copies
+            compression_level: 3,      // Balanced compression level
         }
     }
 
@@ -532,6 +536,8 @@ impl EngineSelector {
             max_retries: 3,
             enable_preread: false, // Parallel engine has its own pre-read logic
             preread_strategy: None,
+            enable_compression: false, // Parallel engine doesn't use compression
+            compression_level: 3,
         }
     }
 
@@ -557,8 +563,10 @@ impl EngineSelector {
             preserve_metadata: true,
             enable_zero_copy: zerocopy_enabled,
             max_retries: 3,
-            enable_preread: true,   // Enable pre-read for large files
-            preread_strategy: None, // Auto-detect based on device
+            enable_preread: true,      // Enable pre-read for large files
+            preread_strategy: None,    // Auto-detect based on device
+            enable_compression: false, // Large files use zero-copy instead of compression
+            compression_level: 1,      // Fast compression if needed
         }
     }
 
