@@ -10,7 +10,8 @@ members = [
     "crates/ferrocp-config",
     "crates/ferrocp-engine",
     "crates/ferrocp-cli",
-    "crates/ferrocp-python",
+    "crates/ferrocp-ffi",      # C-ABI compatible interface for future Python/C++ bindings
+    # "crates/ferrocp-python",  # Disabled for now, focusing on exe builds
     "crates/ferrocp-tests",
 ]
 default-members = ["crates/ferrocp-cli"]
@@ -98,8 +99,8 @@ chrono = { version = "0.4", features = ["serde"] }
 criterion = { version = "0.5", features = ["html_reports"] }
 pprof = { version = "0.15", features = ["criterion", "flamegraph"] }
 
-# Python bindings
-pyo3 = { version = "0.24.1", features = ["extension-module", "abi3-py39"] }
+# Python bindings (disabled for now, focusing on exe builds)
+# pyo3 = { version = "0.24.1", features = ["extension-module", "abi3-py39"] }
 
 # Platform-specific dependencies
 [workspace.dependencies.windows]
