@@ -5,29 +5,10 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
 use ferrocp_io::{BufferedCopyEngine, CopyEngine, CopyOptions, PreReadStrategy};
+use ferrocp_tests::test_utils::{create_realistic_test_file, CommonFileSizes};
 use ferrocp_types::DeviceType;
-use std::fs;
-use std::path::PathBuf;
 use tempfile::TempDir;
 use tokio::runtime::Runtime;
-
-/// Generate test data with realistic patterns
-fn generate_test_data(size: usize) -> Vec<u8> {
-    // Create data with some patterns to make it more realistic
-    let mut data = Vec::with_capacity(size);
-    for i in 0..size {
-        data.push(((i * 7 + 13) % 256) as u8);
-    }
-    data
-}
-
-/// Create a temporary file with test data
-fn create_test_file(temp_dir: &TempDir, name: &str, size: usize) -> PathBuf {
-    let file_path = temp_dir.path().join(name);
-    let data = generate_test_data(size);
-    fs::write(&file_path, data).expect("Failed to write test file");
-    file_path
-}
 
 /// Benchmark SSD preread optimization
 fn bench_ssd_preread_optimization(c: &mut Criterion) {
@@ -51,7 +32,7 @@ fn bench_ssd_preread_optimization(c: &mut Criterion) {
             |b, &file_size| {
                 b.iter(|| {
                     let temp_dir = TempDir::new().unwrap();
-                    let source = create_test_file(&temp_dir, "source.dat", file_size);
+                    let source = create_realistic_test_file(&temp_dir, "source.dat", file_size);
                     let dest = temp_dir.path().join("dest_optimized.dat");
                     
                     let mut engine = BufferedCopyEngine::new();
@@ -81,7 +62,7 @@ fn bench_ssd_preread_optimization(c: &mut Criterion) {
             |b, &file_size| {
                 b.iter(|| {
                     let temp_dir = TempDir::new().unwrap();
-                    let source = create_test_file(&temp_dir, "source.dat", file_size);
+                    let source = create_realistic_test_file(&temp_dir, "source.dat", file_size);
                     let dest = temp_dir.path().join("dest_old.dat");
                     
                     let mut engine = BufferedCopyEngine::new();
@@ -111,7 +92,7 @@ fn bench_ssd_preread_optimization(c: &mut Criterion) {
             |b, &file_size| {
                 b.iter(|| {
                     let temp_dir = TempDir::new().unwrap();
-                    let source = create_test_file(&temp_dir, "source.dat", file_size);
+                    let source = create_realistic_test_file(&temp_dir, "source.dat", file_size);
                     let dest = temp_dir.path().join("dest_no_preread.dat");
                     
                     let mut engine = BufferedCopyEngine::new();
@@ -161,7 +142,7 @@ fn bench_preread_buffer_sizes(c: &mut Criterion) {
             |b, &buffer_size| {
                 b.iter(|| {
                     let temp_dir = TempDir::new().unwrap();
-                    let source = create_test_file(&temp_dir, "source.dat", file_size);
+                    let source = create_realistic_test_file(&temp_dir, "source.dat", file_size);
                     let dest = temp_dir.path().join("dest.dat");
                     
                     let mut engine = BufferedCopyEngine::new();
@@ -210,7 +191,7 @@ fn bench_device_strategies(c: &mut Criterion) {
             |b, &device_type| {
                 b.iter(|| {
                     let temp_dir = TempDir::new().unwrap();
-                    let source = create_test_file(&temp_dir, "source.dat", file_size);
+                    let source = create_realistic_test_file(&temp_dir, "source.dat", file_size);
                     let dest = temp_dir.path().join("dest.dat");
                     
                     let mut engine = BufferedCopyEngine::new();

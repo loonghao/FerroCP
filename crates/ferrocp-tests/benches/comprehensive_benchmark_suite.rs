@@ -2,6 +2,10 @@
 //!
 //! This module provides a unified framework for managing and executing
 //! all performance benchmarks across the FerroCP project.
+//!
+//! This replaces the previous separate micro_benchmarks.rs, function_level_benchmarks.rs,
+//! and memory_efficiency_benchmarks.rs files to reduce code duplication and
+//! maintain consistency across all performance tests.
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use serde::{Deserialize, Serialize};

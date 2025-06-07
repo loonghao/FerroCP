@@ -291,8 +291,23 @@ class EACopy:
         return result
 
     def copy_with_server(self, source, destination, server, port=8080):
-        """Copy file using a server (mock implementation for compatibility)."""
-        # For backward compatibility, just do a regular copy
-        # In a real implementation, this would use network transfer
-        result = self.copy_file(source, destination)
+        """Copy file using network transfer through a server.
+
+        Args:
+            source: Source file path
+            destination: Destination file path
+            server: Server hostname or IP address
+            port: Server port (default: 8080)
+
+        Returns:
+            Copy result with network transfer statistics
+
+        Note:
+            This uses the ferrocp-network crate for efficient network transfer.
+        """
+        # Use the network engine for remote transfers
+        from ._ferrocp import NetworkCopyEngine
+
+        network_engine = NetworkCopyEngine()
+        result = network_engine.copy_with_server(source, destination, server, port)
         return result

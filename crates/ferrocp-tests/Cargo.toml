@@ -56,19 +56,7 @@ name = "concurrency_benchmarks"
 harness = false
 
 [[bench]]
-name = "function_level_benchmarks"
-harness = false
-
-[[bench]]
-name = "memory_efficiency_benchmarks"
-harness = false
-
-[[bench]]
 name = "syscall_efficiency_benchmarks"
-harness = false
-
-[[bench]]
-name = "micro_benchmarks"
 harness = false
 
 [dependencies]
