@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial project structure
 - Basic repository setup
 
+## v0.3.1 (2025-06-13)
+
+### Fix
+
+- **deps**: update rust crate bincode to v2
+
 ## v0.3.0 (2025-06-13)
 
 ### Feat
