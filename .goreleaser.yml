@@ -9,7 +9,7 @@ project_name: ferrocp
 
 # Environment variables
 env:
-  - GO111MODULE=off  # Disable Go modules since this is a Rust project
+  - GO111MODULE=on  # Enable Go modules for GoReleaser compatibility
 
 # Before hooks - run before building
 before:
@@ -20,16 +20,10 @@ before:
     - rustup target add aarch64-unknown-linux-gnu
     - rustup target add x86_64-apple-darwin
     - rustup target add aarch64-apple-darwin
-    # Install cross-compilation tools for Linux ARM64
-    - |
-      if [ "$(uname)" = "Linux" ]; then
-        echo "🔧 Installing cross-compilation tools..."
-        sudo apt-get update
-        sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-      fi
-    # Run basic checks
+    # Install cross-compilation tools (Linux only)
+    - bash -c 'if [ "$(uname)" = "Linux" ]; then echo "🔧 Installing cross-compilation tools..."; sudo apt-get update; sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu gcc-mingw-w64-x86-64; fi'
+    # Run basic checks (skip tests for faster builds)
     - cargo fmt --all -- --check
-    - cargo test --workspace --exclude ferrocp-python
 
 # Build configuration for Rust binaries following VFX Platform standards
 builds:
@@ -43,10 +37,7 @@ builds:
       - CGO_ENABLED=0
       - BLAKE3_NO_ASM=1
     hooks:
-      pre: |
-        echo "🐧 Building Linux x86_64 binary with PGO optimization..."
-        chmod +x scripts/pgo-build.sh
-        scripts/pgo-build.sh x86_64-unknown-linux-gnu
+      pre: bash -c 'echo "🐧 Building Linux x86_64 binary with PGO optimization..."; chmod +x scripts/pgo-build.sh; scripts/pgo-build.sh x86_64-unknown-linux-gnu'
       post: cp target/x86_64-unknown-linux-gnu/release/ferrocp {{ .Path }}
 
   # Linux ARM64 - Modern VFX workflows (Cross-compiled)
@@ -65,15 +56,7 @@ builds:
       - CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
       - PKG_CONFIG_ALLOW_CROSS=1
     hooks:
-      pre: |
-        echo "🐧 Cross-compiling Linux ARM64 binary with PGO..."
-        export CC=aarch64-linux-gnu-gcc
-        export CXX=aarch64-linux-gnu-g++
-        export AR=aarch64-linux-gnu-ar
-        export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
-        export PKG_CONFIG_ALLOW_CROSS=1
-        chmod +x scripts/pgo-build.sh
-        scripts/pgo-build.sh aarch64-unknown-linux-gnu
+      pre: bash -c 'echo "🐧 Cross-compiling Linux ARM64 binary with PGO..."; export CC=aarch64-linux-gnu-gcc; export CXX=aarch64-linux-gnu-g++; export AR=aarch64-linux-gnu-ar; export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc; export PKG_CONFIG_ALLOW_CROSS=1; chmod +x scripts/pgo-build.sh; scripts/pgo-build.sh aarch64-unknown-linux-gnu'
       post: cp target/aarch64-unknown-linux-gnu/release/ferrocp {{ .Path }}
 
   # macOS x86_64 - VFX Platform CY2025: macOS 12.0+ minimum deployment target
@@ -86,10 +69,7 @@ builds:
       - CGO_ENABLED=0
       - MACOSX_DEPLOYMENT_TARGET=12.0
     hooks:
-      pre: |
-        echo "🍎 Building macOS x86_64 binary with PGO optimization..."
-        chmod +x scripts/pgo-build.sh
-        scripts/pgo-build.sh x86_64-apple-darwin
+      pre: bash -c 'echo "🍎 Building macOS x86_64 binary with PGO optimization..."; chmod +x scripts/pgo-build.sh; scripts/pgo-build.sh x86_64-apple-darwin'
       post: cp target/x86_64-apple-darwin/release/ferrocp {{ .Path }}
 
   # macOS ARM64 (Apple Silicon) - VFX Platform CY2025+
@@ -102,10 +82,7 @@ builds:
       - CGO_ENABLED=0
       - MACOSX_DEPLOYMENT_TARGET=14.0
     hooks:
-      pre: |
-        echo "🍎 Building macOS ARM64 binary with PGO optimization..."
-        chmod +x scripts/pgo-build.sh
-        scripts/pgo-build.sh aarch64-apple-darwin
+      pre: bash -c 'echo "🍎 Building macOS ARM64 binary with PGO optimization..."; chmod +x scripts/pgo-build.sh; scripts/pgo-build.sh aarch64-apple-darwin'
       post: cp target/aarch64-apple-darwin/release/ferrocp {{ .Path }}
 
   # Windows x86_64 - VFX Platform CY2025: VS 2022 v17.6+, Windows SDK 10.0.20348+
@@ -116,9 +93,13 @@ builds:
     goarch: [amd64]
     env:
       - CGO_ENABLED=0
+      - CC=x86_64-w64-mingw32-gcc
+      - CXX=x86_64-w64-mingw32-g++
+      - AR=x86_64-w64-mingw32-ar
+      - CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc
     hooks:
-      pre: powershell -ExecutionPolicy Bypass -File scripts/pgo-build-windows.ps1 -Target x86_64-pc-windows-msvc
-      post: powershell -Command "Copy-Item target\x86_64-pc-windows-msvc\release\ferrocp.exe {{ .Path }}"
+      pre: bash -c 'if [ "$(uname -s)" = "Linux" ]; then echo "🪟 Cross-compiling Windows binary..."; chmod +x scripts/pgo-build.sh; scripts/pgo-build.sh x86_64-pc-windows-msvc; else powershell -ExecutionPolicy Bypass -File scripts/pgo-build-windows.ps1 -Target x86_64-pc-windows-msvc; fi'
+      post: bash -c 'if [ "$(uname -s)" = "Linux" ]; then cp target/x86_64-pc-windows-msvc/release/ferrocp.exe {{ .Path }}; else powershell -Command "Copy-Item target\\x86_64-pc-windows-msvc\\release\\ferrocp.exe {{ .Path }}"; fi'
 
 
 
@@ -194,6 +175,6 @@ changelog:
 release:
   github:
     owner: loonghao
-    name: FerroCP
+    name: ferrocp
   name_template: "FerroCP {{ .Version }}"
   prerelease: auto

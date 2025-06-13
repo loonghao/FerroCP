@@ -88,7 +88,7 @@ cp "$TEST_DATA_DIR/test_4096.dat" "$TEST_DATA_DIR/source_dir/subdir2/"
 echo -e "${GREEN}✅ Test data created${NC}"
 
 # Run profiling workloads (only if not cross-compiling)
-if [[ "$TARGET" == *"$(uname -m)"* ]] && [[ "$TARGET" != *"windows"* || "$(uname -s)" == *"MINGW"* ]]; then
+if [[ "$TARGET" == *"$(uname -m)"* ]] && [[ "$TARGET" != *"windows"* ]] && [[ "$(uname -s)" != *"MINGW"* ]]; then
     echo -e "${YELLOW}🏃 Running profiling workloads...${NC}"
     
     # Profile 1: Single file copy operations

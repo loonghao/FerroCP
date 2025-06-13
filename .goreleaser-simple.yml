@@ -1,0 +1,77 @@
+# Simplified GoReleaser configuration for testing
+version: 2
+
+project_name: ferrocp
+
+env:
+  - GO111MODULE=on
+
+before:
+  hooks:
+    - rustup target add x86_64-pc-windows-msvc
+    - rustup target add x86_64-unknown-linux-gnu
+
+builds:
+  # Windows x86_64 - Simple build without PGO for testing
+  - id: ferrocp-windows-amd64
+    binary: ferrocp
+    main: ./scripts/fake-main.go
+    goos: [windows]
+    goarch: [amd64]
+    env:
+      - CGO_ENABLED=0
+    hooks:
+      pre: cargo build --bin ferrocp --target x86_64-pc-windows-msvc --release
+      post: powershell -Command "Copy-Item target\\x86_64-pc-windows-msvc\\release\\ferrocp.exe {{ .Path }}"
+
+  # Linux x86_64 - Simple build without PGO for testing
+  - id: ferrocp-linux-amd64
+    binary: ferrocp
+    main: ./scripts/fake-main.go
+    goos: [linux]
+    goarch: [amd64]
+    env:
+      - CGO_ENABLED=0
+    hooks:
+      pre: cargo build --bin ferrocp --target x86_64-unknown-linux-gnu --release
+      post: cp target/x86_64-unknown-linux-gnu/release/ferrocp {{ .Path }}
+
+archives:
+  - id: ferrocp-archives
+    ids:
+      - ferrocp-windows-amd64
+      - ferrocp-linux-amd64
+    name_template: "{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+      - goos: linux
+        formats: [tar.gz]
+    files:
+      - README.md
+      - README_zh.md
+      - LICENSE*
+
+checksum:
+  name_template: "{{ .ProjectName }}-{{ .Version }}-checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+
+release:
+  github:
+    owner: loonghao
+    name: ferrocp
+  name_template: "FerroCP {{ .Version }}"
+  prerelease: auto
