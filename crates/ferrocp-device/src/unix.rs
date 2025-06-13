@@ -10,8 +10,6 @@ use crate::detector::DeviceDetector;
 #[cfg(unix)]
 use ferrocp_types::{DeviceType, Error, Result};
 #[cfg(unix)]
-use std::collections::HashMap;
-#[cfg(unix)]
 use std::path::Path;
 #[cfg(unix)]
 use tracing::{debug, warn};

@@ -220,7 +220,11 @@ pub struct FerrocpOperationResult {
 
 /// Convert boolean to C int
 pub(crate) fn bool_to_c_int(value: bool) -> c_int {
-    if value { 1 } else { 0 }
+    if value {
+        1
+    } else {
+        0
+    }
 }
 
 /// Convert C int to boolean

@@ -4,12 +4,14 @@
 //! and error handling across the FFI boundary.
 
 use std::ffi::CString;
-use std::os::raw::{c_char, c_int, c_ulonglong};
+#[cfg(test)]
+use std::os::raw::c_char;
+use std::os::raw::{c_int, c_ulonglong};
 use std::ptr;
 use std::sync::{Arc, Mutex};
 
 use crate::types::*;
-use crate::{ProgressCallback, ErrorCallback};
+use crate::{ErrorCallback, ProgressCallback};
 
 /// Callback context for managing callbacks across FFI boundary
 #[derive(Debug)]
@@ -56,7 +58,8 @@ impl CallbackContext {
                 self.current_file = CString::new(file).ok();
             }
 
-            let current_file_ptr = self.current_file
+            let current_file_ptr = self
+                .current_file
                 .as_ref()
                 .map(|s| s.as_ptr())
                 .unwrap_or(ptr::null());
@@ -82,7 +85,7 @@ impl CallbackContext {
         if let Some(callback) = self.error_callback {
             let message_cstring = CString::new(error_message).unwrap_or_default();
             let file_cstring = file_path.and_then(|p| CString::new(p).ok());
-            
+
             let file_ptr = file_cstring
                 .as_ref()
                 .map(|s| s.as_ptr())
@@ -140,12 +143,12 @@ pub fn safe_call_error(
 }
 
 /// Set a progress callback for an operation
-/// 
+///
 /// This function allows setting a progress callback that will be called
 /// during copy operations to report progress.
-/// 
+///
 /// # Safety
-/// 
+///
 /// The callback function must be valid for the duration of the operation.
 /// The user_data pointer will be passed to the callback as-is.
 #[no_mangle]
@@ -158,12 +161,12 @@ pub extern "C" fn ferrocp_set_progress_callback(
 }
 
 /// Set an error callback for an operation
-/// 
+///
 /// This function allows setting an error callback that will be called
 /// when errors occur during copy operations.
-/// 
+///
 /// # Safety
-/// 
+///
 /// The callback function must be valid for the duration of the operation.
 /// The user_data pointer will be passed to the callback as-is.
 #[no_mangle]
@@ -176,9 +179,9 @@ pub extern "C" fn ferrocp_set_error_callback(
 }
 
 /// Set both progress and error callbacks
-/// 
+///
 /// # Safety
-/// 
+///
 /// The callback functions must be valid for the duration of the operation.
 /// The user_data pointer will be passed to both callbacks as-is.
 #[no_mangle]
@@ -196,9 +199,9 @@ pub extern "C" fn ferrocp_set_callbacks(
 }
 
 /// Free a callback context
-/// 
+///
 /// # Safety
-/// 
+///
 /// The context must have been created by one of the ferrocp_set_*_callback functions.
 #[no_mangle]
 pub unsafe extern "C" fn ferrocp_free_callback_context(context: *mut CallbackContext) {
@@ -217,7 +220,13 @@ extern "C" fn test_progress_callback(
     user_data: *mut std::ffi::c_void,
 ) {
     // This is just a test callback, it doesn't do anything
-    let _ = (progress_percent, bytes_copied, total_bytes, current_file, user_data);
+    let _ = (
+        progress_percent,
+        bytes_copied,
+        total_bytes,
+        current_file,
+        user_data,
+    );
 }
 
 /// Test callback function for errors (used in tests)
@@ -235,7 +244,6 @@ extern "C" fn test_error_callback(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ffi::CString;
 
     #[test]
     fn test_callback_context_creation() {
@@ -244,7 +252,7 @@ mod tests {
             Some(test_error_callback),
             ptr::null_mut(),
         );
-        
+
         assert!(context.progress_callback.is_some());
         assert!(context.error_callback.is_some());
         assert!(context.current_file.is_none());
@@ -257,10 +265,10 @@ mod tests {
             Some(test_error_callback),
             ptr::null_mut(),
         );
-        
+
         // Test progress callback
         safe_call_progress(&manager, 50.0, 1024, 2048, Some("test.txt"));
-        
+
         // Test error callback
         safe_call_error(
             &manager,
@@ -277,9 +285,9 @@ mod tests {
             Some(test_error_callback),
             ptr::null_mut(),
         );
-        
+
         assert!(!context.is_null());
-        
+
         unsafe {
             ferrocp_free_callback_context(context);
         }
@@ -287,15 +295,11 @@ mod tests {
 
     #[test]
     fn test_callback_with_file() {
-        let mut context = CallbackContext::new(
-            Some(test_progress_callback),
-            None,
-            ptr::null_mut(),
-        );
-        
+        let mut context = CallbackContext::new(Some(test_progress_callback), None, ptr::null_mut());
+
         context.call_progress(25.0, 512, 2048, Some("example.txt"));
         assert!(context.current_file.is_some());
-        
+
         if let Some(ref file) = context.current_file {
             assert_eq!(file.to_str().unwrap(), "example.txt");
         }

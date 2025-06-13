@@ -339,7 +339,6 @@ impl BufferedCopyEngine {
         // Set permissions on Unix systems
         #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
             let permissions = source_metadata.permissions();
             fs::set_permissions(destination.as_ref(), permissions)
                 .await

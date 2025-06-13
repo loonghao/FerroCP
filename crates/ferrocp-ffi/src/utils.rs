@@ -2,14 +2,14 @@
 //!
 //! This module provides utility functions for the FFI interface.
 
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_ulonglong};
 use std::ptr;
 
 /// Convert a Rust Vec<String> to a C array of strings
-/// 
+///
 /// # Safety
-/// 
+///
 /// The returned array must be freed with ferrocp_free_string_array.
 pub(crate) fn rust_string_vec_to_c_array(strings: Vec<String>) -> (*const *const c_char, usize) {
     if strings.is_empty() {
@@ -17,7 +17,7 @@ pub(crate) fn rust_string_vec_to_c_array(strings: Vec<String>) -> (*const *const
     }
 
     let mut c_strings: Vec<*const c_char> = Vec::with_capacity(strings.len());
-    
+
     for s in strings {
         if let Ok(c_string) = CString::new(s) {
             c_strings.push(c_string.into_raw() as *const c_char);
@@ -29,20 +29,17 @@ pub(crate) fn rust_string_vec_to_c_array(strings: Vec<String>) -> (*const *const
     let len = c_strings.len();
     let ptr = c_strings.as_ptr();
     std::mem::forget(c_strings); // Prevent deallocation
-    
+
     (ptr, len)
 }
 
 /// Free a C array of strings created by rust_string_vec_to_c_array
-/// 
+///
 /// # Safety
-/// 
+///
 /// The array must have been created by rust_string_vec_to_c_array.
 #[no_mangle]
-pub unsafe extern "C" fn ferrocp_free_string_array(
-    array: *const *const c_char,
-    length: usize,
-) {
+pub unsafe extern "C" fn ferrocp_free_string_array(array: *const *const c_char, length: usize) {
     if array.is_null() {
         return;
     }
@@ -53,15 +50,19 @@ pub unsafe extern "C" fn ferrocp_free_string_array(
             drop(CString::from_raw(ptr as *mut c_char));
         }
     }
-    
+
     // Free the array itself
-    drop(Vec::from_raw_parts(array as *mut *const c_char, length, length));
+    drop(Vec::from_raw_parts(
+        array as *mut *const c_char,
+        length,
+        length,
+    ));
 }
 
 /// Get the size of a file in bytes
-/// 
+///
 /// # Safety
-/// 
+///
 /// The path must be a valid null-terminated C string.
 #[no_mangle]
 pub unsafe extern "C" fn ferrocp_get_file_size(path: *const c_char) -> c_ulonglong {
@@ -81,9 +82,9 @@ pub unsafe extern "C" fn ferrocp_get_file_size(path: *const c_char) -> c_ulonglo
 }
 
 /// Check if a path exists
-/// 
+///
 /// # Safety
-/// 
+///
 /// The path must be a valid null-terminated C string.
 #[no_mangle]
 pub unsafe extern "C" fn ferrocp_path_exists(path: *const c_char) -> c_int {
@@ -96,13 +97,17 @@ pub unsafe extern "C" fn ferrocp_path_exists(path: *const c_char) -> c_int {
         Err(_) => return 0,
     };
 
-    if std::path::Path::new(&path_str).exists() { 1 } else { 0 }
+    if std::path::Path::new(&path_str).exists() {
+        1
+    } else {
+        0
+    }
 }
 
 /// Check if a path is a directory
-/// 
+///
 /// # Safety
-/// 
+///
 /// The path must be a valid null-terminated C string.
 #[no_mangle]
 pub unsafe extern "C" fn ferrocp_is_directory(path: *const c_char) -> c_int {
@@ -115,13 +120,17 @@ pub unsafe extern "C" fn ferrocp_is_directory(path: *const c_char) -> c_int {
         Err(_) => return 0,
     };
 
-    if std::path::Path::new(&path_str).is_dir() { 1 } else { 0 }
+    if std::path::Path::new(&path_str).is_dir() {
+        1
+    } else {
+        0
+    }
 }
 
 /// Check if a path is a file
-/// 
+///
 /// # Safety
-/// 
+///
 /// The path must be a valid null-terminated C string.
 #[no_mangle]
 pub unsafe extern "C" fn ferrocp_is_file(path: *const c_char) -> c_int {
@@ -134,16 +143,20 @@ pub unsafe extern "C" fn ferrocp_is_file(path: *const c_char) -> c_int {
         Err(_) => return 0,
     };
 
-    if std::path::Path::new(&path_str).is_file() { 1 } else { 0 }
+    if std::path::Path::new(&path_str).is_file() {
+        1
+    } else {
+        0
+    }
 }
 
 /// Get the parent directory of a path
-/// 
+///
 /// Returns a newly allocated string that must be freed with ferrocp_free_string.
 /// Returns null if the path has no parent or is invalid.
-/// 
+///
 /// # Safety
-/// 
+///
 /// The path must be a valid null-terminated C string.
 #[no_mangle]
 pub unsafe extern "C" fn ferrocp_get_parent_path(path: *const c_char) -> *mut c_char {
@@ -167,12 +180,12 @@ pub unsafe extern "C" fn ferrocp_get_parent_path(path: *const c_char) -> *mut c_
 }
 
 /// Get the filename from a path
-/// 
+///
 /// Returns a newly allocated string that must be freed with ferrocp_free_string.
 /// Returns null if the path has no filename or is invalid.
-/// 
+///
 /// # Safety
-/// 
+///
 /// The path must be a valid null-terminated C string.
 #[no_mangle]
 pub unsafe extern "C" fn ferrocp_get_filename(path: *const c_char) -> *mut c_char {
@@ -196,12 +209,12 @@ pub unsafe extern "C" fn ferrocp_get_filename(path: *const c_char) -> *mut c_cha
 }
 
 /// Join two paths
-/// 
+///
 /// Returns a newly allocated string that must be freed with ferrocp_free_string.
 /// Returns null if either path is invalid.
-/// 
+///
 /// # Safety
-/// 
+///
 /// Both paths must be valid null-terminated C strings.
 #[no_mangle]
 pub unsafe extern "C" fn ferrocp_join_paths(
@@ -231,12 +244,12 @@ pub unsafe extern "C" fn ferrocp_join_paths(
 }
 
 /// Normalize a path (resolve . and .. components)
-/// 
+///
 /// Returns a newly allocated string that must be freed with ferrocp_free_string.
 /// Returns null if the path is invalid.
-/// 
+///
 /// # Safety
-/// 
+///
 /// The path must be a valid null-terminated C string.
 #[no_mangle]
 pub unsafe extern "C" fn ferrocp_normalize_path(path: *const c_char) -> *mut c_char {
@@ -265,15 +278,11 @@ pub unsafe extern "C" fn ferrocp_normalize_path(path: *const c_char) -> *mut c_c
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ffi::CString;
+    use std::ffi::{CStr, CString};
 
     #[test]
     fn test_string_array_conversion() {
-        let strings = vec![
-            "hello".to_string(),
-            "world".to_string(),
-            "test".to_string(),
-        ];
+        let strings = vec!["hello".to_string(), "world".to_string(), "test".to_string()];
 
         let (array, length) = rust_string_vec_to_c_array(strings);
         assert!(!array.is_null());
@@ -287,13 +296,13 @@ mod tests {
     #[test]
     fn test_path_utilities() {
         let test_path = CString::new("/tmp/test.txt").unwrap();
-        
+
         // These tests might fail on Windows, but they demonstrate the API
         unsafe {
             let exists = ferrocp_path_exists(test_path.as_ptr());
             let is_file = ferrocp_is_file(test_path.as_ptr());
             let is_dir = ferrocp_is_directory(test_path.as_ptr());
-            
+
             // Just check that the functions don't crash
             let _ = (exists, is_file, is_dir);
         }
@@ -302,20 +311,20 @@ mod tests {
     #[test]
     fn test_path_manipulation() {
         let test_path = CString::new("/tmp/test.txt").unwrap();
-        
+
         unsafe {
             let parent = ferrocp_get_parent_path(test_path.as_ptr());
             if !parent.is_null() {
                 let parent_str = CStr::from_ptr(parent).to_str().unwrap();
                 assert!(parent_str.contains("tmp") || parent_str.contains("\\"));
-                ferrocp_free_string(parent);
+                crate::ferrocp_free_string(parent);
             }
 
             let filename = ferrocp_get_filename(test_path.as_ptr());
             if !filename.is_null() {
                 let filename_str = CStr::from_ptr(filename).to_str().unwrap();
                 assert_eq!(filename_str, "test.txt");
-                ferrocp_free_string(filename);
+                crate::ferrocp_free_string(filename);
             }
         }
     }
@@ -324,13 +333,13 @@ mod tests {
     fn test_path_joining() {
         let path1 = CString::new("/tmp").unwrap();
         let path2 = CString::new("test.txt").unwrap();
-        
+
         unsafe {
             let joined = ferrocp_join_paths(path1.as_ptr(), path2.as_ptr());
             if !joined.is_null() {
                 let joined_str = CStr::from_ptr(joined).to_str().unwrap();
                 assert!(joined_str.contains("test.txt"));
-                ferrocp_free_string(joined);
+                crate::ferrocp_free_string(joined);
             }
         }
     }

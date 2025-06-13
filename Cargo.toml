@@ -146,9 +146,38 @@ unused_imports = "warn"
 # Allow non_local_definitions warning - this is a known issue with PyO3 macros
 non_local_definitions = "allow"
 
-# Clippy is disabled for faster builds and to avoid cross-platform issues
-# [workspace.lints.clippy]
-# Uncomment the above line and add specific lints if needed in the future
+# Clippy configuration - allow non-fatal warnings for development speed
+[workspace.lints.clippy]
+# Documentation lints - allow for faster development
+doc_markdown = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+
+# Code style lints - allow for flexibility
+uninlined_format_args = "allow"
+must_use_candidate = "allow"
+return_self_not_must_use = "allow"
+missing_const_for_fn = "allow"
+unreadable_literal = "allow"
+manual_range_contains = "allow"
+useless_vec = "allow"
+
+# Type conversion lints - allow for performance code
+cast_precision_loss = "allow"
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+
+# Pattern matching lints - allow for readability
+match_same_arms = "allow"
+use_self = "allow"
+
+# Complexity lints - allow for performance-critical code
+redundant_closure_for_method_calls = "allow"
+redundant_clone = "allow"
+
+# Float comparison lints - allow for test code
+float_cmp = "allow"
 
 # Coverage configuration
 [workspace.metadata.tarpaulin]
