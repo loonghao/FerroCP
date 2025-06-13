@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial project structure
 - Basic repository setup
 
+## v0.3.2 (2025-06-13)
+
+### Fix
+
+- **deps**: update rust crate pyo3-async-runtimes to 0.25
+
 ## v0.3.1 (2025-06-13)
 
 ### Fix
