@@ -125,17 +125,20 @@ builds:
 # Archive configuration for VFX Platform distributions
 archives:
   - id: ferrocp-archives
-    builds:
+    ids:
       - ferrocp-linux-amd64
       - ferrocp-linux-arm64
       - ferrocp-darwin-amd64
       - ferrocp-darwin-arm64
       - ferrocp-windows-amd64
     name_template: "{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
-    format: tar.gz
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
+      - goos: linux
+        formats: [tar.gz]
+      - goos: darwin
+        formats: [tar.gz]
     files:
       - README.md
       - README_zh.md
