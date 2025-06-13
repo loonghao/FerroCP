@@ -62,7 +62,7 @@ rmp-serde = "1.1"
 tokio-util = { version = "0.7", features = ["codec"] }
 quinn = "0.11"
 h3 = "0.0.8"
-h3-quinn = "0.0.6"
+h3-quinn = "0.0.10"
 
 # Error handling
 thiserror = "2.0"
@@ -120,7 +120,7 @@ features = [
 ]
 
 [workspace.dependencies.wmi]
-version = "0.13"
+version = "0.17"
 
 [workspace.dependencies.libc]
 version = "0.2"
@@ -136,7 +136,7 @@ version = "0.4"
 version = "1.4"
 
 [workspace.dependencies.rstest]
-version = "0.18"
+version = "0.25"
 
 # Workspace-level configuration
 [workspace.lints.rust]

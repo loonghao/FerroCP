@@ -34,7 +34,7 @@ serde = { workspace = true, features = ["derive"], optional = true }
 # Platform-specific dependencies
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
-nix = { version = "0.27", features = ["fs"] }
+nix = { version = "0.30", features = ["fs"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3", features = [
