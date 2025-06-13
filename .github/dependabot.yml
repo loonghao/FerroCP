@@ -1,6 +1,6 @@
 version: 2
 updates:
-  - package-ecosystem: "pip"
+  - package-ecosystem: "cargo"
     directory: "/"
     schedule:
       interval: "weekly"
@@ -8,11 +8,7 @@ updates:
     target-branch: "main"
     labels:
       - "dependencies"
-      - "python"
-    assignees:
-      - "yourusername"
-    reviewers:
-      - "yourusername"
+      - "rust"
     commit-message:
       prefix: "deps"
       include: "scope"
@@ -26,10 +22,6 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
-    assignees:
-      - "yourusername"
-    reviewers:
-      - "yourusername"
     commit-message:
       prefix: "ci"
       include: "scope"
