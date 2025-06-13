@@ -3,18 +3,18 @@
 //! This module provides the main FFI interface for the FerroCP engine,
 //! designed to be called from C, Python, C++, and other languages.
 
+use std::collections::HashMap;
 use std::os::raw::{c_char, c_int, c_ulonglong};
 use std::ptr;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::collections::HashMap;
 
 use ferrocp_engine::{CopyEngine, CopyRequest};
 use ferrocp_types::CopyStats;
 use tokio::runtime::Runtime;
 
 use crate::types::*;
-use crate::{FerrocpResult, FerrocpStats, FerrocpDeviceInfo, FerrocpCopyRequest};
-use crate::{ProgressCallback, ErrorCallback};
+use crate::{ErrorCallback, ProgressCallback};
+use crate::{FerrocpCopyRequest, FerrocpDeviceInfo, FerrocpResult, FerrocpStats};
 
 /// Global runtime for async operations
 static RUNTIME: OnceLock<Arc<Runtime>> = OnceLock::new();
@@ -31,14 +31,18 @@ pub type EngineHandle = u64;
 /// Initialize the async runtime
 pub(crate) fn initialize_runtime() -> Result<(), Box<dyn std::error::Error>> {
     let runtime = Runtime::new()?;
-    RUNTIME.set(Arc::new(runtime)).map_err(|_| "Runtime already initialized")?;
-    
-    ENGINES.set(Arc::new(Mutex::new(HashMap::new())))
+    RUNTIME
+        .set(Arc::new(runtime))
+        .map_err(|_| "Runtime already initialized")?;
+
+    ENGINES
+        .set(Arc::new(Mutex::new(HashMap::new())))
         .map_err(|_| "Engines map already initialized")?;
-    
-    HANDLE_COUNTER.set(Arc::new(Mutex::new(1)))
+
+    HANDLE_COUNTER
+        .set(Arc::new(Mutex::new(1)))
         .map_err(|_| "Handle counter already initialized")?;
-    
+
     Ok(())
 }
 
@@ -91,7 +95,7 @@ fn remove_engine(handle: EngineHandle) -> Option<Arc<CopyEngine>> {
 }
 
 /// Create a new FerroCP engine
-/// 
+///
 /// Returns a handle to the engine, or 0 on failure.
 #[no_mangle]
 pub extern "C" fn ferrocp_engine_create() -> EngineHandle {
@@ -107,7 +111,7 @@ pub extern "C" fn ferrocp_engine_create() -> EngineHandle {
 }
 
 /// Destroy a FerroCP engine
-/// 
+///
 /// Frees all resources associated with the engine handle.
 #[no_mangle]
 pub extern "C" fn ferrocp_engine_destroy(handle: EngineHandle) {
@@ -115,9 +119,9 @@ pub extern "C" fn ferrocp_engine_destroy(handle: EngineHandle) {
 }
 
 /// Execute a copy operation
-/// 
+///
 /// # Safety
-/// 
+///
 /// All string pointers in the request must be valid null-terminated C strings.
 /// The result must be freed with ferrocp_free_result.
 #[no_mangle]
@@ -143,7 +147,8 @@ pub unsafe extern "C" fn ferrocp_copy(
         Some(rt) => rt,
         None => {
             (*result).error_code = FerrocpErrorCode::GenericError as c_int;
-            (*result).error_message = crate::rust_string_to_c("Runtime not initialized".to_string());
+            (*result).error_message =
+                crate::rust_string_to_c("Runtime not initialized".to_string());
             return FerrocpErrorCode::GenericError as c_int;
         }
     };
@@ -163,13 +168,14 @@ pub unsafe extern "C" fn ferrocp_copy(
         Ok(s) => s,
         Err(_) => {
             (*result).error_code = FerrocpErrorCode::InvalidArgument as c_int;
-            (*result).error_message = crate::rust_string_to_c("Invalid destination path".to_string());
+            (*result).error_message =
+                crate::rust_string_to_c("Invalid destination path".to_string());
             return FerrocpErrorCode::InvalidArgument as c_int;
         }
     };
 
     let copy_mode = FerrocpCopyMode::from(req.mode).into();
-    
+
     // Create internal copy request
     let copy_request = CopyRequest::new(source, destination)
         .with_mode(copy_mode)
@@ -179,7 +185,7 @@ pub unsafe extern "C" fn ferrocp_copy(
 
     // Execute the copy operation
     match runtime.block_on(async { engine.execute(copy_request).await }) {
-        Ok(copy_result) => {
+        Ok(_copy_result) => {
             (*result).error_code = FerrocpErrorCode::Success as c_int;
             (*result).error_message = ptr::null();
             (*result).error_details = ptr::null();
@@ -195,18 +201,18 @@ pub unsafe extern "C" fn ferrocp_copy(
 }
 
 /// Execute a copy operation with progress callback
-/// 
+///
 /// # Safety
-/// 
+///
 /// All string pointers must be valid null-terminated C strings.
 /// Callback functions must be valid for the duration of the operation.
 #[no_mangle]
 pub unsafe extern "C" fn ferrocp_copy_with_progress(
     handle: EngineHandle,
     request: *const FerrocpCopyRequest,
-    progress_callback: Option<ProgressCallback>,
-    error_callback: Option<ErrorCallback>,
-    user_data: *mut std::ffi::c_void,
+    _progress_callback: Option<ProgressCallback>,
+    _error_callback: Option<ErrorCallback>,
+    _user_data: *mut std::ffi::c_void,
     result: *mut FerrocpResult,
 ) -> c_int {
     // For now, delegate to the basic copy function
@@ -215,9 +221,9 @@ pub unsafe extern "C" fn ferrocp_copy_with_progress(
 }
 
 /// Get device information for a path
-/// 
+///
 /// # Safety
-/// 
+///
 /// The path must be a valid null-terminated C string.
 /// The result must be freed with ferrocp_free_device_info.
 #[no_mangle]
@@ -229,7 +235,7 @@ pub unsafe extern "C" fn ferrocp_get_device_info(
         return FerrocpErrorCode::InvalidArgument as c_int;
     }
 
-    let path_str = match crate::c_string_to_rust(path) {
+    let _path_str = match crate::c_string_to_rust(path) {
         Ok(s) => s,
         Err(_) => return FerrocpErrorCode::InvalidArgument as c_int,
     };
@@ -246,9 +252,9 @@ pub unsafe extern "C" fn ferrocp_get_device_info(
 }
 
 /// Free device information
-/// 
+///
 /// # Safety
-/// 
+///
 /// The device_info must have been returned by ferrocp_get_device_info.
 #[no_mangle]
 pub unsafe extern "C" fn ferrocp_free_device_info(device_info: *mut FerrocpDeviceInfo) {
@@ -287,22 +293,24 @@ mod tests {
     #[test]
     fn test_engine_lifecycle() {
         assert_eq!(crate::ferrocp_init(), 0);
-        
+
         let handle = ferrocp_engine_create();
         assert_ne!(handle, 0);
-        
+
         ferrocp_engine_destroy(handle);
         crate::ferrocp_cleanup();
     }
 
     #[test]
     fn test_invalid_handle() {
-        assert_eq!(crate::ferrocp_init(), 0);
-        
+        // Runtime might already be initialized by other tests
+        let init_result = crate::ferrocp_init();
+        assert!(init_result == 0 || init_result == -1); // 0 = success, -1 = already initialized
+
         let invalid_handle = 999999;
         let source = CString::new("test_source").unwrap();
         let dest = CString::new("test_dest").unwrap();
-        
+
         let request = FerrocpCopyRequest {
             source: source.as_ptr(),
             destination: dest.as_ptr(),
@@ -313,16 +321,16 @@ mod tests {
             threads: 0,
             buffer_size: 0,
         };
-        
+
         let mut result = FerrocpResult {
             error_code: 0,
             error_message: ptr::null(),
             error_details: ptr::null(),
         };
-        
+
         let error_code = unsafe { ferrocp_copy(invalid_handle, &request, &mut result) };
         assert_ne!(error_code, 0);
-        
+
         unsafe { crate::ferrocp_free_result(&mut result) };
         crate::ferrocp_cleanup();
     }

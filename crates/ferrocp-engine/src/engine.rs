@@ -62,10 +62,10 @@ impl CopyEngine {
         self.shutdown_tx = Some(shutdown_tx);
 
         // Start background tasks
-        let scheduler = Arc::clone(&self.scheduler);
-        let executor = Arc::clone(&self.executor);
-        let progress_monitor = Arc::clone(&self.progress_monitor);
-        let statistics = Arc::clone(&self.statistics);
+        let _scheduler = Arc::clone(&self.scheduler);
+        let _executor = Arc::clone(&self.executor);
+        let _progress_monitor = Arc::clone(&self.progress_monitor);
+        let _statistics = Arc::clone(&self.statistics);
 
         // Start the main task processing loop
         let scheduler_for_loop = Arc::clone(&self.scheduler);

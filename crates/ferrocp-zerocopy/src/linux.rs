@@ -16,7 +16,7 @@ use std::path::Path;
 #[cfg(target_os = "linux")]
 use tokio::fs::OpenOptions;
 #[cfg(target_os = "linux")]
-use tracing::{debug, warn};
+use tracing::debug;
 
 #[cfg(target_os = "linux")]
 /// Linux zero-copy implementation

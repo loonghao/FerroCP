@@ -597,7 +597,6 @@ impl MicroFileCopyEngine {
         // Preserve permissions on Unix systems (single operation)
         #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
             let permissions = source_metadata.permissions();
             let _ = fs::set_permissions(dest_path, permissions);
         }
@@ -623,7 +622,6 @@ impl MicroFileCopyEngine {
         // Preserve permissions on Unix systems
         #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
             let permissions = source_metadata.permissions();
             if let Err(e) = fs::set_permissions(dest_path, permissions) {
                 debug!("Failed to set permissions: {}", e);

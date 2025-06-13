@@ -133,7 +133,7 @@ impl EnhancedProgressTracker {
             .unwrap_or("unknown");
 
         let overall_progress = if progress.total_bytes > 0 {
-            (progress.bytes_processed as f64 / progress.total_bytes as f64 * 100.0)
+            progress.bytes_processed as f64 / progress.total_bytes as f64 * 100.0
         } else {
             0.0
         };

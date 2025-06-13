@@ -331,7 +331,7 @@ impl TaskExecutor {
     > {
         Box::pin(async move {
             use ferrocp_types::CopyStats;
-            use std::time::{Duration, Instant};
+            use std::time::Instant;
             use tokio::fs;
 
             let start_time = Instant::now();
