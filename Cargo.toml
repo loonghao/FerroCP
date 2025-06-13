@@ -85,7 +85,7 @@ indicatif = "0.17"
 # Configuration
 serde_yaml = "0.9"
 toml = "0.8"
-config = "0.14"
+config = "0.15"
 
 # Cross-platform utilities
 num_cpus = "1.16"
