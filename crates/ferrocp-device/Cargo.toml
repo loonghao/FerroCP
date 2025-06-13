@@ -51,7 +51,7 @@ serde = ["dep:serde", "ferrocp-types/serde"]
 tokio-test = { workspace = true }
 rstest = { workspace = true }
 tempfile = { workspace = true }
-criterion = { version = "0.5", features = ["html_reports", "async_tokio"] }
+criterion = { version = "0.6", features = ["html_reports", "async_tokio"] }
 
 [[bench]]
 name = "cache_performance"
