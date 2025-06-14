@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial project structure
 - Basic repository setup
 
+## v0.3.3 (2025-06-14)
+
+### Fix
+
+- clean up GoReleaser configuration and remove outdated scripts
+
 ## v0.3.2 (2025-06-13)
 
 ### Fix
