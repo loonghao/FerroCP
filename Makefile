@@ -21,6 +21,8 @@ help:
 	@echo "  build            - Build project with maturin"
 	@echo "  build-pgo        - Build with Profile-Guided Optimization"
 	@echo "  build-wheels     - Build wheels for distribution"
+	@echo "  build-cross      - Cross-compile for all VFX Platform targets using zigbuild"
+	@echo "  build-cross-release - Cross-compile release builds using zigbuild"
 	@echo "  flamegraph       - Generate flamegraph (Rust benchmarks)"
 	@echo "  docs             - Build documentation"
 	@echo "  clean            - Clean build artifacts"
@@ -121,6 +123,19 @@ build-wheels:
 # Verify build works correctly
 verify-build:
 	uv run nox -s verify_build
+
+# Cross-compilation with cargo-zigbuild
+build-cross:
+	@echo "Cross-compiling for all VFX Platform targets..."
+	@powershell -ExecutionPolicy Bypass -File scripts/zigbuild-cross.ps1
+
+build-cross-release:
+	@echo "Cross-compiling release builds for all VFX Platform targets..."
+	@powershell -ExecutionPolicy Bypass -File scripts/zigbuild-cross.ps1 -Release
+
+build-cross-target:
+	@echo "Cross-compiling for specific target: $(TARGET)"
+	@powershell -ExecutionPolicy Bypass -File scripts/zigbuild-cross.ps1 -Target $(TARGET)
 
 # Generate test data
 generate-test-data:
