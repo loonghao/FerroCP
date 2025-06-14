@@ -14,19 +14,16 @@ env:
 # Before hooks - run before building
 before:
   hooks:
+    # Install cargo-zigbuild for optimized cross-compilation
+    - cargo install --locked cargo-zigbuild
+    # Install zig toolchain via pip (includes ziglang)
+    - pip install ziglang
     # Add all VFX Platform supported targets
     - rustup target add x86_64-pc-windows-msvc
     - rustup target add x86_64-unknown-linux-gnu
     - rustup target add aarch64-unknown-linux-gnu
     - rustup target add x86_64-apple-darwin
     - rustup target add aarch64-apple-darwin
-    # Install cross-compilation tools for Linux ARM64
-    - |
-      if [ "$(uname)" = "Linux" ]; then
-        echo "🔧 Installing cross-compilation tools..."
-        sudo apt-get update
-        sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-      fi
     # Run basic checks
     - cargo fmt --all -- --check
     # Create go.sum file for GoReleaser compatibility
@@ -44,7 +41,7 @@ builds:
       - CGO_ENABLED=0
       - BLAKE3_NO_ASM=1
     hooks:
-      pre: cargo build --bin ferrocp --target x86_64-unknown-linux-gnu --release
+      pre: cargo zigbuild --bin ferrocp --target x86_64-unknown-linux-gnu --release
       post: cp target/x86_64-unknown-linux-gnu/release/ferrocp {{ .Path }}
 
   # Linux ARM64 - Modern VFX workflows (Cross-compiled)
@@ -56,14 +53,8 @@ builds:
     env:
       - CGO_ENABLED=0
       - BLAKE3_NO_ASM=1
-      # Cross-compilation environment
-      - CC=aarch64-linux-gnu-gcc
-      - CXX=aarch64-linux-gnu-g++
-      - AR=aarch64-linux-gnu-ar
-      - CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
-      - PKG_CONFIG_ALLOW_CROSS=1
     hooks:
-      pre: cargo build --bin ferrocp --target aarch64-unknown-linux-gnu --release
+      pre: cargo zigbuild --bin ferrocp --target aarch64-unknown-linux-gnu --release
       post: cp target/aarch64-unknown-linux-gnu/release/ferrocp {{ .Path }}
 
   # macOS x86_64 - VFX Platform CY2025: macOS 12.0+ minimum deployment target
@@ -76,7 +67,7 @@ builds:
       - CGO_ENABLED=0
       - MACOSX_DEPLOYMENT_TARGET=12.0
     hooks:
-      pre: cargo build --bin ferrocp --target x86_64-apple-darwin --release
+      pre: cargo zigbuild --bin ferrocp --target x86_64-apple-darwin --release
       post: cp target/x86_64-apple-darwin/release/ferrocp {{ .Path }}
 
   # macOS ARM64 (Apple Silicon) - VFX Platform CY2025+
@@ -89,7 +80,7 @@ builds:
       - CGO_ENABLED=0
       - MACOSX_DEPLOYMENT_TARGET=14.0
     hooks:
-      pre: cargo build --bin ferrocp --target aarch64-apple-darwin --release
+      pre: cargo zigbuild --bin ferrocp --target aarch64-apple-darwin --release
       post: cp target/aarch64-apple-darwin/release/ferrocp {{ .Path }}
 
   # Windows x86_64 - VFX Platform CY2025: VS 2022 v17.6+, Windows SDK 10.0.20348+
@@ -101,7 +92,7 @@ builds:
     env:
       - CGO_ENABLED=0
     hooks:
-      pre: cargo build --bin ferrocp --target x86_64-pc-windows-msvc --release
+      pre: cargo zigbuild --bin ferrocp --target x86_64-pc-windows-msvc --release
       post: cp target/x86_64-pc-windows-msvc/release/ferrocp.exe {{ .Path }}
 
 

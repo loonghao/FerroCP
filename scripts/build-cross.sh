@@ -1,6 +1,6 @@
 #!/bin/bash
 # Cross-compilation build script for FerroCP
-# This script builds FerroCP for multiple platforms using cross-compilation
+# This script builds FerroCP for multiple platforms using cargo-zigbuild
 
 set -euo pipefail
 
@@ -40,23 +40,32 @@ declare -A TARGETS=(
     ["x86_64-pc-windows-gnu"]="Windows x86_64"
 )
 
-log_info "Building FerroCP for all targets using cross-compilation..."
+log_info "Building FerroCP for all targets using cargo-zigbuild..."
 
-# Install cross if not available
-if ! command -v cross >/dev/null 2>&1; then
-    log_info "Installing cross for cross-compilation..."
-    cargo install cross --git https://github.com/cross-rs/cross
+# Install cargo-zigbuild if not available
+if ! cargo install --list | grep -q "cargo-zigbuild"; then
+    log_info "Installing cargo-zigbuild..."
+    cargo install --locked cargo-zigbuild
 fi
 
-# Function to build a single target using cross
+# Install zig if not available
+if ! command -v zig >/dev/null 2>&1; then
+    log_info "Installing zig via pip..."
+    pip install ziglang
+fi
+
+# Function to build a single target using cargo-zigbuild
 build_target() {
     local target=$1
     local description=$2
 
     log_info "Building for $description ($target)..."
 
-    # Use cross for cross-compilation
-    if cross build --bin "$BINARY_NAME" --release --target "$target"; then
+    # Add Rust target if not already added
+    rustup target add "$target" 2>/dev/null || true
+
+    # Use cargo-zigbuild for cross-compilation
+    if cargo zigbuild --bin "$BINARY_NAME" --release --target "$target"; then
         # Determine binary extension
         local binary_ext=""
         if [[ "$target" == *"windows"* ]]; then
