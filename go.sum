@@ -1,0 +1,2 @@
+# This file is intentionally empty
+# FerroCP is a Rust project, but GoReleaser requires go.sum for compatibility
