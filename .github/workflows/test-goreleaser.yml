@@ -1,0 +1,208 @@
+name: Test GoReleaser Configuration
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.goreleaser.yml'
+      - '.github/workflows/goreleaser.yml'
+      - '.github/workflows/test-goreleaser.yml'
+      - 'scripts/**'
+      - 'Cargo.toml'
+      - 'src/**'
+  workflow_dispatch:
+    inputs:
+      pr-number:
+        description: 'PR number to test (optional)'
+        required: false
+        type: string
+
+jobs:
+  test-goreleaser:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Install cross-compilation dependencies
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            pkg-config \
+            libssl-dev \
+            binutils \
+            lld \
+            clang \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu
+
+      # Test GoReleaser configuration
+      - name: Test GoReleaser config
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Test build for one target to verify cargo-zigbuild works
+      - name: Test cargo-zigbuild installation and build
+        run: |
+          echo "🔧 Installing cargo-zigbuild..."
+          cargo install --locked cargo-zigbuild
+          
+          echo "🔧 Installing zig..."
+          pip install ziglang
+          
+          echo "🔧 Adding Rust target..."
+          rustup target add x86_64-unknown-linux-gnu
+          
+          echo "🔧 Testing cargo-zigbuild..."
+          cargo zigbuild --bin ferrocp --target x86_64-unknown-linux-gnu --release
+          
+          echo "✅ cargo-zigbuild test completed successfully!"
+          
+          # Check if binary was created
+          if [ -f "target/x86_64-unknown-linux-gnu/release/ferrocp" ]; then
+            echo "✅ Binary created successfully"
+            ls -la target/x86_64-unknown-linux-gnu/release/ferrocp
+          else
+            echo "❌ Binary not found"
+            exit 1
+          fi
+
+      # Test GoReleaser build (dry-run)
+      - name: Test GoReleaser build (dry-run)
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: build --snapshot --clean --single-target
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-build-artifacts
+          path: |
+            dist/
+            target/*/release/ferrocp*
+          retention-days: 1
+
+  test-cross-compilation-scripts:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Test zigbuild cross-compilation script
+        run: |
+          echo "🧪 Testing zigbuild cross-compilation script..."
+          chmod +x scripts/zigbuild-cross.sh
+          
+          # Test script help
+          ./scripts/zigbuild-cross.sh --help
+          
+          # Test single target build
+          ./scripts/zigbuild-cross.sh --target x86_64-unknown-linux-gnu --verbose
+          
+          echo "✅ Cross-compilation script test completed!"
+
+  test-makefile-targets:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Test Makefile targets
+        run: |
+          echo "🧪 Testing Makefile targets..."
+          
+          # Test help target
+          make help | grep "build-cross"
+          
+          echo "✅ Makefile targets test completed!"
+
+  summary:
+    runs-on: ubuntu-latest
+    needs: [test-goreleaser, test-cross-compilation-scripts, test-makefile-targets]
+    if: always()
+    
+    steps:
+      - name: Test Results Summary
+        run: |
+          echo "## 🧪 GoReleaser Configuration Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.test-goreleaser.result }}" == "success" ]; then
+            echo "✅ **GoReleaser Configuration**: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **GoReleaser Configuration**: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.test-cross-compilation-scripts.result }}" == "success" ]; then
+            echo "✅ **Cross-compilation Scripts**: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Cross-compilation Scripts**: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.test-makefile-targets.result }}" == "success" ]; then
+            echo "✅ **Makefile Targets**: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Makefile Targets**: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 Test Details" >> $GITHUB_STEP_SUMMARY
+          echo "- GoReleaser configuration syntax validation" >> $GITHUB_STEP_SUMMARY
+          echo "- cargo-zigbuild installation and functionality" >> $GITHUB_STEP_SUMMARY
+          echo "- Cross-compilation for x86_64-linux target" >> $GITHUB_STEP_SUMMARY
+          echo "- Script functionality and help output" >> $GITHUB_STEP_SUMMARY
+          echo "- Makefile target availability" >> $GITHUB_STEP_SUMMARY
