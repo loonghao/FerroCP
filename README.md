@@ -24,13 +24,15 @@
 ### 🚀 **Implemented**
 - **Native Rust implementation** with zero-copy optimizations (`crates/ferrocp-zerocopy`)
 - **Async copy engine** with progress reporting (`ferrocp.CopyEngine`, `ferrocp.copy_file`)
-- **Shutil-compatible helpers**: `copy`, `copy2`, `copytree`, `move`
+- **Shutil-compatible helpers**: `copy`, `copy2`, `copytree`
 - **Device-aware copy**: per-device analysis (type, filesystem, theoretical speeds, optimal buffer size)
 - **JSON output** for the `copy` subcommand (`--json`) for automation and benchmarking
 - **Options honoured by the copy path**: `verify`, `preserve_timestamps`, `preserve_permissions`, `enable_compression`
 - **VFX Platform compatibility** - follows [VFX Reference Platform](https://vfxplatform.com/) standards
 
 ### ⚠️ **Not implemented (verified against the code on `main`)**
+- **`move` is async-unsafe**: `python/ferrocp/__init__.py` calls the async `copy_file`/`copy_directory`
+  without `await` and then deletes the source, so it loses data. Do not use it.
 - **`ferrocp sync`**, **`ferrocp verify`** and **`ferrocp config`** are parsed but print a placeholder "completed" message; the underlying logic is still `TODO` in `crates/ferrocp-cli/src/main.rs`
 - **CLI options accepted but not wired to the engine**: `--threads`, `--compression-level` and `--zero-copy` on `ferrocp copy`
 - **`CopyOptions` fields accepted but ignored by the copy path**: `mode`, `overwrite`, `buffer_size`, `num_threads`, `follow_symlinks` and `compression_level` (only `verify`, `preserve_timestamps`, `preserve_permissions` and `enable_compression` are read in `crates/ferrocp-python/src/copy.rs`)
@@ -180,7 +182,7 @@ ferrocp copy --help
 | `-t, --threads <THREADS>` | Accepted, but not wired to the engine yet |
 | `--compress` | Enable compression |
 | `--compression-level <LEVEL>` | 0-22, default `6`; accepted, but not wired to the engine yet |
-| `--zero-copy` | Enable zero-copy operations |
+| `--zero-copy` | Enable zero-copy operations; accepted, but not wired to the engine yet |
 | `--mirror` | Mirror mode; overrides `--mode` |
 | `--exclude <PATTERN>` / `--include <PATTERN>` | Repeatable patterns |
 | `--json` | Emit the JSON result document |

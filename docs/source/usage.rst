@@ -87,7 +87,7 @@ Copy a file or a directory::
     -t, --threads <THREADS>        accepted, but not wired to the engine yet
         --compress                 enable compression
         --compression-level <N>    0-22, default 6; accepted, but not wired to the engine yet
-        --zero-copy                enable zero-copy operations
+        --zero-copy                enable zero-copy operations; accepted, but not wired to the engine yet
         --mirror                   mirror mode, overrides --mode
         --exclude <PATTERN>        repeatable
         --include <PATTERN>        repeatable

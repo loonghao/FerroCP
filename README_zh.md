@@ -22,13 +22,15 @@
 ### 🚀 **已实现**
 - **原生 Rust 实现**，零拷贝优化（`crates/ferrocp-zerocopy`）
 - **异步复制引擎**，支持进度回调（`ferrocp.CopyEngine`、`ferrocp.copy_file`）
-- **`shutil` 兼容辅助函数**：`copy`、`copy2`、`copytree`、`move`
+- **`shutil` 兼容辅助函数**：`copy`、`copy2`、`copytree`
 - **设备感知复制**：分析设备类型、文件系统、理论速度与最佳缓冲区大小
 - **`copy` 子命令支持 `--json`**，便于自动化和基准测试
 - **复制路径真正生效的选项**：`verify`、`preserve_timestamps`、`preserve_permissions`、`enable_compression`
 - **VFX 平台兼容**，遵循 [VFX Reference Platform](https://vfxplatform.com/) 标准
 
 ### ⚠️ **尚未实现（已按 `main` 分支代码逐条核对）**
+- **`move` 存在异步缺陷**：`python/ferrocp/__init__.py` 在调用异步的 `copy_file`/`copy_directory`
+  时没有 `await` 就删除源路径，会导致数据丢失，请勿使用。
 - **`ferrocp sync`、`ferrocp verify`、`ferrocp config`** 可被解析，但只打印占位信息；其逻辑在 `crates/ferrocp-cli/src/main.rs` 中仍是 `TODO`
 - **已接收但未接入引擎的 CLI 选项**：`ferrocp copy` 的 `--threads`、`--compression-level`、`--zero-copy`
 - **可设置但被复制路径忽略的 `CopyOptions` 字段**：`mode`、`overwrite`、`buffer_size`、`num_threads`、`follow_symlinks`、`compression_level`（`crates/ferrocp-python/src/copy.rs` 只读取 `verify`、`preserve_timestamps`、`preserve_permissions` 和 `enable_compression`）
@@ -177,7 +179,7 @@ ferrocp copy --help
 | `-t, --threads <THREADS>` | 可接收，但尚未接入引擎 |
 | `--compress` | 启用压缩 |
 | `--compression-level <LEVEL>` | 0-22，默认 `6`；可接收，但尚未接入引擎 |
-| `--zero-copy` | 启用零拷贝操作 |
+| `--zero-copy` | 启用零拷贝操作；可接收，但尚未接入引擎 |
 | `--mirror` | 镜像模式，覆盖 `--mode` |
 | `--exclude <PATTERN>` / `--include <PATTERN>` | 可重复的模式参数 |
 | `--json` | 输出 JSON 结果文档 |
