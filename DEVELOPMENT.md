@@ -134,6 +134,26 @@ The CI pipeline runs:
 1. **Format Check** - Ensures all code is properly formatted
 2. **Tests** - Runs all tests on Linux
 3. **Build** - Builds Python extension
+4. **Release Please** - Keeps a release PR up to date, and cuts a tag when it is merged
+
+### Releasing
+
+Releases are driven by [release-please](https://github.com/googleapis/release-please);
+do not edit version numbers, `CHANGELOG.md`, or tags by hand.
+
+1. Use [Conventional Commits](https://www.conventionalcommits.org/) for every commit on
+   `main` - `release-please` derives the next version and the changelog from them.
+2. Merge the release PR (`chore(main): release x.y.z`). Merging is what cuts the release.
+3. `release-please` tags `vx.y.z`, creates the GitHub Release, and calls the GoReleaser
+   workflow to cross-compile and attach the binaries.
+
+The release PR updates `Cargo.toml` (`[workspace.package] version`) and
+`python/ferrocp/__version__.py`. Crates inherit the version through
+`version.workspace = true`, and `pyproject.toml` uses `dynamic = ["version"]`, so those two
+files are the only places a version is written.
+
+Commit messages matter: use `feat:` for a minor bump, `fix:` / `perf:` / `deps:` for a patch
+bump, and a `BREAKING CHANGE:` footer for a major bump.
 
 ### Local CI Simulation
 

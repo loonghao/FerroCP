@@ -456,21 +456,38 @@ The release workflow uses cibuildwheel to build platform-specific wheels with th
 
 ### Release Process
 
-To create a new release:
+Releases are driven by [release-please](https://github.com/googleapis/release-please) and
+conventional commits. You never edit the version or the changelog by hand.
 
-1. Update the version in `pyproject.toml` and `python/ferrocp/__version__.py`
-2. Update the `CHANGELOG.md` with the new version and changes
-3. Commit and push the changes
-4. Create a new tag with the version number (e.g., `0.1.0`)
-5. Push the tag to GitHub
+1. Land your changes on `main` using [Conventional Commits](https://www.conventionalcommits.org/)
+   (`feat:`, `fix:`, `perf:`, `docs:`, `chore:`, ...).
+2. `release-please` opens (or updates) a **release PR** titled
+   `chore(main): release x.y.z`. It carries the next version and the generated
+   `CHANGELOG.md` entry.
+3. Review the release PR and **merge it**. Merging is what cuts the release.
+4. On merge, `release-please` tags `vx.y.z` and creates the GitHub Release, then
+   the release workflow cross-compiles the `ferrocp` binaries with GoReleaser and
+   attaches them to that release.
 
-```bash
-# Example release process
-git add pyproject.toml python/ferrocp/__version__.py CHANGELOG.md
-git commit -m "Release 0.1.0"
-git tag 0.1.0
-git push && git push --tags
-```
+What makes the version move:
+
+| Commit type | Release |
+| ----------- | ------- |
+| `fix:`, `perf:`, `deps:` | patch |
+| `feat:` | minor |
+| `BREAKING CHANGE:` footer or `!` | major |
+
+Version sources, all updated by the release PR — never by hand:
+
+- `Cargo.toml` → `[workspace.package] version` (every crate inherits it via
+  `version.workspace = true`)
+- `python/ferrocp/__version__.py`
+
+`pyproject.toml` declares `dynamic = ["version"]`, so the wheel version comes from
+`crates/ferrocp-python/Cargo.toml` and therefore also from the workspace version.
+
+To re-publish a tag without a new release, run the **Release** workflow manually from
+the Actions tab and set `ref` to the tag (for example `v0.4.1`).
 
 ## Contributing
 
