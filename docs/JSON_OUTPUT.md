@@ -4,11 +4,16 @@ FerroCP supports JSON output format for automated performance testing and integr
 
 ## Usage
 
-Add the `--json` flag to any copy command to get structured JSON output:
+`--json` is implemented **only on the Rust CLI `copy` subcommand**. No other subcommand
+(`sync`, `verify`, `device`, `config`) and no Python CLI command accepts it.
 
 ```bash
+# Rust CLI (built with: cargo build --release --bin ferrocp)
 ferrocp copy source destination --json
 ```
+
+Global options such as `-q/--quiet` or `-v/--verbose` must be passed **before** the
+`copy` subcommand.
 
 ## JSON Structure
 
@@ -19,7 +24,7 @@ The JSON output contains comprehensive information about the copy operation:
 ```json
 {
   "metadata": {
-    "version": "0.2.0",
+    "version": "0.4.1",
     "operation": "copy",
     "timestamp": "2025-06-07T08:50:46.183669500+00:00",
     "source_path": "c:\\test_source",
@@ -95,9 +100,9 @@ The JSON output contains comprehensive information about the copy operation:
 ## Field Descriptions
 
 ### Metadata
-- `version`: FerroCP version
-- `operation`: Type of operation performed
-- `timestamp`: ISO 8601 timestamp when operation started
+- `version`: FerroCP version of the running binary (from `CARGO_PKG_VERSION`, e.g. `0.4.1`)
+- `operation`: Type of operation performed (always `"copy"` — `--json` only exists on `copy`)
+- `timestamp`: RFC 3339 / ISO 8601 timestamp recorded when the result document is generated, i.e. **after** the copy finished
 - `source_path`: Source path
 - `destination_path`: Destination path
 
@@ -137,9 +142,10 @@ The JSON output contains comprehensive information about the copy operation:
 - `performance_efficiency_percent`: Performance efficiency compared to expected
 
 ### Result
-- `success`: Whether the operation was successful
+- `success`: Whether the operation was successful (`copy_stats.errors == 0`)
 - `message`: Result message
-- `performance_rating`: Performance rating (excellent, good, fair, poor)
+- `performance_rating`: Performance rating derived from `performance_efficiency_percent`:
+  `excellent` (>= 90), `good` (>= 70), `fair` (>= 50), `poor` (< 50)
 
 ## Use Cases
 

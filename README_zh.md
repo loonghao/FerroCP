@@ -2,68 +2,46 @@
 
 <div align="center">
 
-[![Build Status](https://github.com/loonghao/FerroCP/workflows/Build%20and%20Release/badge.svg)](https://github.com/loonghao/FerroCP/actions)
-[![Python Version](https://img.shields.io/pypi/pyversions/ferrocp.svg)](https://pypi.org/project/ferrocp/)
+[![Release](https://github.com/loonghao/FerroCP/workflows/Release/badge.svg)](https://github.com/loonghao/FerroCP/actions)
+[![Python Version](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue)](https://github.com/loonghao/FerroCP)
 [![License](https://img.shields.io/github/license/loonghao/FerroCP.svg)](https://github.com/loonghao/FerroCP/blob/main/LICENSE)
 [![Ruff](https://img.shields.io/badge/ruff-enabled-brightgreen)](https://github.com/astral-sh/ruff)
 [![CodSpeed](https://img.shields.io/badge/CodSpeed-performance%20monitoring-blue)](https://codspeed.io/loonghao/FerroCP)
 
-**⚠️ 开发中项目 ⚠️**
-
 **🚀 高性能文件复制工具**
 *使用 Rust 构建，追求最大速度和可靠性*
-
-**本项目目前正在积极开发中，尚未准备好用于生产环境。**
 
 [English Documentation](README.md) | [文档](https://ferrocp.readthedocs.io/) | [性能测试](benchmarks/README.md)
 
 </div>
 
-**FerroCP** (Iron Copy) 是一个使用 Rust 编写的高性能跨平台文件复制工具，提供 Python 绑定。从零开始设计，专注于速度和可靠性，FerroCP 的目标是在保持熟悉易用 API 的同时，提供比标准 Python 工具快 **2-5 倍**的文件操作性能。
+**FerroCP** (Iron Copy) 是一个使用 Rust 编写的高性能跨平台文件复制工具，提供 Python 绑定。它包含一个 Rust CLI（`ferrocp`）和一个提供 `shutil` 兼容 API 的 Python 包（`ferrocp`）。
 
-## ✨ 计划功能
+## ✨ 功能
 
-### 🚀 **性能优先** (开发中)
-- **目标：比 Python 的 `shutil` 快 2-5 倍**处理大文件
-- **原生 Rust 实现**，零拷贝优化
-- **多线程操作**，自动 CPU 检测
-- **内存高效**，可配置缓冲区大小
+### 🚀 **已实现**
+- **原生 Rust 实现**，零拷贝优化（`crates/ferrocp-zerocopy`）
+- **异步复制引擎**，支持进度回调（`ferrocp.CopyEngine`、`ferrocp.copy_file`）
+- **`shutil` 兼容辅助函数**：`copy`、`copy2`、`copytree`
+- **设备感知复制**：分析设备类型、文件系统、理论速度与最佳缓冲区大小
+- **`copy` 子命令支持 `--json`**，便于自动化和基准测试
+- **复制路径真正生效的选项**：`verify`、`preserve_timestamps`、`preserve_permissions`、`enable_compression`
+- **VFX 平台兼容**，遵循 [VFX Reference Platform](https://vfxplatform.com/) 标准
 
-### 🔧 **开发者友好** (计划中)
-- **Python `shutil` 模块的直接替代品**
-- **熟悉的 API** - 无需学习成本
-- **类型提示**和全面的文档
-- **现代工具链**，支持 maturin 和 uv
-
-### 🌍 **跨平台卓越** (开发中)
-- **Windows、Linux、macOS** 原生支持
-- **跨平台一致性能**
-- **平台特定优化**自动应用
-- **Unicode 文件名支持**，正确编码处理
-
-### 📊 **开发状态**
-- **进行中** - 核心功能正在实现
-- **测试框架**正在建立
-- **性能基准测试**基础设施已就位
-- **CI/CD 流水线**已配置用于未来发布
+### ⚠️ **尚未实现（已按 `main` 分支代码逐条核对）**
+- **`move` 存在异步缺陷**：`python/ferrocp/__init__.py` 在调用异步的 `copy_file`/`copy_directory`
+  时没有 `await` 就删除源路径，会导致数据丢失，请勿使用。
+- **`ferrocp sync`、`ferrocp verify`、`ferrocp config`** 可被解析，但只打印占位信息；其逻辑在 `crates/ferrocp-cli/src/main.rs` 中仍是 `TODO`
+- **已接收但未接入引擎的 CLI 选项**：`ferrocp copy` 的 `--threads`、`--compression-level`、`--zero-copy`
+- **可设置但被复制路径忽略的 `CopyOptions` 字段**：`mode`、`overwrite`、`buffer_size`、`num_threads`、`follow_symlinks`、`compression_level`（`crates/ferrocp-python/src/copy.rs` 只读取 `verify`、`preserve_timestamps`、`preserve_permissions` 和 `enable_compression`）
+- **排除/包含模式**只存在于 CLI，Python API 的 `CopyOptions` 没有提供对应字段
+- **`cargo install` 不可用**：没有 crate 发布到 crates.io
 
 ## 📦 安装
 
-### ⚠️ 暂未可用
+### ⚠️ 暂无已发布的包
 
-**FerroCP 目前正在开发中，暂不可安装。**
-
-准备就绪后，将通过以下方式提供：
-
-```bash
-# 未来的 PyPI 安装（暂不可用）
-pip install ferrocp
-
-# 或使用 uv（暂不可用）
-uv add ferrocp
-```
-
-### 开发安装（贡献者）
+**目前没有任何 `ferrocp` 发行包。** Python 包**尚未发布到 PyPI**，GitHub Release 也没有附带预编译 CLI 压缩包，因此请从源码安装：
 
 ```bash
 # 克隆仓库
@@ -72,81 +50,157 @@ cd FerroCP
 
 # 安装开发依赖
 uv sync --group all
+
+# 在当前环境中构建 Python 扩展模块
 uv run maturin develop --release
 
-# 注意：核心功能仍在实现中
+# 或构建 wheel
+uv run maturin build --release
+
+# 构建独立的 Rust CLI（不依赖 Python）
+cargo build --release --bin ferrocp
 ```
 
-### 系统要求（可用时）
+### 系统要求
 
-- **Python 3.9+**（推荐 3.11+ 以获得最佳性能）
-- **Rust 工具链**（maturin 会自动安装）
+- **Python 3.9+**（`nox` 默认解释器为 3.11；扩展模块使用 `abi3-py39` 构建）
+- **Rust 工具链**（从 [rustup.rs](https://rustup.rs/) 安装）
 - **64 位系统**（Windows、Linux、macOS）
 
-## 🚀 计划 API（开发中）
+## 🚀 Python API
 
-### 基本用法（计划的直接替代）
+所有复制辅助函数都是**异步**的，必须 `await` —— 包括 `shutil` 风格的别名
+`copy`、`copy2` 和 `copytree`。不加 `await` 调用只会得到一个协程对象。
 
-```python
-import ferrocp
-
-# 计划的 API - 用 ferrocp.copy 替代 shutil.copy
-ferrocp.copy("source.txt", "destination.txt")
-
-# 复制文件及其元数据（类似于 shutil.copy2）
-ferrocp.copy2("source.txt", "destination.txt")
-
-# 复制目录树（类似于 shutil.copytree）
-ferrocp.copytree("source_dir", "destination_dir")
-```
-
-### 高级配置（计划中）
+### 基本用法
 
 ```python
+import asyncio
 import ferrocp
 
-# 计划的高级 API
-copier = ferrocp.EACopy(
-    thread_count=8,           # 使用 8 个线程进行并行操作
-    buffer_size=8*1024*1024,  # 8MB 缓冲区用于大文件
-    compression_level=3,      # 网络传输压缩
-    verify_integrity=True     # 复制后验证文件完整性
-)
+async def main():
+    # shutil 风格别名（异步辅助函数的包装）
+    await ferrocp.copy("source.txt", "destination.txt")
+    await ferrocp.copy2("source.txt", "destination.txt")
+    await ferrocp.copytree("source_dir", "destination_dir")
 
-# 高性能文件复制（计划中）
-copier.copy_file("large_dataset.zip", "backup/dataset.zip")
+    # 或使用显式的辅助函数
+    result = await ferrocp.copy_file("source.txt", "destination.txt")
+    print(result.success, result.bytes_copied, result.duration_seconds)
 
-# 带进度跟踪的批量操作（计划中）
-files_to_copy = [
-    ("data1.bin", "backup/data1.bin"),
-    ("data2.bin", "backup/data2.bin"),
-    ("data3.bin", "backup/data3.bin"),
-]
-
-for src, dst in files_to_copy:
-    result = copier.copy_file(src, dst)
-    print(f"复制了 {result.bytes_copied} 字节，耗时 {result.duration:.2f}s")
+asyncio.run(main())
 ```
 
-### 命令行界面（计划中）
+### 配置
+
+`CopyOptions` 提供以下关键字参数（括号中为默认值）：`mode`（`"auto"`）、
+`overwrite`（`"prompt"`）、`preserve_timestamps`（`True`）、`preserve_permissions`（`True`）、
+`follow_symlinks`（`False`）、`enable_compression`（`False`）、`compression_level`（`6`）、
+`buffer_size`（`65536`）、`num_threads`（`0`）和 `verify`（`False`）。
+
+其中只有 `verify`、`preserve_timestamps`、`preserve_permissions` 和 `enable_compression`
+会真正改变复制行为，其余字段可设置但会被忽略。
+
+```python
+import asyncio
+import ferrocp
+
+async def main():
+    options = ferrocp.CopyOptions(
+        verify=True,
+        preserve_timestamps=True,
+        preserve_permissions=True,
+        enable_compression=True,
+    )
+    result = await ferrocp.copy_file("large_dataset.zip", "backup/dataset.zip", options=options)
+    print(f"复制了 {result.bytes_copied} 字节，耗时 {result.duration_seconds:.2f}s")
+
+asyncio.run(main())
+```
+
+`CopyResult` 包含 `bytes_copied`、`files_copied`、`duration_seconds`、`transfer_rate`、
+`success` 和 `error_message`。
+
+### 进度回调
+
+`copy_file` 与 `copy_directory` 接受 `progress_callback`。回调在操作结束后被调用一次，
+传入最终计数；当前实现不会填充 `total_bytes`、`total_files` 和 `percentage`。
+
+```python
+import asyncio
+import ferrocp
+
+async def main():
+    def on_progress(progress):
+        print(f"已复制 {progress.bytes_copied} 字节 / {progress.files_copied} 个文件")
+
+    await ferrocp.copy_file("large.bin", "backup.bin", progress_callback=on_progress)
+
+asyncio.run(main())
+```
+
+## 🖥️ 命令行界面
+
+存在两个不同的 `ferrocp` 命令：
+
+| 命令 | 来源 | 安装方式 |
+|------|------|----------|
+| Rust CLI（`copy`、`sync`、`verify`、`device`、`config`） | `crates/ferrocp-cli` | `cargo build --release --bin ferrocp` |
+| Python CLI（`copy`、`copy_with_server`、`benchmark`） | `python/ferrocp/cli.py`（click） | `maturin develop` / `maturin build` |
+
+### Rust CLI
+
+全局选项（必须位于子命令**之前**）：`-d/--debug`、`-q/--quiet`、`-v/--verbose`、
+`-c/--config <PATH>`、`-V/--version`。
 
 ```bash
-# 计划的 CLI 界面
+# 复制文件
 ferrocp copy source.txt destination.txt
 
-# 带选项的复制（计划中）
-ferrocp copy --threads 8 --verbose large_file.zip backup/
+# verbose 是全局选项，需要放在子命令之前
+ferrocp --verbose copy --threads 8 large_file.zip backup/
 
-# 目录同步（计划中）
+# 镜像目录（等价于 robocopy /MIR）
 ferrocp copy --mirror source_dir/ destination_dir/
 
-# 显示帮助（计划中）
+# 结构化输出，便于自动化（只有 copy 子命令支持 --json）
+ferrocp copy source_dir/ destination_dir/ --json
+
+# 显示帮助
 ferrocp --help
+ferrocp copy --help
 ```
 
-## 📊 性能目标
+`ferrocp copy` 选项：
 
-FerroCP 的目标是实现以下性能指标：
+| 选项 | 说明 |
+|------|------|
+| `-m, --mode <MODE>` | `all`（默认）、`newer`、`different`、`mirror` |
+| `-t, --threads <THREADS>` | 可接收，但尚未接入引擎 |
+| `--compress` | 启用压缩 |
+| `--compression-level <LEVEL>` | 0-22，默认 `6`；可接收，但尚未接入引擎 |
+| `--zero-copy` | 启用零拷贝操作；可接收，但尚未接入引擎 |
+| `--mirror` | 镜像模式，覆盖 `--mode` |
+| `--exclude <PATTERN>` / `--include <PATTERN>` | 可重复的模式参数 |
+| `--json` | 输出 JSON 结果文档 |
+
+> `sync`、`verify` 和 `config` 可被解析，但目前只打印占位信息；其真实逻辑在
+> `crates/ferrocp-cli/src/main.rs` 中尚未实现。
+
+### Python CLI
+
+由 `ferrocp` 控制台脚本（`python/ferrocp/cli.py`）提供：
+
+```bash
+ferrocp --version
+ferrocp --verbose copy SOURCE DESTINATION --threads 4 --buffer-size 8388608 --compression 0
+ferrocp copy_with_server SOURCE DESTINATION --server HOST --port 8080
+ferrocp benchmark
+```
+
+## 📊 性能
+
+目前没有公布实测数据。下表是**目标值**，不是实测结果：
 
 | 操作 | 文件大小 | 目标 FerroCP | shutil | 目标提升 |
 |------|----------|--------------|--------|----------|
@@ -156,28 +210,14 @@ FerroCP 的目标是实现以下性能指标：
 | **单文件** | 100 MB | < 50 ms | 125 ms | **2.5x+ 更快** |
 | **目录树** | 1000 文件 | < 2 s | 4.8 s | **2x+ 更快** |
 
-### 计划基准测试
+要得到自己的实测数据，请使用 [benchmarks/README.md](benchmarks/README.md) 中的基准测试套件：
 
-```python
-import time
-import ferrocp  # 暂不可用
-import shutil
-
-# 未来基准测试示例
-start = time.time()
-ferrocp.copy("large_file.bin", "backup.bin")
-ferrocp_time = time.time() - start
-
-start = time.time()
-shutil.copy("large_file.bin", "backup_shutil.bin")
-shutil_time = time.time() - start
-
-print(f"FerroCP: {ferrocp_time:.2f}s")
-print(f"shutil:  {shutil_time:.2f}s")
-print(f"提升: {shutil_time/ferrocp_time:.1f}x 更快")
+```bash
+uv sync --group testing
+uv run nox -s benchmark          # 运行全部基准测试
+uv run nox -s benchmark_compare  # 与其他工具对比
+uv run nox -s codspeed           # CodSpeed 基准测试
 ```
-
-*性能目标基于初步研究。实际结果将在实现完成后测量和记录。*
 
 ## 🔬 开发
 
@@ -200,7 +240,7 @@ uv sync --group all
 # 或安装特定依赖组
 uv sync --group testing    # 测试工具（pytest、coverage、pytest-benchmark、pytest-codspeed）
 uv sync --group linting    # 代码质量（ruff、mypy）
-uv sync --group docs       # 文档（sphinx、mkdocs）
+uv sync --group docs       # 文档（sphinx、pydata-sphinx-theme、myst-parser）
 uv sync --group build      # 打包（build、twine、cibuildwheel）
 ```
 
@@ -210,19 +250,21 @@ uv sync --group build      # 打包（build、twine、cibuildwheel）
 
 ```bash
 # 开发构建（快速，用于测试）
-uv run maturin develop --features python
+uv run maturin develop
 
 # 发布构建（优化）
-uv run maturin develop --release --features python
+uv run maturin develop --release
 
 # 构建 Python wheel 包
-uv run maturin build --release --features python
+uv run maturin build --release
 
 # 构建独立 CLI 工具（无 Python 依赖）
 cargo build --release --bin ferrocp
 ```
 
-**注意**：CLI 工具（`ferrocp.exe`）构建时不依赖 Python，可独立运行。Python 模块需要启用 `python` 特性。
+**注意**：CLI 工具（`ferrocp.exe`）构建时不依赖 Python，可独立运行。项目不存在 `python`
+Cargo 特性 —— Python 扩展模块由 `pyproject.toml` 中 `[tool.maturin]` 指定的
+`crates/ferrocp-python` 构建。
 
 ### 测试
 
@@ -279,6 +321,22 @@ cd docs && python -c "import sys; sys.path.append('source'); import conf; print(
 # 检查依赖
 pip install sphinx>=7.0.0 pydata-sphinx-theme>=0.14.1
 ```
+
+## CI 与 VFX 平台
+
+仓库当前在 `.github/workflows/` 中包含三个 GitHub Actions 工作流：
+
+| 工作流 | 用途 |
+|--------|------|
+| `release-please.yml` | 根据 conventional commits 创建/更新 release PR |
+| `goreleaser.yml` | 交叉编译 CLI 二进制并附加到 release |
+| `test-goreleaser.yml` | 校验 GoReleaser 配置 |
+
+目前**没有**测试工作流、文档工作流和 VFX 平台测试工作流。本地检查可以使用 `scripts/`
+下的辅助脚本（例如 `scripts/local-ci-check.ps1`、`scripts/quick-ci-check.ps1` 和
+`scripts/run-tests.ps1`）。
+
+如需详细的 VFX 平台兼容性信息，请参阅 [docs/VFX_PLATFORM_COMPATIBILITY.md](docs/VFX_PLATFORM_COMPATIBILITY.md)。
 
 ## 依赖
 

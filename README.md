@@ -2,72 +2,48 @@
 
 <div align="center">
 
-[![Build Status](https://github.com/loonghao/FerroCP/workflows/Tests/badge.svg)](https://github.com/loonghao/FerroCP/actions)
+[![Release](https://github.com/loonghao/FerroCP/workflows/Release/badge.svg)](https://github.com/loonghao/FerroCP/actions)
 [![VFX Platform](https://img.shields.io/badge/VFX%20Platform-CY2025%20Compatible-brightgreen)](https://vfxplatform.com/)
-[![Python Version](https://img.shields.io/pypi/pyversions/ferrocp.svg)](https://pypi.org/project/ferrocp/)
+[![Python Version](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue)](https://github.com/loonghao/FerroCP)
 [![License](https://img.shields.io/github/license/loonghao/FerroCP.svg)](https://github.com/loonghao/FerroCP/blob/main/LICENSE)
 [![Ruff](https://img.shields.io/badge/ruff-enabled-brightgreen)](https://github.com/astral-sh/ruff)
 [![CodSpeed](https://img.shields.io/badge/CodSpeed-performance%20monitoring-blue)](https://codspeed.io/loonghao/FerroCP)
 [![Multi-Platform](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-blue)](https://github.com/loonghao/FerroCP/actions)
 
-**⚠️ WORK IN PROGRESS ⚠️**
-
 **🚀 High-Performance File Copying Tool**
 *Built with Rust for Maximum Speed and Reliability*
-
-**This project is currently under active development and is not ready for production use.**
 
 [中文文档](README_zh.md) | [Documentation](https://ferrocp.readthedocs.io/) | [Benchmarks](benchmarks/README.md)
 
 </div>
 
-**FerroCP** (Iron Copy) is a high-performance, cross-platform file copying tool written in Rust with Python bindings. Designed from the ground up for speed and reliability, FerroCP aims to deliver **2-5x faster** file operations compared to standard Python tools while maintaining a familiar, easy-to-use API.
+**FerroCP** (Iron Copy) is a high-performance, cross-platform file copying tool written in Rust with Python bindings. It provides a Rust CLI (`ferrocp`) and a Python package (`ferrocp`) with a `shutil`-compatible API.
 
-## ✨ Planned Features
+## ✨ Features
 
-### 🚀 **Performance First** (In Development)
-- **Target: 2-5x faster** than Python's `shutil` for large files
-- **Native Rust implementation** with zero-copy optimizations
-- **Multi-threaded operations** with automatic CPU detection
-- **Memory efficient** with configurable buffer sizes
-
-### 🔧 **Developer Friendly** (Planned)
-- **Drop-in replacement** for Python's `shutil` module
-- **Familiar API** - no learning curve required
-- **Type hints** and comprehensive documentation
-- **Modern tooling** with maturin and uv support
-
-### 🌍 **Cross-Platform Excellence** (In Development)
-- **Windows, Linux, macOS** native support
+### 🚀 **Implemented**
+- **Native Rust implementation** with zero-copy optimizations (`crates/ferrocp-zerocopy`)
+- **Async copy engine** with progress reporting (`ferrocp.CopyEngine`, `ferrocp.copy_file`)
+- **Shutil-compatible helpers**: `copy`, `copy2`, `copytree`
+- **Device-aware copy**: per-device analysis (type, filesystem, theoretical speeds, optimal buffer size)
+- **JSON output** for the `copy` subcommand (`--json`) for automation and benchmarking
+- **Options honoured by the copy path**: `verify`, `preserve_timestamps`, `preserve_permissions`, `enable_compression`
 - **VFX Platform compatibility** - follows [VFX Reference Platform](https://vfxplatform.com/) standards
-- **Multi-architecture support** - x86_64 and ARM64 (Apple Silicon)
-- **Consistent performance** across all platforms
-- **Platform-specific optimizations** automatically applied
-- **Unicode filename support** with proper encoding handling
 
-### 📊 **Development Status**
-- **Work in Progress** - Core functionality being implemented
-- **Testing framework** being established
-- **Performance benchmarking** infrastructure in place
-- **CI/CD pipeline** configured for future releases
+### ⚠️ **Not implemented (verified against the code on `main`)**
+- **`move` is async-unsafe**: `python/ferrocp/__init__.py` calls the async `copy_file`/`copy_directory`
+  without `await` and then deletes the source, so it loses data. Do not use it.
+- **`ferrocp sync`**, **`ferrocp verify`** and **`ferrocp config`** are parsed but print a placeholder "completed" message; the underlying logic is still `TODO` in `crates/ferrocp-cli/src/main.rs`
+- **CLI options accepted but not wired to the engine**: `--threads`, `--compression-level` and `--zero-copy` on `ferrocp copy`
+- **`CopyOptions` fields accepted but ignored by the copy path**: `mode`, `overwrite`, `buffer_size`, `num_threads`, `follow_symlinks` and `compression_level` (only `verify`, `preserve_timestamps`, `preserve_permissions` and `enable_compression` are read in `crates/ferrocp-python/src/copy.rs`)
+- **Exclude/include patterns** exist on the CLI, but `CopyOptions` exposes no pattern fields in the Python API
+- **`cargo install`** is not available: no crate has been published to crates.io
 
 ## 📦 Installation
 
-### ⚠️ Not Yet Available
+### ⚠️ No published packages
 
-**FerroCP is currently under development and not available for installation.**
-
-When ready, it will be available via:
-
-```bash
-# Future PyPI installation (not yet available)
-pip install ferrocp
-
-# Or with uv (not yet available)
-uv add ferrocp
-```
-
-### Development Installation (For Contributors)
+**No `ferrocp` distribution is published yet.** The Python package is **not on PyPI**, and no pre-built CLI archive is attached to a GitHub release, so install from source:
 
 ```bash
 # Clone the repository
@@ -76,81 +52,158 @@ cd FerroCP
 
 # Install development dependencies
 uv sync --group all
+
+# Build the Python extension module in the current environment
 uv run maturin develop --release
 
-# Note: Core functionality is still being implemented
+# Or build a wheel
+uv run maturin build --release
+
+# Build the standalone Rust CLI (no Python dependency)
+cargo build --release --bin ferrocp
 ```
 
-### Requirements (When Available)
+### Requirements
 
-- **Python 3.9+** (3.11+ recommended for best performance)
-- **Rust toolchain** (automatically installed by maturin if needed)
+- **Python 3.9+** (3.11 is the default `nox` interpreter; the extension is built with `abi3-py39`)
+- **Rust toolchain** (install from [rustup.rs](https://rustup.rs/))
 - **64-bit system** (Windows, Linux, macOS)
 
-## 🚀 Planned API (Under Development)
+## 🚀 Python API
 
-### Basic Usage (Planned Drop-in Replacement)
+All copy helpers are **async** and must be awaited — including the `shutil`-style aliases
+`copy`, `copy2` and `copytree`. Calling them without `await` only returns a coroutine.
 
-```python
-import ferrocp
-
-# Planned API - Replace shutil.copy with ferrocp.copy
-ferrocp.copy("source.txt", "destination.txt")
-
-# Copy with metadata preservation (like shutil.copy2)
-ferrocp.copy2("source.txt", "destination.txt")
-
-# Copy entire directory trees (like shutil.copytree)
-ferrocp.copytree("source_dir", "destination_dir")
-```
-
-### Advanced Configuration (Planned)
+### Basic Usage
 
 ```python
+import asyncio
 import ferrocp
 
-# Planned advanced API
-copier = ferrocp.EACopy(
-    thread_count=8,           # Use 8 threads for parallel operations
-    buffer_size=8*1024*1024,  # 8MB buffer for large files
-    compression_level=3,      # Compression for network transfers
-    verify_integrity=True     # Verify file integrity after copy
-)
+async def main():
+    # shutil-style aliases (wrappers around the async helpers)
+    await ferrocp.copy("source.txt", "destination.txt")
+    await ferrocp.copy2("source.txt", "destination.txt")
+    await ferrocp.copytree("source_dir", "destination_dir")
 
-# High-performance file copying (planned)
-copier.copy_file("large_dataset.zip", "backup/dataset.zip")
+    # Or the explicit helpers
+    result = await ferrocp.copy_file("source.txt", "destination.txt")
+    print(result.success, result.bytes_copied, result.duration_seconds)
 
-# Batch operations with progress tracking (planned)
-files_to_copy = [
-    ("data1.bin", "backup/data1.bin"),
-    ("data2.bin", "backup/data2.bin"),
-    ("data3.bin", "backup/data3.bin"),
-]
-
-for src, dst in files_to_copy:
-    result = copier.copy_file(src, dst)
-    print(f"Copied {result.bytes_copied} bytes in {result.duration:.2f}s")
+asyncio.run(main())
 ```
 
-### Command Line Interface (Planned)
+### Configuration
+
+`CopyOptions` exposes exactly these keyword arguments (defaults in parentheses):
+`mode` (`"auto"`), `overwrite` (`"prompt"`), `preserve_timestamps` (`True`),
+`preserve_permissions` (`True`), `follow_symlinks` (`False`), `enable_compression` (`False`),
+`compression_level` (`6`), `buffer_size` (`65536`), `num_threads` (`0`) and `verify` (`False`).
+
+Only `verify`, `preserve_timestamps`, `preserve_permissions` and `enable_compression`
+currently change the copy behaviour; the other fields are accepted but ignored.
+
+```python
+import asyncio
+import ferrocp
+
+async def main():
+    options = ferrocp.CopyOptions(
+        verify=True,
+        preserve_timestamps=True,
+        preserve_permissions=True,
+        enable_compression=True,
+    )
+    result = await ferrocp.copy_file("large_dataset.zip", "backup/dataset.zip", options=options)
+    print(f"Copied {result.bytes_copied} bytes in {result.duration_seconds:.2f}s")
+
+asyncio.run(main())
+```
+
+A `CopyResult` carries `bytes_copied`, `files_copied`, `duration_seconds`, `transfer_rate`,
+`success` and `error_message`.
+
+### Progress Reporting
+
+`copy_file` and `copy_directory` accept a `progress_callback`. The callback is invoked
+after the operation finishes with the final counters; `total_bytes`, `total_files` and
+`percentage` are not populated by the current implementation.
+
+```python
+import asyncio
+import ferrocp
+
+async def main():
+    def on_progress(progress):
+        print(f"Copied {progress.bytes_copied} bytes in {progress.files_copied} files")
+
+    await ferrocp.copy_file("large.bin", "backup.bin", progress_callback=on_progress)
+
+asyncio.run(main())
+```
+
+## 🖥️ Command Line Interface
+
+Two different `ferrocp` commands exist:
+
+| Command | Source | Installed by |
+|---------|--------|--------------|
+| Rust CLI (`copy`, `sync`, `verify`, `device`, `config`) | `crates/ferrocp-cli` | `cargo build --release --bin ferrocp` |
+| Python CLI (`copy`, `copy_with_server`, `benchmark`) | `python/ferrocp/cli.py` (click) | `maturin develop` / `maturin build` |
+
+### Rust CLI
+
+Global options (must come **before** the subcommand): `-d/--debug`, `-q/--quiet`,
+`-v/--verbose`, `-c/--config <PATH>`, `-V/--version`.
 
 ```bash
-# Planned CLI interface
+# Copy a file
 ferrocp copy source.txt destination.txt
 
-# Copy with options (planned)
-ferrocp copy --threads 8 --verbose large_file.zip backup/
+# Verbose is a global option: it goes before the subcommand
+ferrocp --verbose copy --threads 8 large_file.zip backup/
 
-# Directory synchronization (planned)
+# Mirror a directory (equivalent to robocopy /MIR)
 ferrocp copy --mirror source_dir/ destination_dir/
 
-# Show help (planned)
+# Structured output for automation (only the copy subcommand supports --json)
+ferrocp copy source_dir/ destination_dir/ --json
+
+# Show help
 ferrocp --help
+ferrocp copy --help
 ```
 
-## 📊 Performance Goals
+`ferrocp copy` options:
 
-FerroCP aims to achieve the following performance targets:
+| Option | Description |
+|--------|-------------|
+| `-m, --mode <MODE>` | `all` (default), `newer`, `different`, `mirror` |
+| `-t, --threads <THREADS>` | Accepted, but not wired to the engine yet |
+| `--compress` | Enable compression |
+| `--compression-level <LEVEL>` | 0-22, default `6`; accepted, but not wired to the engine yet |
+| `--zero-copy` | Enable zero-copy operations; accepted, but not wired to the engine yet |
+| `--mirror` | Mirror mode; overrides `--mode` |
+| `--exclude <PATTERN>` / `--include <PATTERN>` | Repeatable patterns |
+| `--json` | Emit the JSON result document |
+
+> `sync`, `verify` and `config` are parsed but currently only print a placeholder message;
+> the real logic is still unimplemented in `crates/ferrocp-cli/src/main.rs`.
+
+### Python CLI
+
+Provided by the `ferrocp` console script (`python/ferrocp/cli.py`):
+
+```bash
+ferrocp --version
+ferrocp --verbose copy SOURCE DESTINATION --threads 4 --buffer-size 8388608 --compression 0
+ferrocp copy_with_server SOURCE DESTINATION --server HOST --port 8080
+ferrocp benchmark
+```
+
+## 📊 Performance
+
+No measured numbers are published yet. The figures below are **targets**, not measurements:
 
 | Operation | File Size | Target FerroCP | shutil | Target Speedup |
 |-----------|-----------|----------------|--------|----------------|
@@ -160,28 +213,14 @@ FerroCP aims to achieve the following performance targets:
 | **Single File** | 100 MB | < 50 ms | 125 ms | **2.5x+ faster** |
 | **Directory Tree** | 1000 files | < 2 s | 4.8 s | **2x+ faster** |
 
-### Planned Benchmarking
+To produce your own numbers, use the benchmark suite in [benchmarks/README.md](benchmarks/README.md):
 
-```python
-import time
-import ferrocp  # Not yet available
-import shutil
-
-# Future benchmark example
-start = time.time()
-ferrocp.copy("large_file.bin", "backup.bin")
-ferrocp_time = time.time() - start
-
-start = time.time()
-shutil.copy("large_file.bin", "backup_shutil.bin")
-shutil_time = time.time() - start
-
-print(f"FerroCP: {ferrocp_time:.2f}s")
-print(f"shutil:  {shutil_time:.2f}s")
-print(f"Speedup: {shutil_time/ferrocp_time:.1f}x faster")
+```bash
+uv sync --group testing
+uv run nox -s benchmark          # run all benchmarks
+uv run nox -s benchmark_compare  # compare against other tools
+uv run nox -s codspeed           # CodSpeed benchmarks
 ```
-
-*Performance targets based on preliminary research. Actual results will be measured and documented when implementation is complete.*
 
 ## 🎬 VFX Platform Compatibility
 
@@ -197,6 +236,10 @@ FerroCP is designed to be fully compatible with the [VFX Reference Platform](htt
 | **macOS** | ARM64 | CY2025+ (macOS 14.0+) | ✅ Supported |
 | **Windows** | x86_64 | CY2025 (VS 2022 v17.6+) | ✅ Supported |
 
+> These rows describe the platforms FerroCP is designed and built for. No CI workflow
+> currently runs VFX Platform validation, so the “Supported” status is a project target
+> rather than a verified test result.
+
 ### VFX Industry Benefits
 
 - **🎭 Studio Pipeline Integration**: Optimized for render farm and artist workstation workflows
@@ -205,39 +248,21 @@ FerroCP is designed to be fully compatible with the [VFX Reference Platform](htt
 - **☁️ Cloud VFX Workflows**: ARM64 support for cost-effective cloud instances
 - **📁 Large Asset Handling**: Optimized for typical VFX file sizes (textures, geometry, renders)
 
-### VFX Platform Testing
-
-Our CI pipeline includes comprehensive VFX Platform compatibility testing:
-
-```bash
-# Run VFX Platform compatibility tests
-.github/workflows/vfx-platform-test.yml
-
-# Platforms tested:
-# - Ubuntu 22.04 (VFX CY2025 Linux) - Native x86_64 + Cross-compiled ARM64
-# - macOS 12+ (VFX CY2025 Intel)
-# - macOS 14+ (VFX CY2025+ Apple Silicon)
-# - Windows 2022 (VFX CY2025 Windows)
-```
-
-**CI Infrastructure Update**: We upgraded from Ubuntu 20.04 to Ubuntu 22.04 due to the [scheduled retirement](https://github.com/actions/runner-images/issues/11101) on 2025-04-15. Ubuntu 22.04 provides even better VFX Platform compatibility with glibc 2.35 and gcc 11.2+.
-
 For detailed VFX Platform compatibility information, see [docs/VFX_PLATFORM_COMPATIBILITY.md](docs/VFX_PLATFORM_COMPATIBILITY.md).
 
-### CI Optimization
+### CI
 
-Our CI system is optimized to reduce queue times while maintaining comprehensive testing:
+The repository currently ships three GitHub Actions workflows in `.github/workflows/`:
 
-- **🚀 Fast Core Tests**: Linux and Windows tests run on every PR
-- **🍎 Conditional macOS Tests**: Only run when needed (use `test-macos` label)
-- **🎬 VFX Platform Tests**: Comprehensive testing for releases
+| Workflow | Purpose |
+|----------|---------|
+| `release-please.yml` | Opens/updates the release PR from conventional commits |
+| `goreleaser.yml` | Cross-compiles and attaches CLI binaries to a release |
+| `test-goreleaser.yml` | Validates the GoReleaser configuration |
 
-**PR Labels for CI Control:**
-- `test-macos` - Force macOS testing
-- `all-platforms` - Test all platforms
-- `vfx-platform` - Run VFX Platform validation
-
-See [docs/CI_OPTIMIZATION.md](docs/CI_OPTIMIZATION.md) for detailed CI usage guide.
+There is currently **no** test or documentation workflow, and no VFX platform test workflow.
+Local checks are available through the helper scripts in `scripts/` (for example
+`scripts/local-ci-check.ps1`, `scripts/quick-ci-check.ps1` and `scripts/run-tests.ps1`).
 
 ## 🔬 Development
 
@@ -260,7 +285,7 @@ uv sync --group all
 # Or install specific dependency groups
 uv sync --group testing    # Testing tools (pytest, coverage, pytest-benchmark, pytest-codspeed)
 uv sync --group linting    # Code quality (ruff, mypy)
-uv sync --group docs       # Documentation (sphinx, mkdocs)
+uv sync --group docs       # Documentation (sphinx, pydata-sphinx-theme, myst-parser)
 uv sync --group build      # Packaging (build, twine, cibuildwheel)
 ```
 
@@ -270,19 +295,21 @@ This project uses **maturin** to build Rust extensions:
 
 ```bash
 # Development build with Python bindings (fast, for testing)
-uv run maturin develop --features python
+uv run maturin develop
 
 # Release build with Python bindings (optimized)
-uv run maturin develop --release --features python
+uv run maturin develop --release
 
 # Build wheel packages for Python
-uv run maturin build --release --features python
+uv run maturin build --release
 
 # Build standalone CLI tool (no Python dependencies)
 cargo build --release --bin ferrocp
 ```
 
-**Note**: The CLI tool (`ferrocp.exe`) is built without Python dependencies and can run independently. The Python module requires the `python` feature to be enabled.
+**Note**: The CLI tool (`ferrocp.exe`) is built without Python dependencies and can run
+independently. There is no `python` Cargo feature — the Python extension module is built from
+`crates/ferrocp-python` as configured in `[tool.maturin]` in `pyproject.toml`.
 
 ### Testing
 
@@ -377,20 +404,19 @@ uv run nox -s benchmark_compare
 uv run nox -s profile
 ```
 
-### Profile-Guided Optimization (PGO) Builds
-
-For maximum performance, use PGO-optimized builds:
+### Build Verification
 
 ```bash
-# Build with PGO optimization (takes longer but ~10-15% faster)
-uv run nox -s build_pgo
-
 # Regular optimized build
 uv run nox -s build
 
 # Verify build works correctly
 uv run nox -s verify_build
 ```
+
+> PGO builds are not available: the `build_pgo` nox session was removed, so
+> `make build-pgo` (and the `nox -s build_pgo` call behind it) currently fails.
+> The approach is still documented in [docs/development/PGO_BUILD.md](docs/development/PGO_BUILD.md).
 
 ### Continuous Performance Monitoring with CodSpeed
 
@@ -404,21 +430,16 @@ uv run nox -s codspeed
 uv run nox -s codspeed_all
 ```
 
-CodSpeed automatically:
-- 🔍 Detects performance regressions in pull requests
-- 📊 Provides detailed performance analysis and visualizations
-- 📈 Tracks performance trends over time
-- ✅ Integrates seamlessly with our GitHub Actions CI
-- 🚀 Uses PGO-optimized builds for accurate performance measurement
+CodSpeed benchmarks can be run locally with `uv run nox -s codspeed`. Note that no GitHub
+Actions workflow currently runs them, so CodSpeed does not report on pull requests.
 
-### Benchmark Results
+### Benchmark Targets
 
-Current performance targets:
+Unverified targets (no measured results are published yet):
 - **Small files (< 1MB)**: > 100 MB/s
 - **Large files (> 10MB)**: > 500 MB/s
 - **vs shutil**: 2-5x faster for large files
 - **vs robocopy**: Competitive performance (within 20%)
-- **PGO builds**: Additional 10-15% performance improvement
 
 See [benchmarks/README.md](benchmarks/README.md) for detailed benchmarking documentation.
 
@@ -446,13 +467,13 @@ Apache-2.0
 
 ## CI/CD Configuration
 
-This project uses GitHub Actions for CI/CD with the following workflows:
+This project uses GitHub Actions for releases:
 
-- **Build and Test**: Tests the package on multiple Python versions and operating systems.
-- **Release**: Builds and publishes wheels to PyPI when a new release is created.
-- **Documentation**: Builds and deploys documentation to GitHub Pages.
+- **Release Please** (`release-please.yml`): opens and updates the release PR from conventional commits.
+- **Release** (`goreleaser.yml`): cross-compiles the `ferrocp` CLI binaries with GoReleaser and attaches them to the GitHub release.
+- **Test GoReleaser Configuration** (`test-goreleaser.yml`): validates the GoReleaser configuration.
 
-The release workflow uses cibuildwheel to build platform-specific wheels with the Rust extensions properly compiled for each platform.
+No workflow currently publishes wheels to PyPI or deploys documentation.
 
 ### Release Process
 

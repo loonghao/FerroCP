@@ -23,8 +23,9 @@ copyright = f'{datetime.datetime.now().year}, Long Hao'
 author = 'Long Hao'
 
 # The full version, including alpha/beta/rc tags
-release = '0.2.0'
-version = '0.2'
+# Keep in sync with [workspace.package] version in Cargo.toml
+release = '0.4.1'
+version = '0.4'
 
 # -- General configuration ---------------------------------------------------
 

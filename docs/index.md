@@ -1,37 +1,50 @@
-# Your Project Name
+# FerroCP
 
-Welcome to the documentation for Your Project Name.
-
-## Overview
-
-Your Project Name is a Python library that [brief description of what your project does].
+FerroCP is a high-performance, cross-platform file copying tool written in Rust
+with Python bindings. It ships a Rust CLI (`ferrocp`) and a Python package
+(`ferrocp`) with a `shutil`-compatible API.
 
 ## Installation
 
-```bash
-pip install your-project-name
-```
-
-Or with Poetry:
+No distribution is published yet: the package is not on PyPI and no prebuilt CLI
+archive is attached to a GitHub release. Build from source:
 
 ```bash
-poetry add your-project-name
+git clone https://github.com/loonghao/FerroCP.git
+cd FerroCP
+uv sync --group all
+uv run maturin develop --release   # Python package
+cargo build --release --bin ferrocp  # standalone Rust CLI
 ```
+
+Requires Python 3.9+ and a Rust toolchain.
 
 ## Quick Start
 
 ```python
-import your_project_name
+import asyncio
+import ferrocp
 
-# Add usage examples here
+async def main():
+    result = await ferrocp.copy_file("source.txt", "destination.txt")
+    print(result.success, result.bytes_copied, result.duration_seconds)
+
+asyncio.run(main())
 ```
 
-## Features
+All copy helpers are asynchronous and must be awaited, including the
+`shutil`-style aliases `copy`, `copy2` and `copytree`.
 
-- Feature 1: Description of feature 1
-- Feature 2: Description of feature 2
-- Feature 3: Description of feature 3
+## Documentation
+
+- [Project overview](../README.md) (also available in [Chinese](../README_zh.md))
+- [Installation](source/installation.rst)
+- [Usage](source/usage.rst)
+- [API reference](source/api.rst)
+- [Performance benchmarks](../benchmarks/README.md)
+- [JSON output](JSON_OUTPUT.md)
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](https://github.com/yourusername/your-project-name/blob/main/LICENSE) file for details.
+Apache-2.0. See the [LICENSE](https://github.com/loonghao/FerroCP/blob/main/LICENSE)
+file for details.
