@@ -152,10 +152,21 @@ You can manually trigger the workflow with options:
 
 ### Homebrew (macOS/Linux)
 
-GoReleaser can automatically update a Homebrew tap:
+> **Status: not available yet.** No Homebrew install command works today.
+>
+> FerroCP has never published a release asset — the only release, `v0.0.0`, ships
+> zero assets — and `.goreleaser.yml` defines no `brews:` publisher. The
+> `loonghao/homebrew-tap` repository also contains no `ferrocp` formula.
+
+Once release assets are published, the intended install path is to tap
+`loonghao/tap` and install the `ferrocp` formula from it. Until then, build from
+source instead:
+
 ```bash
-brew tap loonghao/tap
-brew install ferrocp
+git clone https://github.com/loonghao/FerroCP.git
+cd FerroCP
+uv sync --group all
+uv run maturin develop --release
 ```
 
 ### Scoop (Windows)

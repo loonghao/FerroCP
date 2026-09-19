@@ -258,10 +258,10 @@ cd FerroCP
 uv sync --group all
 
 # Or install specific dependency groups
-uv sync --group testing    # Testing tools (pytest, coverage)
+uv sync --group testing    # Testing tools (pytest, coverage, pytest-benchmark, pytest-codspeed)
 uv sync --group linting    # Code quality (ruff, mypy)
 uv sync --group docs       # Documentation (sphinx, mkdocs)
-uv sync --group benchmark  # Performance testing tools
+uv sync --group build      # Packaging (build, twine, cibuildwheel)
 ```
 
 ### Building from Source
