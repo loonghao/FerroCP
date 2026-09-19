@@ -1,22 +1,11 @@
 Installation
 ============
 
-Stable release
--------------
+.. warning::
 
-To install FerroCP, run this command in your terminal:
-
-.. code-block:: console
-
-    $ pip install ferrocp
-
-Or with uv:
-
-.. code-block:: console
-
-    $ uv add ferrocp
-
-This is the preferred method to install FerroCP, as it will always install the most recent stable release.
+   No FerroCP distribution is published yet: the ``ferrocp`` package is not on
+   PyPI, and no prebuilt CLI archive is attached to a GitHub release. Install
+   from sources as described below.
 
 From sources
 -----------
@@ -35,12 +24,21 @@ Or download the `tarball`_:
 
     $ curl -OJL https://github.com/loonghao/ferrocp/tarball/main
 
-Once you have a copy of the source, you can install it with:
+Once you have a copy of the source, you can install the Python package with:
 
 .. code-block:: console
 
     $ uv sync
     $ uv run maturin develop --release
+
+To install the standalone Rust CLI instead (no Python dependency):
+
+.. code-block:: console
+
+    $ cargo build --release --bin ferrocp
+
+Requirements: Python 3.9 or newer (the extension is built with ``abi3-py39``)
+and a Rust toolchain from https://rustup.rs.
 
 
 .. _Github repo: https://github.com/loonghao/ferrocp
