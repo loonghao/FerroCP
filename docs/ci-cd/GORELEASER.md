@@ -88,18 +88,20 @@ ls -la dist/
 
 ### Release Process
 
-1. **Create a tag**:
-   ```bash
-   git tag -a v1.0.0 -m "Release v1.0.0"
-   git push origin v1.0.0
-   ```
+Tags are **not** created by hand. [release-please](https://github.com/googleapis/release-please)
+owns the version, the changelog and the tag:
 
-2. **Automatic Release**: The GitHub Action will automatically:
-   - Build all platform binaries
+1. Land conventional commits on `main`.
+2. Merge the release PR that `release-please` opens (`chore(main): release x.y.z`).
+3. `release-please` cuts the `vx.y.z` tag and creates the GitHub Release.
+4. `release-please.yml` then invokes this workflow for that tag, which will automatically:
+   - Build all platform binaries with `cargo zigbuild`
    - Create archives and checksums
-   - Generate release notes
-   - Create a GitHub release
-   - Upload all artifacts
+   - Upload all artifacts to the release `release-please` created
+
+Pushing a tag manually no longer starts a release. To rebuild and re-publish an
+existing tag, trigger the **Release** workflow from the Actions tab and set `ref`
+to that tag (for example `v0.4.1`).
 
 ### Manual Release
 
@@ -136,17 +138,27 @@ Individual target builder used by the main script:
 ### `.github/workflows/goreleaser.yml`
 
 Automated release workflow that:
-- Triggers on version tags (`v*`)
+- Is called by `release-please.yml` with the freshly cut tag (`workflow_call`)
+- Can also be started by hand (`workflow_dispatch`)
 - Sets up cross-compilation environment
 - Runs GoReleaser
-- Tests released binaries
 - Supports dry-run mode
+
+### Caller: `.github/workflows/release-please.yml`
+
+Runs on every push to `main`. It opens or updates the release PR, and once that PR is
+merged it cuts the tag and calls `goreleaser.yml`.
+
+The call is deliberate rather than an `on: push: tags:` trigger: GitHub does not start a
+new workflow run for events raised by the default `GITHUB_TOKEN`, and that token is what
+creates the tag. The repository history confirms it — six tags pushed by the previous
+commitizen workflow produced zero runs of this workflow.
 
 ### Workflow Dispatch
 
 You can manually trigger the workflow with options:
-- **Dry-run**: Test without creating a release
-- **Custom parameters**: Override default settings
+- **ref**: the tag or ref to build (empty means the current ref)
+- **Dry-run**: build only, without publishing
 
 ## Package Managers
 
