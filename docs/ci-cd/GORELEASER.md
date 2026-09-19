@@ -160,10 +160,21 @@ brew install ferrocp
 
 ### Scoop (Windows)
 
-Windows users can install via Scoop:
+> **Status: not available yet.** No Scoop install command works today.
+>
+> FerroCP has never published a release asset — the only release, `v0.0.0`, ships
+> zero assets — and `.goreleaser.yml` defines no `scoops:` publisher. The
+> `loonghao/scoop-bucket` repository also contains no `ferrocp` manifest.
+
+Once release assets are published, the intended install path is to add the
+`loonghao/scoop-bucket` bucket and install the `ferrocp` package from it. Until
+then, build from source instead:
+
 ```bash
-scoop bucket add ferrocp https://github.com/loonghao/scoop-bucket
-scoop install ferrocp
+git clone https://github.com/loonghao/FerroCP.git
+cd FerroCP
+uv sync --group all
+uv run maturin develop --release
 ```
 
 ## Docker Images
