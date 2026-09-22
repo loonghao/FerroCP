@@ -92,11 +92,11 @@ fn _ferrocp(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyCacheConfig>()?;
 
     // Add exceptions
-    m.add("FerrocpError", py.get_type_bound::<PyFerrocpError>())?;
-    m.add("IoError", py.get_type_bound::<PyIoError>())?;
-    m.add("ConfigError", py.get_type_bound::<PyConfigError>())?;
-    m.add("NetworkError", py.get_type_bound::<PyNetworkError>())?;
-    m.add("SyncError", py.get_type_bound::<PySyncError>())?;
+    m.add("FerrocpError", py.get_type::<PyFerrocpError>())?;
+    m.add("IoError", py.get_type::<PyIoError>())?;
+    m.add("ConfigError", py.get_type::<PyConfigError>())?;
+    m.add("NetworkError", py.get_type::<PyNetworkError>())?;
+    m.add("SyncError", py.get_type::<PySyncError>())?;
 
     // Add convenience functions
     m.add_function(wrap_pyfunction!(copy_file, m)?)?;

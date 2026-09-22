@@ -2,10 +2,11 @@
 
 use ferrocp_types::{CopyMode, NetworkProtocol};
 use pyo3::prelude::*;
+use pyo3::IntoPyObjectExt;
 use std::collections::HashMap;
 
 /// Python wrapper for copy options
-#[pyclass(name = "CopyOptions")]
+#[pyclass(name = "CopyOptions", from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PyCopyOptions {
     /// Copy mode
@@ -134,35 +135,38 @@ impl PyCopyOptions {
     }
 
     /// Convert to dictionary
-    pub fn to_dict(&self) -> HashMap<String, PyObject> {
-        Python::with_gil(|py| {
+    pub fn to_dict(&self) -> PyResult<HashMap<String, Py<PyAny>>> {
+        Python::attach(|py| {
             let mut dict = HashMap::new();
-            dict.insert("mode".to_string(), self.mode.to_object(py));
-            dict.insert("overwrite".to_string(), self.overwrite.to_object(py));
+            dict.insert("mode".to_string(), self.mode.as_str().into_py_any(py)?);
+            dict.insert(
+                "overwrite".to_string(),
+                self.overwrite.as_str().into_py_any(py)?,
+            );
             dict.insert(
                 "preserve_timestamps".to_string(),
-                self.preserve_timestamps.to_object(py),
+                self.preserve_timestamps.into_py_any(py)?,
             );
             dict.insert(
                 "preserve_permissions".to_string(),
-                self.preserve_permissions.to_object(py),
+                self.preserve_permissions.into_py_any(py)?,
             );
             dict.insert(
                 "follow_symlinks".to_string(),
-                self.follow_symlinks.to_object(py),
+                self.follow_symlinks.into_py_any(py)?,
             );
             dict.insert(
                 "enable_compression".to_string(),
-                self.enable_compression.to_object(py),
+                self.enable_compression.into_py_any(py)?,
             );
             dict.insert(
                 "compression_level".to_string(),
-                self.compression_level.to_object(py),
+                self.compression_level.into_py_any(py)?,
             );
-            dict.insert("buffer_size".to_string(), self.buffer_size.to_object(py));
-            dict.insert("num_threads".to_string(), self.num_threads.to_object(py));
-            dict.insert("verify".to_string(), self.verify.to_object(py));
-            dict
+            dict.insert("buffer_size".to_string(), self.buffer_size.into_py_any(py)?);
+            dict.insert("num_threads".to_string(), self.num_threads.into_py_any(py)?);
+            dict.insert("verify".to_string(), self.verify.into_py_any(py)?);
+            Ok(dict)
         })
     }
 
@@ -218,7 +222,7 @@ impl PyCopyOptions {
 }
 
 /// Python wrapper for network configuration
-#[pyclass(name = "NetworkConfig")]
+#[pyclass(name = "NetworkConfig", from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PyNetworkConfig {
     /// Network protocol

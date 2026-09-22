@@ -9,7 +9,7 @@ use pyo3_async_runtimes::tokio::future_into_py;
 use std::path::PathBuf;
 
 /// Python wrapper for network transfer results
-#[pyclass(name = "TransferResult")]
+#[pyclass(name = "TransferResult", from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PyTransferResult {
     /// Total bytes transferred
@@ -100,7 +100,7 @@ impl From<TransferResult> for PyTransferResult {
 }
 
 /// Python wrapper for network client
-#[pyclass(name = "NetworkClient")]
+#[pyclass(name = "NetworkClient", skip_from_py_object)]
 pub struct PyNetworkClient {
     client: Option<NetworkClient>,
 }

@@ -1,18 +1,13 @@
-//! Build script for ferrocp-python crate
-//!
-//! This build script configures the Python extension module build process.
+//! Build script for the ferrocp-python crate.
 
 fn main() {
-    // On Windows, Python extension modules should have .pyd extension
-    // PyO3 handles this automatically, but we ensure proper configuration
-
-    #[cfg(target_os = "windows")]
-    {
-        // Tell cargo to link against Python DLL
-        // This is handled by PyO3, but we can add additional configuration if needed
-        println!("cargo:rustc-link-lib=dylib=python3");
-    }
-
-    // Disable tests for cdylib crates as they cause DLL dependency issues
-    println!("cargo:rustc-cfg=disable_tests");
+    // Linking against Python is owned entirely by pyo3's own build script: it
+    // emits `rustc-link-search` for the interpreter's `libs` directory and
+    // `rustc-link-lib=pythonXY:python3` for the abi3 import library.
+    //
+    // This script previously emitted its own unconditional
+    // `cargo:rustc-link-lib=dylib=python3` on Windows. That duplicated pyo3's
+    // directive without the `pythonXY:` linker modifier, so the linker searched
+    // for a `python3.lib` it could not resolve and failed with LNK1181.
+    // Nothing here needs to run, so the script is intentionally empty.
 }

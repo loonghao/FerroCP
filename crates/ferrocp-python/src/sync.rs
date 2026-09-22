@@ -3,12 +3,13 @@
 use crate::progress::ProgressCallback;
 use ferrocp_sync::{SyncEngine, SyncOptions, SyncResult};
 use pyo3::prelude::*;
+use pyo3::IntoPyObjectExt;
 use pyo3_async_runtimes::tokio::future_into_py;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// Python wrapper for sync options
-#[pyclass(name = "SyncOptions")]
+#[pyclass(name = "SyncOptions", from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PySyncOptions {
     /// Enable incremental synchronization
@@ -119,30 +120,36 @@ impl PySyncOptions {
     }
 
     /// Convert to dictionary
-    pub fn to_dict(&self) -> HashMap<String, PyObject> {
-        Python::with_gil(|py| {
+    pub fn to_dict(&self) -> PyResult<HashMap<String, Py<PyAny>>> {
+        Python::attach(|py| {
             let mut dict = HashMap::new();
-            dict.insert("incremental".to_string(), self.incremental.to_object(py));
-            dict.insert("enable_delta".to_string(), self.enable_delta.to_object(py));
+            dict.insert("incremental".to_string(), self.incremental.into_py_any(py)?);
+            dict.insert(
+                "enable_delta".to_string(),
+                self.enable_delta.into_py_any(py)?,
+            );
             dict.insert(
                 "enable_caching".to_string(),
-                self.enable_caching.to_object(py),
+                self.enable_caching.into_py_any(py)?,
             );
-            dict.insert("delete_extra".to_string(), self.delete_extra.to_object(py));
+            dict.insert(
+                "delete_extra".to_string(),
+                self.delete_extra.into_py_any(py)?,
+            );
             dict.insert(
                 "follow_symlinks".to_string(),
-                self.follow_symlinks.to_object(py),
+                self.follow_symlinks.into_py_any(py)?,
             );
             dict.insert(
                 "preserve_permissions".to_string(),
-                self.preserve_permissions.to_object(py),
+                self.preserve_permissions.into_py_any(py)?,
             );
             dict.insert(
                 "preserve_timestamps".to_string(),
-                self.preserve_timestamps.to_object(py),
+                self.preserve_timestamps.into_py_any(py)?,
             );
-            dict.insert("dry_run".to_string(), self.dry_run.to_object(py));
-            dict
+            dict.insert("dry_run".to_string(), self.dry_run.into_py_any(py)?);
+            Ok(dict)
         })
     }
 
@@ -172,7 +179,7 @@ impl From<PySyncOptions> for SyncOptions {
 }
 
 /// Python wrapper for sync results
-#[pyclass(name = "SyncResult")]
+#[pyclass(name = "SyncResult", from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PySyncResult {
     /// Number of files synced
@@ -261,7 +268,7 @@ impl From<SyncResult> for PySyncResult {
 }
 
 /// Python wrapper for sync engine
-#[pyclass(name = "SyncEngine")]
+#[pyclass(name = "SyncEngine", skip_from_py_object)]
 pub struct PySyncEngine {
     engine: Option<SyncEngine>,
 }

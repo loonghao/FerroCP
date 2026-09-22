@@ -15,7 +15,7 @@ use crate::gil_optimization::GilOptimizationManager;
 use crate::progress::{ProgressCallback, PyProgress};
 
 /// Batch copy request containing source and destination paths
-#[pyclass(name = "BatchCopyRequest")]
+#[pyclass(name = "BatchCopyRequest", from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PyBatchCopyRequest {
     /// Source file path
@@ -47,7 +47,7 @@ impl PyBatchCopyRequest {
 }
 
 /// Batch copy result containing individual operation results
-#[pyclass(name = "BatchCopyResult")]
+#[pyclass(name = "BatchCopyResult", from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PyBatchCopyResult {
     /// Individual copy results
@@ -131,7 +131,7 @@ impl Default for PyBatchCopyResult {
 }
 
 /// Batch operations engine for efficient bulk file operations
-#[pyclass(name = "BatchCopyEngine")]
+#[pyclass(name = "BatchCopyEngine", skip_from_py_object)]
 pub struct PyBatchCopyEngine {
     gil_manager: Arc<GilOptimizationManager>,
     batch_size: usize,
@@ -265,7 +265,7 @@ impl PyBatchCopyEngine {
                     duration: gil_result.duration,
                     ..Default::default()
                 });
-                Python::with_gil(|py| {
+                Python::attach(|py| {
                     crate::progress::call_progress_callback(py, &progress_callback, &progress)
                 })?;
             }
