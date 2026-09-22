@@ -31,7 +31,7 @@ variants that matter for callers:
 | `Sync { message }` | Synchronisation failure. | — |
 | `Cancelled` | The operation was cancelled. | — |
 | `Timeout { seconds }` | The operation timed out. | — |
-| `Other { message }` | Anything else. | — |
+| `Other { message }` | Anything else. Not recoverable, since it is mostly used for permanent conditions. | — |
 | `WithContext { error, context }` | Any of the above plus structured context. | delegated |
 
 ### Recoverability
@@ -45,6 +45,11 @@ variants that matter for callers:
 | no kind available (`kind: None`) | no |
 
 An error with no kind is treated as **not** recoverable rather than guessed at.
+
+`Error::Other` is **not** recoverable either. It is the catch-all variant and most
+call sites use it for permanent conditions (the destination is a directory, a
+policy refused the copy, the platform does not support an operation), so treating
+it as retryable would retry something that cannot succeed.
 Retrying a failing operation is only safe when the failure is known to be
 transient.
 
@@ -122,7 +127,12 @@ A panic inside the extension module must not surface as
 FerrocpError`.
 
 - `catch_panic(operation, f)` runs `f` and converts a panic into a
-  `FerrocpError`.
+  `FerrocpError`. It wraps the module-level entry points (`copy_file`,
+  `copy_directory`, `copy_file_async`, `quick_copy`, `copy_with_verification`,
+  `copy_with_compression`, `copy_files_batch`, `create_batch_requests`,
+  `create_async_manager`, `get_or_insert_object`, `get_cache_stats`,
+  `clear_cache`, `configure_cache`), so the boundary is actually covered rather
+  than the mechanism merely existing.
 - Locks recover from poisoning instead of panicking: a poisoned cache lock
   previously turned one panic into a second panic at the PyO3 boundary.
 - `Default for PyCopyOptions` builds the struct directly instead of unwrapping
