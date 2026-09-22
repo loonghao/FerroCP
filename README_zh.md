@@ -325,11 +325,12 @@ pip install sphinx>=7.0.0 pydata-sphinx-theme>=0.14.1
 
 ## CI 与 VFX 平台
 
-仓库当前在 `.github/workflows/` 中包含四个 GitHub Actions 工作流：
+仓库当前在 `.github/workflows/` 中包含五个 GitHub Actions 工作流：
 
 | 工作流 | 用途 |
 |--------|------|
 | `ci.yml` | 合并门禁：Linux / Windows / macOS 三平台 Rust fmt、clippy、test，Python lint，Python 扩展模块构建，以及 `cargo deny` / `cargo audit` 依赖门禁 |
+| `cargo-lock.yml` | 依赖可复现门禁：`cargo metadata --locked` 在 manifest 改动而 `Cargo.lock` 未同步更新时失败 |
 | `release-please.yml` | 根据 conventional commits 创建/更新 release PR |
 | `goreleaser.yml` | 交叉编译 CLI 二进制并附加到 release |
 | `test-goreleaser.yml` | 校验 GoReleaser 配置 |

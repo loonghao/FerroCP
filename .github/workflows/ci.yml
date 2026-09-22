@@ -104,6 +104,14 @@ jobs:
       - name: Check every crate and target
         run: cargo check --workspace --all-targets --all-features
 
+      # Deliberately without `--all-features` (unlike the check step above).
+      # `ferrocp-python`'s `extension-module` feature turns on
+      # `pyo3/extension-module`, which stops the cdylib from linking against
+      # libpython; the crate's own Cargo.toml documents that this feature must
+      # stay off for `cargo test`. No test in the workspace is currently gated
+      # behind a non-default feature, so nothing is lost today. When one is,
+      # add a dedicated `cargo test -p <crate> --features <f>` step rather than
+      # flipping `--all-features` on here.
       - name: Run tests
         run: cargo test --workspace
 
