@@ -28,6 +28,14 @@ before:
     - cargo fmt --all -- --check
     # Create go.sum file for GoReleaser compatibility
     - touch go.sum
+    #
+    # The Rust CLI is cross-compiled by the release workflow, not by a hook
+    # here. GoReleaser runs the per-build `pre` hooks concurrently, so building
+    # there makes five `cargo zigbuild` invocations share one target directory
+    # and race on cargo's `target/.rustc_info.json` (`Error: File exists (os
+    # error 17)`); and `before` hooks would also run for the
+    # `goreleaser build` smoke test, which only wants a single target. Each
+    # build below just copies the binary the workflow already produced.
 
 # Build configuration for Rust binaries following VFX Platform standards
 builds:
@@ -41,7 +49,6 @@ builds:
       - CGO_ENABLED=0
       - BLAKE3_NO_ASM=1
     hooks:
-      pre: cargo zigbuild --bin ferrocp --target x86_64-unknown-linux-gnu --release
       post: cp target/x86_64-unknown-linux-gnu/release/ferrocp {{ .Path }}
 
   # Linux ARM64 - Modern VFX workflows (Cross-compiled)
@@ -54,7 +61,6 @@ builds:
       - CGO_ENABLED=0
       - BLAKE3_NO_ASM=1
     hooks:
-      pre: cargo zigbuild --bin ferrocp --target aarch64-unknown-linux-gnu --release
       post: cp target/aarch64-unknown-linux-gnu/release/ferrocp {{ .Path }}
 
   # macOS x86_64 - VFX Platform CY2025: macOS 12.0+ minimum deployment target
@@ -67,7 +73,6 @@ builds:
       - CGO_ENABLED=0
       - MACOSX_DEPLOYMENT_TARGET=12.0
     hooks:
-      pre: cargo zigbuild --bin ferrocp --target x86_64-apple-darwin --release
       post: cp target/x86_64-apple-darwin/release/ferrocp {{ .Path }}
 
   # macOS ARM64 (Apple Silicon) - VFX Platform CY2025+
@@ -80,7 +85,6 @@ builds:
       - CGO_ENABLED=0
       - MACOSX_DEPLOYMENT_TARGET=14.0
     hooks:
-      pre: cargo zigbuild --bin ferrocp --target aarch64-apple-darwin --release
       post: cp target/aarch64-apple-darwin/release/ferrocp {{ .Path }}
 
   # Windows x86_64 - VFX Platform CY2025: VS 2022 v17.6+, Windows SDK 10.0.20348+
@@ -92,7 +96,6 @@ builds:
     env:
       - CGO_ENABLED=0
     hooks:
-      pre: cargo zigbuild --bin ferrocp --target x86_64-pc-windows-msvc --release
       post: cp target/x86_64-pc-windows-msvc/release/ferrocp.exe {{ .Path }}
 
 

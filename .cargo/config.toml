@@ -52,21 +52,34 @@ update-deps = "update --workspace"
 security-audit = "audit --deny warnings"
 
 # Target-specific configurations
+#
+# Release artifacts are cross-compiled on GitHub-hosted runners and shipped to
+# end users, so the target CPU must be an explicit portable baseline instead of
+# `-C target-cpu=native`. `native` resolves against the *build* host, which both
+# produces binaries that crash on older CPUs (SIGILL) and breaks `cargo
+# zigbuild`: the AMD Zen 4 runner resolves `native` to `znver4`, a name zig's
+# bundled clang rejects for aarch64 targets with
+# `error: unknown target CPU 'znver4'`.
 [target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "target-cpu=native"]
+rustflags = ["-C", "target-cpu=x86-64-v2"]
 
 [target.x86_64-unknown-linux-gnu]
-rustflags = ["-C", "target-cpu=native", "-C", "link-arg=-fuse-ld=lld"]
+rustflags = ["-C", "target-cpu=x86-64-v2", "-C", "link-arg=-fuse-ld=lld"]
 
 [target.x86_64-apple-darwin]
 rustflags = [
-    "-C", "target-cpu=native",
+    "-C", "target-cpu=x86-64-v2",
     "-C", "link-arg=-Wl,-rpath,@loader_path"
 ]
 
+# No `-C target-cpu` here: cargo-zigbuild probes `zig cc -E <file> -v` without
+# a `-target` flag, so zig resolves the CPU against the build host while the
+# rustflag below still injects the target's `-mcpu`. For an aarch64 target on an
+# x86-64 runner that produces two conflicting `-target-cpu` values and zig
+# aborts with `unknown target CPU 'znver3'`. Letting zig pick its own default
+# for the triple is both portable and avoids the collision.
 [target.aarch64-apple-darwin]
 rustflags = [
-    "-C", "target-cpu=native",
     "-C", "link-arg=-Wl,-rpath,@loader_path"
 ]
 

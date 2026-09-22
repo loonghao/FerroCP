@@ -10,6 +10,7 @@ on:
       - '.goreleaser.yml'
       - '.github/workflows/goreleaser.yml'
       - '.github/workflows/test-goreleaser.yml'
+      - '.cargo/config.toml'
       - 'scripts/**'
       - 'Cargo.toml'
       - 'src/**'
