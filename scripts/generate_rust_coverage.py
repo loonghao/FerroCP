@@ -1,26 +1,19 @@
 #!/usr/bin/env python3
-"""
-Generate a basic Rust coverage report by analyzing test files and running tests.
+"""Generate a basic Rust coverage report by analyzing test files and running tests.
+
 This is a fallback solution when cargo-tarpaulin is not available.
 """
 
-import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Optional
 
 
-def run_command(cmd: List[str], cwd: Path = None) -> Tuple[int, str, str]:
+def run_command(cmd: list[str], cwd: Optional[Path] = None) -> tuple[int, str, str]:
     """Run a command and return exit code, stdout, stderr."""
     try:
-        result = subprocess.run(
-            cmd,
-            cwd=cwd or Path.cwd(),
-            capture_output=True,
-            text=True,
-            timeout=300
-        )
+        result = subprocess.run(cmd, cwd=cwd or Path.cwd(), capture_output=True, text=True, timeout=300)
         return result.returncode, result.stdout, result.stderr
     except subprocess.TimeoutExpired:
         return 1, "", "Command timed out"
@@ -28,54 +21,54 @@ def run_command(cmd: List[str], cwd: Path = None) -> Tuple[int, str, str]:
         return 1, "", str(e)
 
 
-def count_test_files(crates_dir: Path) -> Dict[str, int]:
+def count_test_files(crates_dir: Path) -> dict[str, int]:
     """Count test files in each crate."""
     crate_tests = {}
-    
+
     for crate_dir in crates_dir.iterdir():
         if not crate_dir.is_dir():
             continue
-            
+
         test_count = 0
-        
+
         # Count test files in src/ (files with #[cfg(test)] or test modules)
         src_dir = crate_dir / "src"
         if src_dir.exists():
             for rs_file in src_dir.rglob("*.rs"):
-                content = rs_file.read_text(encoding='utf-8', errors='ignore')
-                if '#[cfg(test)]' in content or 'mod tests' in content or '#[test]' in content:
+                content = rs_file.read_text(encoding="utf-8", errors="ignore")
+                if "#[cfg(test)]" in content or "mod tests" in content or "#[test]" in content:
                     test_count += 1
-        
+
         # Count test files in tests/ directory
         tests_dir = crate_dir / "tests"
         if tests_dir.exists():
             test_count += len(list(tests_dir.rglob("*.rs")))
-        
+
         if test_count > 0:
             crate_tests[crate_dir.name] = test_count
-    
+
     return crate_tests
 
 
-def run_rust_tests() -> Tuple[bool, str]:
+def run_rust_tests() -> tuple[bool, str]:
     """Run Rust tests and capture output."""
     print("Running Rust tests...")
     exit_code, stdout, stderr = run_command(["cargo", "test", "--workspace", "--all-features"])
-    
+
     if exit_code == 0:
         return True, stdout
     else:
         return False, f"STDOUT:\n{stdout}\n\nSTDERR:\n{stderr}"
 
 
-def generate_html_report(crate_tests: Dict[str, int], test_output: str, coverage_dir: Path):
+def generate_html_report(crate_tests: dict[str, int], test_output: str, coverage_dir: Path):
     """Generate an HTML coverage report."""
     total_tests = sum(crate_tests.values())
-    
+
     # Parse test results from output
     passed_tests = test_output.count("test result: ok.")
     failed_tests = test_output.count("test result: FAILED.")
-    
+
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -195,83 +188,95 @@ def generate_html_report(crate_tests: Dict[str, int], test_output: str, coverage
         
         <div class="crates">
             <h2>Crates with Tests</h2>
-            {"".join(f'''
+            {
+        "".join(
+            f'''
             <div class="crate-item">
                 <div class="crate-name">{crate}</div>
                 <div class="crate-tests">{count} test files</div>
             </div>
-            ''' for crate, count in sorted(crate_tests.items()))}
+            '''
+            for crate, count in sorted(crate_tests.items())
+        )
+    }
         </div>
     </div>
 </body>
 </html>"""
-    
-    (coverage_dir / "index.html").write_text(html_content, encoding='utf-8')
+
+    (coverage_dir / "index.html").write_text(html_content, encoding="utf-8")
 
 
-def generate_xml_report(crate_tests: Dict[str, int], coverage_dir: Path):
+def generate_xml_report(crate_tests: dict[str, int], coverage_dir: Path):
     """Generate a basic Cobertura XML report for CI systems."""
     total_tests = sum(crate_tests.values())
     # Estimate coverage based on test presence (rough approximation)
     estimated_coverage = min(0.9, 0.5 + (total_tests * 0.02))
-    
-    xml_content = f"""<?xml version="1.0" encoding="UTF-8"?>
-<coverage version="1" timestamp="{int(Path().stat().st_mtime)}" line-rate="{estimated_coverage:.2f}" branch-rate="{estimated_coverage:.2f}">
-    <sources>
-        <source>.</source>
-    </sources>
-    <packages>
-        <package name="ferrocp" line-rate="{estimated_coverage:.2f}" branch-rate="{estimated_coverage:.2f}" complexity="1">
-            <classes>
-                {"".join(f'''
-                <class name="{crate}" filename="crates/{crate}/src/lib.rs" line-rate="{estimated_coverage:.2f}" branch-rate="{estimated_coverage:.2f}" complexity="1">
+    rate = f"{estimated_coverage:.2f}"
+    timestamp = int(Path().stat().st_mtime)
+
+    classes = "".join(
+        f"""
+                <class name="{crate}" filename="crates/{crate}/src/lib.rs"
+                       line-rate="{rate}" branch-rate="{rate}" complexity="1">
                     <methods/>
                     <lines>
                         <line number="1" hits="1"/>
                     </lines>
                 </class>
-                ''' for crate in crate_tests.keys())}
+                """
+        for crate in crate_tests
+    )
+
+    xml_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<coverage version="1" timestamp="{timestamp}" line-rate="{rate}" branch-rate="{rate}">
+    <sources>
+        <source>.</source>
+    </sources>
+    <packages>
+        <package name="ferrocp" line-rate="{rate}" branch-rate="{rate}" complexity="1">
+            <classes>{classes}
             </classes>
         </package>
     </packages>
 </coverage>"""
-    
-    (coverage_dir / "cobertura.xml").write_text(xml_content, encoding='utf-8')
+
+    (coverage_dir / "cobertura.xml").write_text(xml_content, encoding="utf-8")
 
 
 def main():
-    """Main function."""
+    """Generate the coverage reports for the current checkout."""
     project_root = Path.cwd()
     crates_dir = project_root / "crates"
     coverage_dir = project_root / "coverage"
-    
+
     # Ensure coverage directory exists
     coverage_dir.mkdir(exist_ok=True)
-    
+
     print("Analyzing Rust test files...")
     crate_tests = count_test_files(crates_dir)
-    
+
     if not crate_tests:
         print("No test files found!")
         sys.exit(1)
-    
+
     print(f"Found {len(crate_tests)} crates with tests:")
     for crate, count in sorted(crate_tests.items()):
         print(f"  - {crate}: {count} test files")
-    
+
     # Run tests
     test_success, test_output = run_rust_tests()
-    
+
     if not test_success:
         print("Warning: Some tests failed")
         print(test_output)
-    
+
     # Generate reports
     print("Generating coverage reports...")
     generate_html_report(crate_tests, test_output, coverage_dir)
     generate_xml_report(crate_tests, coverage_dir)
-    
-    print(f"Coverage reports generated:")
+
+    print("Coverage reports generated:")
     print(f"  - HTML: {coverage_dir / 'index.html'}")
     print(f"  - XML:  {coverage_dir / 'cobertura.xml'}")
 

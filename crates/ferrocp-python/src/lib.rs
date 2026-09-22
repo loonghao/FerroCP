@@ -79,6 +79,7 @@ fn _ferrocp(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PySyncOptions>()?;
     m.add_class::<PyNetworkClient>()?;
     m.add_class::<PyNetworkConfig>()?;
+    m.add_class::<PyNetworkCopyEngine>()?;
     m.add_class::<PyAsyncOperation>()?;
     m.add_class::<PyAsyncManager>()?;
 

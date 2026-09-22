@@ -1,8 +1,9 @@
 """Configuration handling for FerroCP."""
 
+
 class Config:
     """Global configuration options for FerroCP.
-    
+
     Attributes:
         thread_count: Default number of threads to use for copy operations.
         compression_level: Default compression level (0-9) for network transfers.
@@ -21,29 +22,29 @@ class Config:
         """Initialize configuration with default values."""
         # Default thread count
         self.thread_count: int = 4
-        
+
         # Default compression level (0-9)
         self.compression_level: int = 0
-        
+
         # Default buffer size (8MB)
         self.buffer_size: int = 8 * 1024 * 1024
-        
+
         # Default metadata preservation
         self.preserve_metadata: bool = True
-        
+
         # Default symlink handling
         self.follow_symlinks: bool = False
-        
+
         # Default directory handling
         self.dirs_exist_ok: bool = False
-        
+
         # Zero-copy settings
         self.zerocopy_enabled: bool = True
         self.zerocopy_min_size: int = 64 * 1024  # 64KB minimum
-        
+
         # Device detection
         self.auto_detect_device: bool = True
-        
+
         # Batch processing
         self.small_file_batch_size: int = 50
 

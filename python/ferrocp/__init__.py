@@ -59,54 +59,67 @@ Advanced Usage:
     >>> sync_engine.sync_directories("dir1", "dir2", sync_options)
 """
 
+# Import built-in modules
+from pathlib import Path
+from typing import Awaitable, Callable, Optional, Union
+
 from ._ferrocp import (
+    AsyncManager,
+    # Async classes
+    AsyncOperation,
+    ConfigError,
     # Core classes
     CopyEngine,
     CopyOptions,
     CopyResult,
-    Progress,
-
-    # Sync classes
-    SyncEngine,
-    SyncOptions,
-
-    # Network classes
-    NetworkClient,
-    NetworkConfig,
-
-    # Async classes
-    AsyncOperation,
-    AsyncManager,
-
-    # Convenience functions
-    copy_file,
-    copy_directory,
-    quick_copy,
-    copy_with_verification,
-    copy_with_compression,
-    copy_file_async,
-    create_async_manager,
-    sync_directories,
-    get_version,
-
     # Exceptions
     FerrocpError,
     IoError,
+    # Network classes
+    NetworkClient,
+    NetworkConfig,
     NetworkError,
+    Progress,
+    # Sync classes
+    SyncEngine,
     SyncError,
-    ConfigError,
+    SyncOptions,
+    copy_directory,
+    # Convenience functions
+    copy_file,
+    copy_file_async,
+    copy_with_compression,
+    copy_with_verification,
+    create_async_manager,
+    get_version,
+    quick_copy,
+    sync_directories,
 )
 
 # Re-export with Python-friendly names
 from ._ferrocp import (
     CopyEngine as Engine,
+)
+from ._ferrocp import (
     CopyOptions as Options,
+)
+from ._ferrocp import (
     CopyResult as Result,
-    Progress as ProgressInfo,
-    SyncEngine as Synchronizer,
-    SyncOptions as SyncConfig,
+)
+from ._ferrocp import (
     NetworkClient as Client,
+)
+from ._ferrocp import (
     NetworkConfig as ClientConfig,
+)
+from ._ferrocp import (
+    Progress as ProgressInfo,
+)
+from ._ferrocp import (
+    SyncEngine as Synchronizer,
+)
+from ._ferrocp import (
+    SyncOptions as SyncConfig,
 )
 
 # Version information
@@ -130,17 +143,14 @@ __all__ = [
     "copy_with_verification",
     "copy_with_compression",
     "sync_directories",
-
     # Shutil-compatible aliases
     "copy",
     "copy2",
     "copytree",
     "move",
-
     # Async functionality
     "copy_file_async",
     "create_async_manager",
-
     # Classes
     "CopyEngine",
     "CopyOptions",
@@ -152,7 +162,6 @@ __all__ = [
     "NetworkConfig",
     "AsyncOperation",
     "AsyncManager",
-
     # Aliases
     "Engine",
     "Options",
@@ -162,20 +171,16 @@ __all__ = [
     "SyncConfig",
     "Client",
     "ClientConfig",
-
     # Exceptions
     "FerrocpError",
     "IoError",
     "NetworkError",
     "SyncError",
     "ConfigError",
-
     # Utilities
     "get_version",
-
     # Backward compatibility
     "EACopy",
-
     # Metadata
     "__version__",
     "__eacopy_version__",
@@ -226,7 +231,11 @@ def get_statistics() -> dict:
     return engine.get_statistics()
 
 
-def move(src, dst, copy_function=copy_file):
+def move(
+    src: Union[str, Path],
+    dst: Union[str, Path],
+    copy_function: Callable[..., Awaitable[CopyResult]] = copy_file,
+) -> str:
     """
     Move a file or directory tree to another location.
 
@@ -240,9 +249,6 @@ def move(src, dst, copy_function=copy_file):
     Returns:
         The destination path
     """
-    import os
-    from pathlib import Path
-
     src_path = Path(src)
     dst_path = Path(dst)
 
@@ -259,6 +265,7 @@ def move(src, dst, copy_function=copy_file):
     # Remove the source
     if src_path.is_dir():
         import shutil
+
         shutil.rmtree(src_path)
     else:
         src_path.unlink()
@@ -274,7 +281,13 @@ class EACopy:
     This class provides compatibility with existing code that uses the EACopy interface.
     """
 
-    def __init__(self, thread_count=4, buffer_size=64*1024, compression_level=0, verify_integrity=False):
+    def __init__(
+        self,
+        thread_count: int = 4,
+        buffer_size: int = 64 * 1024,
+        compression_level: int = 0,
+        verify_integrity: bool = False,
+    ) -> None:
         """Initialize EACopy with configuration options."""
         self.engine = CopyEngine()
         self.default_options = CopyOptions()
@@ -284,13 +297,24 @@ class EACopy:
         self.default_options.enable_compression = compression_level > 0
         self.default_options.verify = verify_integrity
 
-    def copy_file(self, source, destination, options=None):
+    def copy_file(
+        self,
+        source: str,
+        destination: str,
+        options: Optional[CopyOptions] = None,
+    ) -> Awaitable[CopyResult]:
         """Copy a single file."""
         copy_options = options or self.default_options
         result = self.engine.copy_file(source, destination, copy_options)
         return result
 
-    def copy_with_server(self, source, destination, server, port=8080):
+    def copy_with_server(
+        self,
+        source: str,
+        destination: str,
+        server: str,
+        port: int = 8080,
+    ) -> CopyResult:
         """Copy file using network transfer through a server.
 
         Args:
