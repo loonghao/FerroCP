@@ -16,6 +16,15 @@ use tokio::fs;
 #[cfg(target_os = "macos")]
 use tracing::{debug, warn};
 
+/// `COPYFILE_ALL` from `<copyfile.h>`: copy data plus all metadata.
+///
+/// `libc` exposes the individual `COPYFILE_*` bits but not this aggregate, so
+/// spell it out the same way the header does:
+/// `COPYFILE_METADATA | COPYFILE_DATA`, where `COPYFILE_METADATA` already
+/// covers security (stat + ACL) and extended attributes.
+#[cfg(target_os = "macos")]
+const COPYFILE_ALL: libc::copyfile_flags_t = libc::COPYFILE_METADATA | libc::COPYFILE_DATA;
+
 #[cfg(target_os = "macos")]
 /// macOS zero-copy implementation
 #[derive(Debug)]
@@ -88,7 +97,7 @@ impl MacOSZeroCopy {
                 source_cstr.as_ptr(),
                 dest_cstr.as_ptr(),
                 ptr::null_mut(),
-                libc::COPYFILE_ALL,
+                COPYFILE_ALL,
             )
         };
 
@@ -177,23 +186,17 @@ impl MacOSZeroCopy {
             return Err(Error::zero_copy("Failed to get filesystem information"));
         }
 
-        // Compare filesystem IDs
-        // Note: fsid_t structure varies between macOS versions and architectures
-        // On some systems it has 'val' field, on others it's different
-        #[cfg(target_arch = "aarch64")]
-        {
-            // On Apple Silicon, fsid_t might have different field names
-            // Use unsafe transmute to access the raw bytes for comparison
-            let source_fsid_bytes: [u8; 8] = unsafe { std::mem::transmute(source_statfs.f_fsid) };
-            let dest_fsid_bytes: [u8; 8] = unsafe { std::mem::transmute(dest_statfs.f_fsid) };
-            Ok(source_fsid_bytes == dest_fsid_bytes)
-        }
-        #[cfg(not(target_arch = "aarch64"))]
-        {
-            // On Intel Macs, use the traditional val field access
-            Ok(source_statfs.f_fsid.val[0] == dest_statfs.f_fsid.val[0]
-                && source_statfs.f_fsid.val[1] == dest_statfs.f_fsid.val[1])
-        }
+        // Compare filesystem IDs.
+        //
+        // `libc::fsid_t` is `{ __fsid_val: [i32; 2] }` on every Apple target and
+        // the field is private, so it has to be read as raw bytes. Comparing the
+        // two `fsid_t` values directly is not an option either: `fsid_t` does not
+        // implement `PartialEq`.
+        let source_fsid: [i32; 2] =
+            unsafe { std::mem::transmute::<libc::fsid_t, [i32; 2]>(source_statfs.f_fsid) };
+        let dest_fsid: [i32; 2] =
+            unsafe { std::mem::transmute::<libc::fsid_t, [i32; 2]>(dest_statfs.f_fsid) };
+        Ok(source_fsid == dest_fsid)
     }
 
     /// Check if a path exists
