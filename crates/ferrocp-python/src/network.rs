@@ -1,9 +1,10 @@
 //! Network functionality for Python bindings
 
 use crate::config::PyNetworkConfig;
+use crate::copy::PyCopyResult;
 use crate::error::IntoPyResult;
 use crate::progress::{ProgressCallback, PyProgress};
-use ferrocp_network::{ClientConfig, NetworkClient, TransferResult};
+use ferrocp_network::{ClientConfig, NetworkClient, TransferRequest, TransferResult};
 use pyo3::prelude::*;
 use pyo3_async_runtimes::tokio::future_into_py;
 use std::path::PathBuf;
@@ -215,6 +216,59 @@ impl PyNetworkClient {
             } else {
                 Ok(false)
             }
+        })
+    }
+}
+
+/// Python wrapper for the network backed copy engine
+///
+/// `EACopy.copy_with_server` historically reached for a `NetworkCopyEngine` that
+/// was never registered on the extension module, so the call raised
+/// `ImportError` instead of transferring anything. This class closes that gap by
+/// driving `ferrocp_network::NetworkClient` directly.
+#[pyclass(name = "NetworkCopyEngine", skip_from_py_object)]
+pub struct PyNetworkCopyEngine;
+
+#[pymethods]
+impl PyNetworkCopyEngine {
+    /// Create a new network copy engine
+    #[new]
+    pub fn new() -> Self {
+        Self
+    }
+
+    /// Copy `source` to `destination` through a FerroCP server
+    ///
+    /// `server` is the host name or IP address of the ferrocp-network server and
+    /// `port` is the port it listens on. The transfer runs to completion on the
+    /// shared Tokio runtime, so the call blocks the calling Python thread until
+    /// the transfer finishes or fails.
+    #[pyo3(signature = (source, destination, server, port = 8080))]
+    pub fn copy_with_server(
+        &self,
+        source: String,
+        destination: String,
+        server: String,
+        port: u16,
+    ) -> PyResult<PyCopyResult> {
+        let server_addr = format!("{}:{}", server, port);
+        let request = TransferRequest::new(&source, &destination);
+
+        let result = pyo3_async_runtimes::tokio::get_runtime().block_on(async {
+            let mut client = NetworkClient::new().await.into_py_result()?;
+            client
+                .transfer_file(&server_addr, request)
+                .await
+                .into_py_result()
+        })?;
+
+        Ok(PyCopyResult {
+            bytes_copied: result.bytes_transferred,
+            files_copied: result.stats.files_copied,
+            duration_seconds: result.duration.as_secs_f64(),
+            transfer_rate: result.average_speed,
+            success: true,
+            error_message: None,
         })
     }
 }

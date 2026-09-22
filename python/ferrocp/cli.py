@@ -1,30 +1,34 @@
 """Command-line interface for ferrocp."""
 
+# Import built-in modules
 import asyncio
+import queue
 import sys
+import threading
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Coroutine, Optional, TypeVar
 
+# Import third-party modules
 import click
 
-from . import CopyEngine, CopyOptions, __version__
+# Import local modules
+from . import CopyEngine, CopyOptions, CopyResult, __version__
+
+_T = TypeVar("_T")
 
 
-def run_async_safely(coro):
+def run_async_safely(coro: Coroutine[Any, Any, _T]) -> _T:
     """Run an async coroutine safely, handling existing event loops."""
     try:
         # Check if there's already a running event loop
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
         # If we're here, there's already a loop running
         # We need to use a different approach - run in a new thread with a new loop
-        import threading
-        import queue
+        result_queue: queue.Queue[_T] = queue.Queue()
+        exception_queue: queue.Queue[BaseException] = queue.Queue()
 
-        result_queue = queue.Queue()
-        exception_queue = queue.Queue()
-
-        def run_in_thread():
+        def run_in_thread() -> None:
             try:
                 # Create a new event loop for this thread
                 new_loop = asyncio.new_event_loop()
@@ -65,11 +69,29 @@ def cli(ctx: click.Context, verbose: bool) -> None:
 @click.argument("source", type=click.Path(exists=True, path_type=Path))
 @click.argument("destination", type=click.Path(path_type=Path))
 @click.option("--threads", "-t", type=int, default=4, help="Number of threads to use")
-@click.option("--buffer-size", "-b", type=int, default=8*1024*1024, help="Buffer size in bytes")
-@click.option("--compression", "-c", type=int, default=0, help="Compression level (0-9)")
-@click.option("--preserve-metadata/--no-preserve-metadata", default=True, help="Preserve file metadata")
-@click.option("--follow-symlinks/--no-follow-symlinks", default=False, help="Follow symbolic links")
-@click.option("--zerocopy/--no-zerocopy", default=True, help="Enable zero-copy operations")
+@click.option(
+    "--buffer-size",
+    "-b",
+    type=int,
+    default=8 * 1024 * 1024,
+    help="Buffer size in bytes",
+)
+@click.option(
+    "--compression", "-c", type=int, default=0, help="Compression level (0-9)"
+)
+@click.option(
+    "--preserve-metadata/--no-preserve-metadata",
+    default=True,
+    help="Preserve file metadata",
+)
+@click.option(
+    "--follow-symlinks/--no-follow-symlinks",
+    default=False,
+    help="Follow symbolic links",
+)
+@click.option(
+    "--zerocopy/--no-zerocopy", default=True, help="Enable zero-copy operations"
+)
 @click.option("--progress/--no-progress", default=True, help="Show progress")
 @click.pass_context
 def copy(
@@ -89,7 +111,9 @@ def copy(
 
     if verbose:
         click.echo(f"Copying {source} to {destination}")
-        click.echo(f"Threads: {threads}, Buffer: {buffer_size}, Compression: {compression}")
+        click.echo(
+            f"Threads: {threads}, Buffer: {buffer_size}, Compression: {compression}"
+        )
 
     # Create CopyEngine instance with configuration
     engine = CopyEngine()
@@ -103,6 +127,7 @@ def copy(
 
     # Set up progress callback if requested
     if progress:
+
         def progress_callback(current: int, total: int, filename: str) -> None:
             if total > 0:
                 percent = (current / total) * 100
@@ -117,11 +142,13 @@ def copy(
         start_time = time.time()
 
         # Run the async copy operation
-        async def run_copy():
+        async def run_copy() -> CopyResult:
             if source.is_file():
                 return await engine.copy_file(str(source), str(destination), options)
             else:
-                return await engine.copy_directory(str(source), str(destination), options)
+                return await engine.copy_directory(
+                    str(source), str(destination), options
+                )
 
         # Run the async operation safely
         stats = run_async_safely(run_copy())
@@ -132,7 +159,9 @@ def copy(
 
         # Display results
         duration = end_time - start_time
-        speed_mbps = (stats.bytes_copied / (1024 * 1024)) / duration if duration > 0 else 0
+        speed_mbps = (
+            (stats.bytes_copied / (1024 * 1024)) / duration if duration > 0 else 0
+        )
 
         click.echo("✓ Copy completed successfully!")
         click.echo(f"  Files copied: {stats.files_copied}")
@@ -174,13 +203,14 @@ def copy_with_server(
     if verbose:
         click.echo(f"Copying {source} to {destination} via server {server}:{port}")
 
-    engine = CopyEngine()
-    options = CopyOptions()
+    CopyEngine()
+    CopyOptions()
 
     try:
         # Use EACopy for server-based copying
         from . import EACopy
-        eacopy = EACopy(thread_count=4, buffer_size=64*1024)
+
+        eacopy = EACopy(thread_count=4, buffer_size=64 * 1024)
         stats = eacopy.copy_with_server(str(source), str(destination), server, port)
         click.echo(f"✓ Network copy completed! Copied {stats.bytes_copied:,} bytes")
     except Exception as e:
@@ -200,7 +230,7 @@ def benchmark() -> None:
     try:
         # Create test files of different sizes
         test_files = [
-            ("small.txt", 1024),          # 1KB
+            ("small.txt", 1024),  # 1KB
             ("medium.txt", 1024 * 1024),  # 1MB
             ("large.txt", 10 * 1024 * 1024),  # 10MB
         ]
@@ -214,18 +244,19 @@ def benchmark() -> None:
         engine = CopyEngine()
         options = CopyOptions()
 
+        # `source` and `dest` are passed explicitly so the coroutine below binds
+        # them per iteration instead of capturing the loop variables by closure.
+        async def run_benchmark_copy(source: Path, dest: Path) -> CopyResult:
+            return await engine.copy_file(str(source), str(dest), options)
+
         for filename, size in test_files:
             source = test_dir / filename
             dest = test_dir / f"copy_{filename}"
 
             start_time = time.time()
 
-            # Run async copy operation
-            async def run_benchmark_copy():
-                return await engine.copy_file(str(source), str(dest), options)
-
             # Run the async operation safely
-            run_async_safely(run_benchmark_copy())
+            run_async_safely(run_benchmark_copy(source, dest))
             duration = time.time() - start_time
 
             speed_mbps = (size / (1024 * 1024)) / duration if duration > 0 else 0

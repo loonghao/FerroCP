@@ -1,6 +1,4 @@
-# FerroCP Benchmark Scripts Package
-"""
-This package contains all benchmark-related scripts and utilities for FerroCP.
+"""FerroCP benchmark scripts package.
 
 Modules:
 - analyzer: Main performance analysis functionality

@@ -9,11 +9,10 @@ This script automates the build process including:
 - Running tests
 """
 
-import os
-import sys
+import platform
 import shutil
 import subprocess
-import platform
+import sys
 from pathlib import Path
 
 
@@ -66,43 +65,45 @@ def get_python_extension():
 def build_rust_extension(release=True):
     """Build the Rust extension."""
     print("Building Rust extension...")
-    
+
     project_root = get_project_root()
-    
+
     cmd = ["cargo", "build", "-p", "ferrocp-python"]
     if release:
         cmd.append("--release")
-    
+
     run_command(cmd, cwd=project_root)
-    
+
     # Determine source and destination paths
     build_type = "release" if release else "debug"
     target_dir = get_target_dir() / build_type
-    
+
     lib_name = f"ferrocp_python{get_library_extension()}"
     source_lib = target_dir / lib_name
-    
+
     python_dir = get_python_dir()
     dest_lib = python_dir / "ferrocp" / f"_ferrocp{get_python_extension()}"
-    
+
     if not source_lib.exists():
         raise FileNotFoundError(f"Built library not found: {source_lib}")
-    
+
     print(f"Copying {source_lib} to {dest_lib}")
     shutil.copy2(source_lib, dest_lib)
-    
+
     return dest_lib
 
 
 def install_dependencies():
     """Install Python dependencies."""
     print("Installing Python dependencies...")
-    
+
     python_dir = get_python_dir()
-    
+
     # Install build dependencies
-    run_command([sys.executable, "-m", "pip", "install", "maturin", "wheel", "setuptools"])
-    
+    run_command(
+        [sys.executable, "-m", "pip", "install", "maturin", "wheel", "setuptools"]
+    )
+
     # Install package in development mode
     run_command([sys.executable, "-m", "pip", "install", "-e", "."], cwd=python_dir)
 
@@ -110,12 +111,12 @@ def install_dependencies():
 def run_tests():
     """Run the test suite."""
     print("Running tests...")
-    
+
     python_dir = get_python_dir()
-    
+
     # Install test dependencies
     run_command([sys.executable, "-m", "pip", "install", "pytest", "pytest-asyncio"])
-    
+
     # Run tests
     test_dir = python_dir / "tests"
     if test_dir.exists():
@@ -127,26 +128,26 @@ def run_tests():
 def build_wheel():
     """Build a wheel package."""
     print("Building wheel package...")
-    
+
     python_dir = get_python_dir()
-    
+
     # Clean previous builds
     dist_dir = python_dir / "dist"
     if dist_dir.exists():
         shutil.rmtree(dist_dir)
-    
+
     build_dir = python_dir / "build"
     if build_dir.exists():
         shutil.rmtree(build_dir)
-    
+
     # Build wheel
     run_command([sys.executable, "setup.py", "bdist_wheel"], cwd=python_dir)
-    
+
     # List built wheels
     if dist_dir.exists():
         wheels = list(dist_dir.glob("*.whl"))
         if wheels:
-            print(f"Built wheels:")
+            print("Built wheels:")
             for wheel in wheels:
                 print(f"  {wheel}")
         else:
@@ -157,9 +158,9 @@ def create_setup_py():
     """Create a minimal setup.py for wheel building."""
     python_dir = get_python_dir()
     setup_py = python_dir / "setup.py"
-    
+
     if not setup_py.exists():
-        setup_content = '''
+        setup_content = """
 from setuptools import setup, find_packages
 
 # Read version from pyproject.toml or use a default
@@ -181,7 +182,7 @@ setup(
     include_package_data=True,
     zip_safe=False,
 )
-'''
+"""
         setup_py.write_text(setup_content.strip())
         print(f"Created {setup_py}")
 
@@ -189,10 +190,10 @@ setup(
 def clean():
     """Clean build artifacts."""
     print("Cleaning build artifacts...")
-    
+
     python_dir = get_python_dir()
-    project_root = get_project_root()
-    
+    get_project_root()
+
     # Clean Python build artifacts
     for pattern in ["build", "dist", "*.egg-info", "__pycache__"]:
         for path in python_dir.rglob(pattern):
@@ -202,13 +203,13 @@ def clean():
             elif path.is_file():
                 path.unlink()
                 print(f"Removed {path}")
-    
+
     # Clean Rust build artifacts
     target_dir = get_target_dir()
     if target_dir.exists():
         shutil.rmtree(target_dir)
         print(f"Removed {target_dir}")
-    
+
     # Remove compiled extension
     ferrocp_dir = python_dir / "ferrocp"
     for ext in [".pyd", ".so", ".dylib"]:
@@ -221,44 +222,46 @@ def clean():
 def main():
     """Main build function."""
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Build FerroCP Python package")
     parser.add_argument("--clean", action="store_true", help="Clean build artifacts")
     parser.add_argument("--debug", action="store_true", help="Build in debug mode")
     parser.add_argument("--no-tests", action="store_true", help="Skip running tests")
     parser.add_argument("--wheel", action="store_true", help="Build wheel package")
-    parser.add_argument("--install-deps", action="store_true", help="Install dependencies")
-    
+    parser.add_argument(
+        "--install-deps", action="store_true", help="Install dependencies"
+    )
+
     args = parser.parse_args()
-    
+
     try:
         if args.clean:
             clean()
             return
-        
+
         if args.install_deps:
             install_dependencies()
-        
+
         # Create setup.py if needed for wheel building
         if args.wheel:
             create_setup_py()
-        
+
         # Build the Rust extension
         build_rust_extension(release=not args.debug)
-        
+
         # Run tests unless skipped
         if not args.no_tests:
             try:
                 run_tests()
             except subprocess.CalledProcessError:
                 print("Tests failed, but continuing with build...")
-        
+
         # Build wheel if requested
         if args.wheel:
             build_wheel()
-        
+
         print("\nBuild completed successfully!")
-        
+
     except Exception as e:
         print(f"Build failed: {e}")
         sys.exit(1)

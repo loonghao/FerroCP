@@ -6,8 +6,6 @@ the new dependency-groups format and uv package manager.
 
 import os
 import shutil
-import subprocess
-import sys
 from pathlib import Path
 
 import nox
@@ -57,11 +55,7 @@ def check_build_environment(session):
     preferred_linker = None
 
     # Check for available linkers in order of preference
-    linkers = [
-        ("lld", "lld"),
-        ("clang", "clang"),
-        ("ld", "ld")
-    ]
+    linkers = [("lld", "lld"), ("clang", "clang"), ("ld", "ld")]
 
     for linker_name, command in linkers:
         if shutil.which(command):
@@ -82,10 +76,7 @@ def check_build_environment(session):
     session.log("Setting up build environment...")
 
     # Basic environment variables
-    env_vars = {
-        "CARGO_NET_GIT_FETCH_WITH_CLI": "true",
-        "RUSTFLAGS": "-C opt-level=3"
-    }
+    env_vars = {"CARGO_NET_GIT_FETCH_WITH_CLI": "true", "RUSTFLAGS": "-C opt-level=3"}
 
     # Configure linker based on what's available
     if preferred_linker:
@@ -93,17 +84,13 @@ def check_build_environment(session):
 
         if linker_name == "clang":
             # Use clang as both compiler and linker (most reliable)
-            env_vars.update({
-                "CC": "clang",
-                "CXX": "clang++",
-                "RUSTFLAGS": env_vars["RUSTFLAGS"] + " -C linker=clang"
-            })
-            session.log(f"✅ Using clang as compiler and linker")
+            env_vars.update({"CC": "clang", "CXX": "clang++", "RUSTFLAGS": env_vars["RUSTFLAGS"] + " -C linker=clang"})
+            session.log("✅ Using clang as compiler and linker")
 
         elif linker_name == "lld":
             # Use lld linker (fast and reliable)
             env_vars["RUSTFLAGS"] += " -C link-arg=-fuse-ld=lld"
-            session.log(f"✅ Using lld linker")
+            session.log("✅ Using lld linker")
 
         else:
             # Use system default linker
@@ -125,7 +112,7 @@ def safe_maturin_build(session, *args, **kwargs):
     and error handling, following the project's established patterns.
     """
     # Extract custom env from kwargs if provided
-    custom_env = kwargs.pop('env', None)
+    custom_env = kwargs.pop("env", None)
 
     # Check build environment first (but skip if custom env is provided for PGO)
     if not custom_env and not check_build_environment(session):
@@ -149,7 +136,7 @@ def safe_maturin_build(session, *args, **kwargs):
             # Reset environment to minimal settings
             fallback_env = {
                 "CARGO_NET_GIT_FETCH_WITH_CLI": "true",
-                "RUSTFLAGS": "-C opt-level=1"  # Lower optimization for compatibility
+                "RUSTFLAGS": "-C opt-level=1",  # Lower optimization for compatibility
             }
 
             # If there was a custom env, merge it with fallback
@@ -286,8 +273,7 @@ def codspeed(session):
 
     # Generate test data if needed
     os.makedirs("benchmarks/data/test_files", exist_ok=True)
-    session.run("python", "benchmarks/data/generate_test_data.py",
-                "--output-dir", "benchmarks/data/test_files")
+    session.run("python", "benchmarks/data/generate_test_data.py", "--output-dir", "benchmarks/data/test_files")
 
     session.log("Running CodSpeed benchmarks...")
     session.run("pytest", "benchmarks/test_codspeed.py", "--codspeed")
@@ -303,8 +289,7 @@ def codspeed_all(session):
 
     # Generate test data if needed
     os.makedirs("benchmarks/data/test_files", exist_ok=True)
-    session.run("python", "benchmarks/data/generate_test_data.py",
-                "--output-dir", "benchmarks/data/test_files")
+    session.run("python", "benchmarks/data/generate_test_data.py", "--output-dir", "benchmarks/data/test_files")
 
     session.log("Running all CodSpeed benchmarks...")
     session.run("pytest", "benchmarks/", "--codspeed", "-k", "not comparison")
@@ -325,14 +310,20 @@ def rust_coverage(session):
 
         session.log("Running cargo-tarpaulin...")
         session.run(
-            "cargo", "tarpaulin",
+            "cargo",
+            "tarpaulin",
             "--workspace",
             "--all-features",
-            "--out", "xml", "html", "lcov",
-            "--output-dir", "coverage/",
-            "--timeout", "120",
+            "--out",
+            "xml",
+            "html",
+            "lcov",
+            "--output-dir",
+            "coverage/",
+            "--timeout",
+            "120",
             "--skip-clean",
-            external=True
+            external=True,
         )
 
         session.log("Tarpaulin coverage report generated successfully")
@@ -355,7 +346,7 @@ def rust_coverage(session):
         if coverage_html.exists():
             session.log(f"  - HTML: {coverage_html}")
         if Path("coverage/lcov.info").exists():
-            session.log(f"  - LCOV: coverage/lcov.info")
+            session.log("  - LCOV: coverage/lcov.info")
     else:
         session.log("Warning: No coverage files generated")
 
@@ -503,7 +494,10 @@ def verify_build(session):
     session.run("pip", "install", str(latest_wheel), "--force-reinstall")
 
     # Test basic functionality - just import and create objects
-    session.run("python", "-c", """
+    session.run(
+        "python",
+        "-c",
+        """
 import ferrocp
 import tempfile
 from pathlib import Path
@@ -533,6 +527,7 @@ try:
 except Exception as e:
     print(f'❌ Test failed: {e}')
     raise
-""")
+""",
+    )
 
     session.log("✅ Wheel verification completed successfully!")

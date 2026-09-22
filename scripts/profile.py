@@ -8,7 +8,6 @@ import time
 from pathlib import Path
 
 
-
 def create_test_file(path: Path, size: int):
     """Create a test file with specified size."""
     data = bytearray()
@@ -19,22 +18,28 @@ def create_test_file(path: Path, size: int):
             data.append(255)  # Compressible ones
         else:
             data.append(i % 256)  # Semi-random
-    
+
     path.write_bytes(data)
 
 
 def profile_with_py_spy(script_path: Path, output_path: Path, duration: int = 30):
     """Profile using py-spy."""
     print(f"Profiling with py-spy for {duration} seconds...")
-    
+
     cmd = [
-        "py-spy", "record",
-        "-o", str(output_path),
-        "-d", str(duration),
-        "-f", "speedscope",
-        "--", "python", str(script_path)
+        "py-spy",
+        "record",
+        "-o",
+        str(output_path),
+        "-d",
+        str(duration),
+        "-f",
+        "speedscope",
+        "--",
+        "python",
+        str(script_path),
     ]
-    
+
     try:
         subprocess.run(cmd, check=True)
         print(f"Profile saved to {output_path}")
@@ -47,26 +52,27 @@ def profile_with_py_spy(script_path: Path, output_path: Path, duration: int = 30
 def profile_with_cprofile(script_path: Path, output_path: Path):
     """Profile using cProfile."""
     print("Profiling with cProfile...")
-    
-    cmd = [
-        "python", "-m", "cProfile",
-        "-o", str(output_path),
-        str(script_path)
-    ]
-    
+
+    cmd = ["python", "-m", "cProfile", "-o", str(output_path), str(script_path)]
+
     try:
         subprocess.run(cmd, check=True)
         print(f"Profile saved to {output_path}")
-        
+
         # Also generate text output
         text_output = output_path.with_suffix(".txt")
         with open(text_output, "w") as f:
-            subprocess.run([
-                "python", "-c",
-                f"import pstats; pstats.Stats('{output_path}').sort_stats('cumulative').print_stats(50)"
-            ], stdout=f, check=True)
+            subprocess.run(
+                [
+                    "python",
+                    "-c",
+                    f"import pstats; pstats.Stats('{output_path}').sort_stats('cumulative').print_stats(50)",
+                ],
+                stdout=f,
+                check=True,
+            )
         print(f"Text profile saved to {text_output}")
-        
+
     except subprocess.CalledProcessError as e:
         print(f"cProfile profiling failed: {e}")
 
@@ -74,12 +80,9 @@ def profile_with_cprofile(script_path: Path, output_path: Path):
 def memory_profile(script_path: Path, output_path: Path):
     """Profile memory usage."""
     print("Profiling memory usage...")
-    
-    cmd = [
-        "python", "-m", "memory_profiler",
-        str(script_path)
-    ]
-    
+
+    cmd = ["python", "-m", "memory_profiler", str(script_path)]
+
     try:
         with open(output_path, "w") as f:
             subprocess.run(cmd, stdout=f, check=True)
@@ -93,7 +96,7 @@ def memory_profile(script_path: Path, output_path: Path):
 def create_benchmark_script(temp_dir: Path, test_type: str) -> Path:
     """Create a benchmark script for profiling."""
     script_path = temp_dir / "benchmark_script.py"
-    
+
     if test_type == "file_copy":
         script_content = f'''
 import ferrocp
@@ -123,7 +126,7 @@ for i in range(10):
     ferrocp.copy(str(source), str(dest))
     print(f"Copy {{i+1}}/10 completed")
 '''
-    
+
     elif test_type == "directory_copy":
         script_content = f'''
 import ferrocp
@@ -149,7 +152,7 @@ for i in range(5):
     ferrocp.copytree(str(source_dir), str(dest_dir))
     print(f"Directory copy {{i+1}}/5 completed")
 '''
-    
+
     elif test_type == "compression":
         script_content = f'''
 import ferrocp
@@ -177,54 +180,57 @@ for level in [0, 1, 3, 6, 9]:
     engine.copy_file(str(source), str(dest), options)
     print(f"Compression level {{level}} completed")
 '''
-    
+
     else:
         raise ValueError(f"Unknown test type: {test_type}")
-    
+
     script_path.write_text(script_content)
     return script_path
 
 
 def main():
-    """Main function."""
+    """Profile the copy operation selected on the command line."""
     parser = argparse.ArgumentParser(description="Profile ferrocp performance")
-    parser.add_argument("--test-type", choices=["file_copy", "directory_copy", "compression"],
-                       default="file_copy", help="Type of test to profile")
-    parser.add_argument("--profiler", choices=["py-spy", "cprofile", "memory", "all"],
-                       default="all", help="Profiler to use")
-    parser.add_argument("--output-dir", type=Path, default="benchmarks/results",
-                       help="Output directory for profiles")
-    parser.add_argument("--duration", type=int, default=30,
-                       help="Duration for py-spy profiling (seconds)")
-    
+    parser.add_argument(
+        "--test-type",
+        choices=["file_copy", "directory_copy", "compression"],
+        default="file_copy",
+        help="Type of test to profile",
+    )
+    parser.add_argument(
+        "--profiler", choices=["py-spy", "cprofile", "memory", "all"], default="all", help="Profiler to use"
+    )
+    parser.add_argument("--output-dir", type=Path, default="benchmarks/results", help="Output directory for profiles")
+    parser.add_argument("--duration", type=int, default=30, help="Duration for py-spy profiling (seconds)")
+
     args = parser.parse_args()
-    
+
     # Create output directory
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Create temporary directory for test files
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
-        
+
         # Create benchmark script
         script_path = create_benchmark_script(temp_path, args.test_type)
-        
+
         # Generate output filenames
         timestamp = int(time.time())
         base_name = f"{args.test_type}_{timestamp}"
-        
+
         if args.profiler in ["py-spy", "all"]:
             output_path = args.output_dir / f"{base_name}_pyspy.speedscope"
             profile_with_py_spy(script_path, output_path, args.duration)
-        
+
         if args.profiler in ["cprofile", "all"]:
             output_path = args.output_dir / f"{base_name}_cprofile.prof"
             profile_with_cprofile(script_path, output_path)
-        
+
         if args.profiler in ["memory", "all"]:
             output_path = args.output_dir / f"{base_name}_memory.txt"
             memory_profile(script_path, output_path)
-    
+
     print("Profiling complete!")
     print(f"Results saved in {args.output_dir}")
     print("\nTo view results:")
