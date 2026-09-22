@@ -7,7 +7,9 @@
 //!
 //! See `docs/COPY_SEMANTICS.md` for the user-facing contract.
 
-use ferrocp_types::{Error, OverwriteDecision, OverwritePolicy, Result};
+use crate::copy::CopyOptions;
+use crate::symlink::create_symlink;
+use ferrocp_types::{CopyStats, Error, OverwriteDecision, OverwritePolicy, Result, SymlinkMode};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -159,6 +161,132 @@ pub enum CopyGate {
     Proceed,
     /// The copy must be skipped and reported as a skipped file
     Skip,
+}
+
+/// Outcome of applying the full copy contract to one entry
+pub enum ContractOutcome {
+    /// The destination is already in its final state: the copy is done
+    Done(CopyStats),
+    /// The caller should copy the content as usual
+    Proceed,
+}
+
+/// Apply the symlink and overwrite contract to a single entry
+///
+/// Every engine calls this **before** it opens the destination, so the
+/// symlink policy is enforced for single-file copies and not only for the
+/// directory walk. That distinction matters: without this call
+/// `CopyOptions::symlink_mode` is a field that is written but never read, which
+/// is the same defect class the overwrite policy used to have.
+///
+/// # Errors
+///
+/// * `SymlinkMode::Fail` when the source is a symbolic link.
+/// * The errors documented on [`decide_overwrite`] for non-link sources.
+/// * I/O errors while inspecting or replacing the destination.
+pub fn apply_copy_contract(
+    source: &Path,
+    destination: &Path,
+    options: &CopyOptions,
+) -> Result<ContractOutcome> {
+    // `symlink_metadata` does not follow links, so this is the reliable
+    // "is the source a link" test.
+    let link_metadata = match std::fs::symlink_metadata(source) {
+        Ok(metadata) if metadata.file_type().is_symlink() => metadata,
+        Ok(_) => {
+            // Not a link: only the overwrite policy applies.
+            let source_metadata = std::fs::metadata(source).map_err(|error| Error::Io {
+                message: format!(
+                    "failed to read source metadata '{}': {}",
+                    source.display(),
+                    error
+                ),
+            })?;
+            return match CopyGate::evaluate(
+                source,
+                &source_metadata,
+                destination,
+                options.overwrite_policy,
+                options.overwrite_prompt.as_ref(),
+            )? {
+                CopyGate::Proceed => Ok(ContractOutcome::Proceed),
+                CopyGate::Skip => Ok(ContractOutcome::Done(CopyStats::skipped_one())),
+            };
+        }
+        Err(error) => {
+            return Err(Error::Io {
+                message: format!(
+                    "failed to read source metadata '{}': {}",
+                    source.display(),
+                    error
+                ),
+            });
+        }
+    };
+
+    match options.symlink_mode {
+        // Copy the content the link points at. The engines resolve the source
+        // with `fs::metadata`, which follows links, so this is a no-op here.
+        SymlinkMode::Follow => Ok(ContractOutcome::Proceed),
+
+        SymlinkMode::Fail => Err(Error::other(format!(
+            "symbolic link '{}' found but the symlink mode is 'fail'",
+            source.display()
+        ))),
+
+        SymlinkMode::Preserve => {
+            // Honour the overwrite policy before replacing the destination.
+            // The link's own metadata is used for the comparison because a
+            // dangling link has no target metadata to compare against.
+            match CopyGate::evaluate(
+                source,
+                &link_metadata,
+                destination,
+                options.overwrite_policy,
+                options.overwrite_prompt.as_ref(),
+            )? {
+                CopyGate::Skip => Ok(ContractOutcome::Done(CopyStats::skipped_one())),
+                CopyGate::Proceed => {
+                    remove_existing_destination(destination)?;
+                    create_symlink(source, destination)?;
+                    Ok(ContractOutcome::Done(CopyStats::symlink_created_one()))
+                }
+            }
+        }
+    }
+}
+
+/// Remove an existing destination so a symlink can take its place
+///
+/// Refuses to remove a real directory: replacing a directory tree with a link
+/// is destructive and always a mistake.
+fn remove_existing_destination(destination: &Path) -> Result<()> {
+    match std::fs::symlink_metadata(destination) {
+        Ok(metadata) => {
+            if metadata.is_dir() && !metadata.file_type().is_symlink() {
+                return Err(Error::other(format!(
+                    "destination '{}' is an existing directory and cannot be replaced by a \
+                     symbolic link",
+                    destination.display()
+                )));
+            }
+            std::fs::remove_file(destination).map_err(|error| Error::Io {
+                message: format!(
+                    "failed to replace destination '{}': {}",
+                    destination.display(),
+                    error
+                ),
+            })
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(Error::Io {
+            message: format!(
+                "failed to inspect destination '{}': {}",
+                destination.display(),
+                error
+            ),
+        }),
+    }
 }
 
 impl CopyGate {

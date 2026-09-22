@@ -76,12 +76,18 @@ and frame-sequence information.
 
 Notes:
 
+- The mode applies to **single-file copies as well as directory trees**. Copying
+  `link.txt` by name honours the same contract as encountering it inside a walk;
+  this is enforced in `ferrocp_io::policy::apply_copy_contract`, which every
+  engine (buffered, micro-file, parallel) calls before it opens the destination.
 - In `follow` mode a **dangling link is an error**, not a skip.
 - In `follow` mode a link cycle (`sub/back -> .`) is detected via canonicalised
   directories on the current recursion stack. The cyclic entry is skipped and
   recorded in `files_skipped`; the copy terminates.
 - Recreated links are counted in `CopyStats.symlinks_created`. Links copied as
   regular files (`follow`) are counted in `files_copied`.
+- A link is recreated with its **raw target**, so relative links stay relative.
+- `preserve` refuses to replace an existing **directory** with a link.
 
 ### Before this contract
 
@@ -100,6 +106,10 @@ The handler is a callback, so `prompt` works the same way everywhere:
   `fn(source, destination) -> bool`. Returning `True` overwrites.
 
 ## 5. Platform matrix
+
+The matrix below holds for **every engine** (buffered, micro-file, parallel):
+all three share the same metadata-preservation helper. It is not a property of
+the buffered engine alone.
 
 | Behaviour                       | Linux / macOS                     | Windows                                                   |
 | ------------------------------- | --------------------------------- | --------------------------------------------------------- |
@@ -128,13 +138,17 @@ Windows notes:
 | Policy enum + parse | `crates/ferrocp-types/src/types.rs` (`OverwritePolicy`, `SymlinkMode`) |
 | Decision            | `crates/ferrocp-io/src/policy.rs` (`decide_overwrite`)       |
 | Symlink handling    | `crates/ferrocp-io/src/symlink.rs`                           |
-| Metadata/permission | `crates/ferrocp-io/src/copy.rs` (`preserve_file_metadata`)   |
+| Contract entry      | `crates/ferrocp-io/src/policy.rs` (`apply_copy_contract`)    |
+| Metadata/permission | `crates/ferrocp-io/src/metadata.rs` (`preserve_metadata`)    |
 | Directory traversal | `crates/ferrocp-engine/src/executor.rs` (`copy_directory_recursive`) |
 | CLI surface         | `crates/ferrocp-cli/src/main.rs` (`--overwrite`, `--symlinks`) |
 | Python surface      | `crates/ferrocp-python/src/config.rs`                        |
 
-Every engine (buffered, micro-file and parallel) consults `decide_overwrite`
-before it opens the destination for writing, so no engine can bypass the policy.
+Every engine (buffered, micro-file and parallel) calls `apply_copy_contract` -
+and therefore `decide_overwrite` - before it opens the destination for writing,
+so no engine can bypass the policy or the symlink mode. Metadata preservation is
+likewise one shared helper (`metadata.rs`) used by all three engines, so it does
+not depend on which engine the size heuristic picked.
 
 ## 7. Explicitly out of scope
 

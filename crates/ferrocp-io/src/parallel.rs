@@ -3,7 +3,8 @@
 //! This module implements a parallel copy engine that uses chunked processing
 //! and pipelined I/O to maximize throughput for large files (>10MB).
 
-use crate::policy::CopyGate;
+use crate::metadata::preserve_metadata;
+use crate::policy::{apply_copy_contract, ContractOutcome};
 use crate::{AsyncFileReader, AsyncFileWriter, CopyEngine, CopyOptions};
 use ferrocp_types::{CopyStats, DeviceType, Error, Result};
 use std::path::Path;
@@ -530,6 +531,13 @@ impl CopyEngine for ParallelCopyEngine {
 
         options.validate()?;
 
+        // Enforce the full contract before the destination is opened for
+        // writing: the parallel writer truncates as soon as it starts.
+        match apply_copy_contract(source_path, dest_path, &options)? {
+            ContractOutcome::Proceed => {}
+            ContractOutcome::Done(finished) => return Ok(finished),
+        }
+
         // Get file size
         let metadata = tokio::fs::metadata(source_path)
             .await
@@ -537,44 +545,36 @@ impl CopyEngine for ParallelCopyEngine {
                 message: format!("Failed to get file metadata: {}", e),
             })?;
 
-        // Apply the overwrite policy before the destination is opened for
-        // writing: the parallel writer truncates as soon as it starts.
-        match CopyGate::evaluate(
-            source_path,
-            &metadata,
-            dest_path,
-            options.overwrite_policy,
-            options.overwrite_prompt.as_ref(),
-        )? {
-            CopyGate::Proceed => {}
-            CopyGate::Skip => {
-                debug!(
-                    "Skipping '{}': destination '{}' exists and the {:?} policy keeps it",
-                    source_path.display(),
-                    dest_path.display(),
-                    options.overwrite_policy
-                );
-                return Ok(CopyStats::skipped_one());
-            }
-        }
-
         let file_size = metadata.len();
 
         // Check if we should use parallel processing
         if !self.should_use_parallel(file_size) {
             debug!("File too small for parallel processing, falling back to sequential");
             // Fall back to a simple sequential copy
-            return self
+            let stats = self
                 .copy_file_sequential(source_path, dest_path, file_size)
-                .await;
+                .await?;
+            // Preserve metadata on this path too, so the engine does not depend
+            // on which strategy the size heuristic picked.
+            preserve_metadata(source_path, dest_path, &options)?;
+            return Ok(stats);
         }
 
         // Detect device type (simplified for now)
         let device_type = DeviceType::SSD; // TODO: Implement proper device detection
 
         // Perform parallel copy
-        self.copy_file_parallel(source_path, dest_path, file_size, device_type)
-            .await
+        let mut stats = self
+            .copy_file_parallel(source_path, dest_path, file_size, device_type)
+            .await?;
+
+        // Preserve metadata according to the options (shared with the other
+        // engines, so the parallel engine is no longer the one that silently
+        // drops timestamps and permissions).
+        preserve_metadata(source_path, dest_path, &options)?;
+        stats.duration = stats.duration.max(Duration::ZERO);
+
+        Ok(stats)
     }
 
     async fn detect_device_type<P: AsRef<Path> + Send>(&self, path: P) -> Result<DeviceType> {

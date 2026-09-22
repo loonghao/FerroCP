@@ -7,8 +7,8 @@
 //! See `docs/COPY_SEMANTICS.md` for the normative contract.
 
 use crate::policy::OverwritePrompt;
-use crate::{BufferedCopyEngine, CopyEngine, CopyOptions};
-use ferrocp_types::{ErrorKind, OverwriteDecision, OverwritePolicy};
+use crate::{BufferedCopyEngine, CopyEngine, CopyOptions, MicroFileCopyEngine, ParallelCopyEngine};
+use ferrocp_types::{ErrorKind, OverwriteDecision, OverwritePolicy, SymlinkMode};
 use std::io::Write;
 use std::path::Path;
 use tempfile::TempDir;
@@ -349,4 +349,289 @@ fn validate_accepts_prompt_with_handler() {
         OverwriteDecision::Skip
     }));
     options.validate().unwrap();
+}
+
+// --------------------------------------------------------------------------
+// Symlink mode for single-file copies
+//
+// These cover the case the directory walk does not: copying a link by name.
+// `symlink_mode` must be enforced here too, otherwise it is a field that is
+// written but never read on this path.
+// --------------------------------------------------------------------------
+
+/// Create a symlink, or report that this platform/process cannot
+fn try_symlink(target: &Path, link: &Path) -> bool {
+    #[cfg(unix)]
+    let result = std::os::unix::fs::symlink(target, link);
+
+    #[cfg(windows)]
+    let result = {
+        let is_dir = std::fs::metadata(target)
+            .map(|metadata| metadata.is_dir())
+            .unwrap_or(false);
+        if is_dir {
+            std::os::windows::fs::symlink_dir(target, link)
+        } else {
+            std::os::windows::fs::symlink_file(target, link)
+        }
+    };
+
+    match result {
+        Ok(()) => true,
+        Err(error) => {
+            eprintln!(
+                "skipping symlink test: cannot create '{}': {}",
+                link.display(),
+                error
+            );
+            false
+        }
+    }
+}
+
+#[tokio::test]
+async fn preserve_mode_recreates_a_single_file_link() {
+    let dir = TempDir::new().unwrap();
+    let target = dir.path().join("payload.txt");
+    let link = dir.path().join("link.txt");
+    let destination = dir.path().join("out.txt");
+
+    std::fs::write(&target, "payload").unwrap();
+    if !try_symlink(&target, &link) {
+        return;
+    }
+
+    let mut engine = BufferedCopyEngine::new();
+    let stats = engine
+        .copy_file_with_options(&link, &destination, options_with(OverwritePolicy::Always))
+        .await
+        .unwrap();
+
+    assert_eq!(stats.symlinks_created, 1, "the link must be recreated");
+    assert_eq!(stats.files_copied, 0);
+    assert!(
+        std::fs::symlink_metadata(&destination)
+            .unwrap()
+            .file_type()
+            .is_symlink(),
+        "the destination must be a link, not a copy of the content"
+    );
+    assert_eq!(std::fs::read(&destination).unwrap(), b"payload");
+}
+
+#[tokio::test]
+async fn preserve_mode_recreates_a_dangling_link() {
+    let dir = TempDir::new().unwrap();
+    let link = dir.path().join("dangling");
+    let destination = dir.path().join("out.txt");
+
+    if !try_symlink(Path::new("nowhere.txt"), &link) {
+        return;
+    }
+
+    let mut engine = BufferedCopyEngine::new();
+    let stats = engine
+        .copy_file_with_options(&link, &destination, options_with(OverwritePolicy::Always))
+        .await
+        .unwrap();
+
+    // A dangling link stays dangling: not an error, not skipped.
+    assert_eq!(stats.symlinks_created, 1);
+    assert!(std::fs::symlink_metadata(&destination).is_ok());
+    assert!(std::fs::metadata(&destination).is_err());
+}
+
+#[tokio::test]
+async fn fail_mode_rejects_a_single_file_link() {
+    let dir = TempDir::new().unwrap();
+    let target = dir.path().join("payload.txt");
+    let link = dir.path().join("link.txt");
+    let destination = dir.path().join("out.txt");
+
+    std::fs::write(&target, "payload").unwrap();
+    if !try_symlink(&target, &link) {
+        return;
+    }
+
+    let mut options = options_with(OverwritePolicy::Always);
+    options.symlink_mode = SymlinkMode::Fail;
+
+    let mut engine = BufferedCopyEngine::new();
+    let error = engine
+        .copy_file_with_options(&link, &destination, options)
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().contains("symlink mode is 'fail'"));
+    assert!(
+        !destination.exists(),
+        "the link content must not be copied when the mode is fail"
+    );
+}
+
+#[tokio::test]
+async fn follow_mode_copies_the_link_target_content() {
+    let dir = TempDir::new().unwrap();
+    let target = dir.path().join("payload.txt");
+    let link = dir.path().join("link.txt");
+    let destination = dir.path().join("out.txt");
+
+    std::fs::write(&target, "payload").unwrap();
+    if !try_symlink(&target, &link) {
+        return;
+    }
+
+    let mut options = options_with(OverwritePolicy::Always);
+    options.symlink_mode = SymlinkMode::Follow;
+
+    let mut engine = BufferedCopyEngine::new();
+    let stats = engine
+        .copy_file_with_options(&link, &destination, options)
+        .await
+        .unwrap();
+
+    assert_eq!(stats.files_copied, 1);
+    assert_eq!(stats.symlinks_created, 0);
+    assert!(
+        !std::fs::symlink_metadata(&destination)
+            .unwrap()
+            .file_type()
+            .is_symlink(),
+        "following a link must produce a regular file"
+    );
+    assert_eq!(std::fs::read_to_string(&destination).unwrap(), "payload");
+}
+
+#[tokio::test]
+async fn symlink_mode_is_enforced_by_the_micro_engine() {
+    let dir = TempDir::new().unwrap();
+    let target = dir.path().join("payload.txt");
+    let link = dir.path().join("link.txt");
+    let destination = dir.path().join("out.txt");
+
+    std::fs::write(&target, "payload").unwrap();
+    if !try_symlink(&target, &link) {
+        return;
+    }
+
+    let mut engine = MicroFileCopyEngine::new();
+    let stats = engine
+        .copy_file_with_options(&link, &destination, CopyOptions::default())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        stats.symlinks_created, 1,
+        "the micro engine must honour symlink_mode too"
+    );
+    assert!(std::fs::symlink_metadata(&destination)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+}
+
+#[tokio::test]
+async fn symlink_mode_is_enforced_by_the_parallel_engine() {
+    let dir = TempDir::new().unwrap();
+    let target = dir.path().join("payload.txt");
+    let link = dir.path().join("link.txt");
+    let destination = dir.path().join("out.txt");
+
+    std::fs::write(&target, "payload").unwrap();
+    if !try_symlink(&target, &link) {
+        return;
+    }
+
+    let mut engine = ParallelCopyEngine::default();
+    let stats = engine
+        .copy_file_with_options(&link, &destination, CopyOptions::default())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        stats.symlinks_created, 1,
+        "the parallel engine must honour symlink_mode too"
+    );
+    assert!(std::fs::symlink_metadata(&destination)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+}
+
+#[tokio::test]
+async fn preserve_mode_replaces_an_existing_destination() {
+    let dir = TempDir::new().unwrap();
+    let target = dir.path().join("payload.txt");
+    let link = dir.path().join("link.txt");
+    let destination = dir.path().join("out.txt");
+
+    std::fs::write(&target, "payload").unwrap();
+    std::fs::write(&destination, "stale content").unwrap();
+    if !try_symlink(&target, &link) {
+        return;
+    }
+
+    let mut engine = BufferedCopyEngine::new();
+    let stats = engine
+        .copy_file_with_options(&link, &destination, options_with(OverwritePolicy::Always))
+        .await
+        .unwrap();
+
+    assert_eq!(stats.symlinks_created, 1);
+    assert!(std::fs::symlink_metadata(&destination)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+}
+
+#[tokio::test]
+async fn preserve_mode_honours_the_overwrite_policy() {
+    let dir = TempDir::new().unwrap();
+    let target = dir.path().join("payload.txt");
+    let link = dir.path().join("link.txt");
+    let destination = dir.path().join("out.txt");
+
+    std::fs::write(&target, "payload").unwrap();
+    std::fs::write(&destination, "stale content").unwrap();
+    if !try_symlink(&target, &link) {
+        return;
+    }
+
+    let mut engine = BufferedCopyEngine::new();
+    let stats = engine
+        .copy_file_with_options(&link, &destination, options_with(OverwritePolicy::Never))
+        .await
+        .unwrap();
+
+    assert_eq!(stats.files_skipped, 1);
+    assert_eq!(stats.symlinks_created, 0);
+    assert_eq!(
+        std::fs::read_to_string(&destination).unwrap(),
+        "stale content"
+    );
+}
+
+#[tokio::test]
+async fn preserve_mode_refuses_to_replace_a_directory() {
+    let dir = TempDir::new().unwrap();
+    let target = dir.path().join("payload.txt");
+    let link = dir.path().join("link.txt");
+    let destination = dir.path().join("out_dir");
+
+    std::fs::write(&target, "payload").unwrap();
+    std::fs::create_dir(&destination).unwrap();
+    if !try_symlink(&target, &link) {
+        return;
+    }
+
+    let mut engine = BufferedCopyEngine::new();
+    let error = engine
+        .copy_file_with_options(&link, &destination, options_with(OverwritePolicy::Always))
+        .await
+        .unwrap_err();
+
+    assert!(
+        error.to_string().contains("directory"),
+        "a directory must never be replaced by a link: {error}"
+    );
 }

@@ -30,6 +30,7 @@ pub mod buffer;
 pub mod copy;
 pub mod memory;
 pub mod memory_map;
+pub mod metadata;
 pub mod micro_copy;
 pub mod parallel;
 pub mod policy;

@@ -1,6 +1,7 @@
 //! High-performance file copying engine
 
-use crate::policy::{CopyGate, OverwritePrompt};
+use crate::metadata::preserve_metadata;
+use crate::policy::{apply_copy_contract, ContractOutcome, OverwritePrompt};
 use crate::{
     AdaptiveBuffer, AsyncFileReader, AsyncFileWriter, BufferPool, PreReadBuffer, PreReadStrategy,
 };
@@ -176,31 +177,30 @@ impl BufferedCopyEngine {
         let start_time = Instant::now();
         let mut stats = CopyStats::new();
 
+        // Enforce the full contract (overwrite policy and symlink mode) before
+        // the destination is opened for writing: once the writer exists the
+        // destination is already truncated. A preserved symlink is complete at
+        // this point, hence the early return.
+        match apply_copy_contract(source_path, dest_path, &options)? {
+            ContractOutcome::Proceed => {}
+            ContractOutcome::Done(finished) => {
+                debug!(
+                    "Short-circuited '{}' -> '{}' by the copy contract ({} copied, {} skipped, \
+                     {} links)",
+                    source_path.display(),
+                    dest_path.display(),
+                    finished.files_copied,
+                    finished.files_skipped,
+                    finished.symlinks_created
+                );
+                return Ok(finished);
+            }
+        }
+
         // Get source file metadata
         let source_metadata = fs::metadata(source_path).await.map_err(|e| Error::Io {
             message: format!("Failed to read source metadata: {}", e),
         })?;
-
-        // Apply the overwrite policy before the destination is opened for
-        // writing: once the writer exists the destination is already truncated.
-        match CopyGate::evaluate(
-            source_path,
-            &source_metadata,
-            dest_path,
-            options.overwrite_policy,
-            options.overwrite_prompt.as_ref(),
-        )? {
-            CopyGate::Proceed => {}
-            CopyGate::Skip => {
-                debug!(
-                    "Skipping '{}': destination '{}' exists and the {:?} policy keeps it",
-                    source_path.display(),
-                    dest_path.display(),
-                    options.overwrite_policy
-                );
-                return Ok(CopyStats::skipped_one());
-            }
-        }
 
         let file_size = source_metadata.len();
         stats.bytes_copied = 0;
@@ -315,9 +315,8 @@ impl BufferedCopyEngine {
         // Ensure all data is written
         writer.flush().await?;
 
-        // Preserve metadata if requested
-        self.preserve_file_metadata(source_path, dest_path, &options)
-            .await?;
+        // Preserve metadata according to the options (shared by every engine)
+        preserve_metadata(source_path, dest_path, &options)?;
 
         // Verify copy if requested
         if options.verify_copy {
@@ -373,121 +372,6 @@ impl BufferedCopyEngine {
         } else {
             base_size
         }
-    }
-
-    /// Preserve file metadata from source to destination
-    ///
-    /// Timestamps are preserved on every platform. Permissions are preserved
-    /// on Unix (full mode bits) and on Windows (read-only attribute only);
-    /// ACLs and ownership are never preserved. See `docs/COPY_SEMANTICS.md`.
-    async fn preserve_file_metadata<P: AsRef<Path>>(
-        &self,
-        source: P,
-        destination: P,
-        options: &CopyOptions,
-    ) -> Result<()> {
-        if !options.preserve_timestamps && !options.preserve_permissions {
-            return Ok(());
-        }
-
-        let source_metadata = fs::metadata(source.as_ref()).await.map_err(|e| Error::Io {
-            message: format!("Failed to read source metadata: {}", e),
-        })?;
-
-        if options.preserve_timestamps {
-            // Set file times
-            let accessed = source_metadata
-                .accessed()
-                .unwrap_or_else(|_| std::time::SystemTime::now());
-            let modified = source_metadata
-                .modified()
-                .unwrap_or_else(|_| std::time::SystemTime::now());
-
-            filetime::set_file_times(
-                destination.as_ref(),
-                filetime::FileTime::from_system_time(accessed),
-                filetime::FileTime::from_system_time(modified),
-            )
-            .map_err(|e| Error::Io {
-                message: format!("Failed to set file times: {}", e),
-            })?;
-        }
-
-        if options.preserve_permissions {
-            self.preserve_permissions(source.as_ref(), &source_metadata, destination.as_ref())
-                .await?;
-        }
-
-        Ok(())
-    }
-
-    /// Preserve permission bits, platform by platform
-    ///
-    /// * Unix: copies the full mode (including the executable and setuid bits).
-    /// * Windows: copies the read-only attribute. Other attributes and ACLs are
-    ///   deliberately not copied - see `docs/COPY_SEMANTICS.md`.
-    async fn preserve_permissions(
-        &self,
-        source: &Path,
-        source_metadata: &std::fs::Metadata,
-        destination: &Path,
-    ) -> Result<()> {
-        #[cfg(unix)]
-        {
-            let permissions = source_metadata.permissions();
-            fs::set_permissions(destination, permissions)
-                .await
-                .map_err(|e| Error::Io {
-                    message: format!(
-                        "Failed to set permissions on '{}': {}",
-                        destination.display(),
-                        e
-                    ),
-                })?;
-        }
-
-        #[cfg(windows)]
-        {
-            // Windows has no POSIX mode. Mirror the read-only attribute, which
-            // is the part of `std::fs::Permissions` that maps onto a file
-            // attribute; clear it when the source is writable so a stale
-            // read-only destination does not survive a re-copy.
-            let source_readonly = source_metadata.permissions().readonly();
-            let dest_metadata = fs::metadata(destination).await.map_err(|e| Error::Io {
-                message: format!(
-                    "Failed to read destination metadata '{}': {}",
-                    destination.display(),
-                    e
-                ),
-            })?;
-
-            let mut permissions = dest_metadata.permissions();
-            if permissions.readonly() != source_readonly {
-                permissions.set_readonly(source_readonly);
-                fs::set_permissions(destination, permissions)
-                    .await
-                    .map_err(|e| Error::Io {
-                        message: format!(
-                            "Failed to set read-only attribute on '{}' (source '{}'): {}",
-                            destination.display(),
-                            source.display(),
-                            e
-                        ),
-                    })?;
-            }
-        }
-
-        #[cfg(not(any(unix, windows)))]
-        {
-            let _ = (source, destination);
-            debug!(
-                "Permission preservation is not implemented on this platform: {} -> {}",
-                source.display(),
-                destination.display()
-            );
-        }
-
-        Ok(())
     }
 
     /// Verify that the copy was successful

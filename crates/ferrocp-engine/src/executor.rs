@@ -238,8 +238,13 @@ impl TaskExecutor {
         );
         let config = &effective_config;
 
-        // Check if source is a file or directory
-        let source_metadata = match tokio::fs::metadata(&task.request.source).await {
+        // Classify the source without following links.
+        //
+        // Using `metadata` here would resolve the link and fail outright for a
+        // dangling one, so such a source could never reach the engine that
+        // implements `SymlinkMode::Preserve`. The engine re-resolves the target
+        // when the mode is `Follow`.
+        let source_metadata = match tokio::fs::symlink_metadata(&task.request.source).await {
             Ok(metadata) => metadata,
             Err(error) => {
                 return CopyResult::failure(
@@ -254,7 +259,9 @@ impl TaskExecutor {
             }
         };
 
-        if source_metadata.is_file() {
+        // A link is dispatched to the file path, which enforces the symlink
+        // mode. The engines resolve the target themselves when following.
+        if source_metadata.file_type().is_symlink() || source_metadata.is_file() {
             // Handle file copy
             Self::execute_file_copy(copy_engine, task, config, start_time).await
         } else if source_metadata.is_dir() {
