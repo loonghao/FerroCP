@@ -1,0 +1,79 @@
+name: Set up cross-compilation toolchain
+description: >-
+  Installs cargo-zigbuild, zig, the FerroCP release Rust targets, and the macOS
+  SDK the Apple targets need. Exports SDKROOT for the steps that follow.
+
+inputs:
+  macos-sdk-version:
+    description: 'MacOSX.sdk version to download from joseluisq/macosx-sdks'
+    required: false
+    default: '13.3'
+
+runs:
+  using: composite
+  steps:
+    - name: Install build dependencies
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          pkg-config \
+          libssl-dev \
+          binutils \
+          lld \
+          clang \
+          xz-utils \
+          gcc-aarch64-linux-gnu \
+          g++-aarch64-linux-gnu
+
+    - name: Install cargo-zigbuild and zig
+      shell: bash
+      run: |
+        cargo install --locked cargo-zigbuild
+        pip install ziglang
+
+    - name: Add Rust targets
+      shell: bash
+      run: |
+        rustup target add x86_64-unknown-linux-gnu
+        rustup target add aarch64-unknown-linux-gnu
+        rustup target add x86_64-apple-darwin
+        rustup target add aarch64-apple-darwin
+        rustup target add x86_64-pc-windows-msvc
+
+    # Linking the Apple targets needs a real macOS SDK. rustc asks the linker
+    # for `-framework CoreFoundation` and friends, and with no SDKROOT the
+    # linker has no framework search path at all and aborts with
+    # `error: unable to find framework 'CoreFoundation'. searched paths: none`.
+    # zig ships libc but not Apple's SDK, so the SDK has to be supplied here.
+    #
+    # Callers must also pin MACOSX_DEPLOYMENT_TARGET: rustc defaults
+    # x86_64-apple-darwin to 10.12, below the 10.13 minimum this SDK accepts.
+    - name: Restore macOS SDK from cache
+      id: macos-sdk
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/macos-sdk
+        key: macos-sdk-${{ runner.os }}-${{ inputs.macos-sdk-version }}
+
+    - name: Download macOS SDK
+      if: steps.macos-sdk.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        SDK_VERSION: ${{ inputs.macos-sdk-version }}
+      run: |
+        set -euo pipefail
+        sdk_dir="${RUNNER_TEMP}/macos-sdk"
+        mkdir -p "${sdk_dir}"
+        curl -fsSL -o "${sdk_dir}/MacOSX.sdk.tar.xz" \
+          "https://github.com/joseluisq/macosx-sdks/releases/download/${SDK_VERSION}/MacOSX${SDK_VERSION}.sdk.tar.xz"
+        tar -xJf "${sdk_dir}/MacOSX.sdk.tar.xz" -C "${sdk_dir}"
+        rm -f "${sdk_dir}/MacOSX.sdk.tar.xz"
+
+    - name: Export macOS SDK path
+      shell: bash
+      env:
+        SDK_VERSION: ${{ inputs.macos-sdk-version }}
+      run: |
+        echo "SDKROOT=${RUNNER_TEMP}/macos-sdk/MacOSX${SDK_VERSION}.sdk" >> "$GITHUB_ENV"
