@@ -200,6 +200,7 @@ impl BufferedCopyEngine {
         // Get source file metadata
         let source_metadata = fs::metadata(source_path).await.map_err(|e| Error::Io {
             message: format!("Failed to read source metadata: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         let file_size = source_metadata.len();
@@ -378,12 +379,14 @@ impl BufferedCopyEngine {
     async fn verify_copy<P: AsRef<Path>>(&self, source: P, destination: P) -> Result<()> {
         let source_metadata = fs::metadata(source.as_ref()).await.map_err(|e| Error::Io {
             message: format!("Failed to read source metadata: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         let dest_metadata = fs::metadata(destination.as_ref())
             .await
             .map_err(|e| Error::Io {
                 message: format!("Failed to read destination metadata: {}", e),
+                kind: Some(e.kind()),
             })?;
 
         if source_metadata.len() != dest_metadata.len() {

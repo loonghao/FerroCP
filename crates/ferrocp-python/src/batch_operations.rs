@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::config::PyCopyOptions;
+use crate::error::catch_panic;
 use crate::copy::PyCopyResult;
 use crate::gil_optimization::GilOptimizationManager;
 use crate::progress::{ProgressCallback, PyProgress};
@@ -295,8 +296,10 @@ pub fn copy_files_batch<'py>(
     progress_callback: Option<ProgressCallback>,
     batch_size: usize,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let engine = PyBatchCopyEngine::new(batch_size)?;
-    engine.copy_files_batch(py, requests, options, progress_callback)
+    catch_panic("copy_files_batch", || {
+        let engine = PyBatchCopyEngine::new(batch_size)?;
+        engine.copy_files_batch(py, requests, options, progress_callback)
+    })?
 }
 
 /// Convenience function to create batch requests from lists
@@ -311,11 +314,13 @@ pub fn create_batch_requests(
         ));
     }
 
-    Ok(sources
+    let requests: Vec<PyBatchCopyRequest> = sources
         .into_iter()
         .zip(destinations.into_iter())
         .map(|(source, destination)| PyBatchCopyRequest::new(source, destination))
-        .collect())
+        .collect();
+
+    catch_panic("create_batch_requests", || requests)
 }
 
 #[cfg(test)]

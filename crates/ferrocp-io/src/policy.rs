@@ -202,6 +202,7 @@ pub fn apply_copy_contract(
                     source.display(),
                     error
                 ),
+                kind: None,
             })?;
             return match CopyGate::evaluate(
                 source,
@@ -221,6 +222,7 @@ pub fn apply_copy_contract(
                     source.display(),
                     error
                 ),
+                kind: None,
             });
         }
     };
@@ -277,6 +279,7 @@ fn remove_existing_destination(destination: &Path) -> Result<()> {
                     destination.display(),
                     error
                 ),
+                kind: None,
             })
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -286,6 +289,7 @@ fn remove_existing_destination(destination: &Path) -> Result<()> {
                 destination.display(),
                 error
             ),
+            kind: None,
         }),
     }
 }
