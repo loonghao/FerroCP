@@ -70,15 +70,15 @@ fn bench_performance_history_update(c: &mut Criterion) {
         b.to_async(&rt).iter(|| async {
             let selector = EngineSelector::new();
 
-            // Benchmark performance history updates
+            // Benchmark performance history updates.
+            // `update_performance_history` returns `()`, so the future is what gets
+            // black-boxed here; black-boxing the awaited result would be a unit
+            // argument.
             for i in 0..1000 {
                 let file_size = 1024 + (i % 100) * 1024; // Varying file sizes
                 let copy_time = 500_000 + (i % 50) * 10_000; // Varying copy times
-                black_box(
-                    selector
-                        .update_performance_history(file_size, file_size, copy_time)
-                        .await,
-                );
+                black_box(selector.update_performance_history(file_size, file_size, copy_time))
+                    .await;
             }
         });
     });

@@ -148,8 +148,8 @@ fn benchmark_copy_syscall_efficiency(c: &mut Criterion) {
 
                         // Estimate syscalls based on strategy
                         let stats = engine.stats();
-                        let estimated_reads = (size + 4095) / 4096; // Estimate read syscalls
-                        let estimated_writes = (size + 4095) / 4096; // Estimate write syscalls
+                        let estimated_reads = size.div_ceil(4096); // Estimate read syscalls
+                        let estimated_writes = size.div_ceil(4096); // Estimate write syscalls
 
                         for _ in 0..estimated_reads {
                             tracker.track_read();
@@ -189,8 +189,8 @@ fn benchmark_copy_syscall_efficiency(c: &mut Criterion) {
 
                         // Estimate syscalls for buffered engine
                         let buffer_size = 64 * 1024; // Default buffer size
-                        let estimated_reads = (size + buffer_size - 1) / buffer_size;
-                        let estimated_writes = (size + buffer_size - 1) / buffer_size;
+                        let estimated_reads = size.div_ceil(buffer_size);
+                        let estimated_writes = size.div_ceil(buffer_size);
 
                         for _ in 0..estimated_reads {
                             tracker.track_read();
@@ -229,8 +229,8 @@ fn benchmark_copy_syscall_efficiency(c: &mut Criterion) {
 
                     // std::fs::copy typically uses larger buffers
                     let buffer_size = 64 * 1024;
-                    let estimated_reads = (size + buffer_size - 1) / buffer_size;
-                    let estimated_writes = (size + buffer_size - 1) / buffer_size;
+                    let estimated_reads = size.div_ceil(buffer_size);
+                    let estimated_writes = size.div_ceil(buffer_size);
 
                     for _ in 0..estimated_reads {
                         tracker.track_read();
@@ -376,7 +376,7 @@ fn benchmark_syscall_optimization_strategies(c: &mut Criterion) {
                             }
                             _ => {
                                 // Other strategies may use multiple syscalls
-                                let estimated_ops = (file_size + 1023) / 1024;
+                                let estimated_ops = file_size.div_ceil(1024);
                                 for _ in 0..estimated_ops {
                                     tracker.track_read();
                                     tracker.track_write();

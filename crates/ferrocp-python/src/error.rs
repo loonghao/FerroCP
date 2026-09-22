@@ -86,6 +86,14 @@ mod tests {
     #[cfg(not(target_os = "windows"))]
     #[test]
     fn test_error_conversion() {
+        // `PyErr`'s `Display` impl renders the exception object through Python's
+        // C API (it attaches internally), so an interpreter has to be running.
+        // pyo3 no longer initialises one implicitly - the `auto-initialize`
+        // feature was removed in 0.26 - so start it explicitly. `initialize()`
+        // is idempotent and race-safe, so it does not matter which test in this
+        // binary reaches it first.
+        Python::initialize();
+
         let io_error = Error::Io {
             message: "Test IO error".to_string(),
         };
