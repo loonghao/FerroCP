@@ -1,6 +1,6 @@
 //! Error handling for Python bindings
 
-use ferrocp_types::Error;
+use ferrocp_types::{Error, ErrorContext};
 use pyo3::prelude::*;
 use pyo3::{create_exception, exceptions::PyException};
 
@@ -43,6 +43,50 @@ fn error_message(error: &Error) -> String {
     error.chain()
 }
 
+/// Extend a mapped exception's message without changing its type
+///
+/// Rebuilding the error with `PyErr::new::<PyFerrocpError, _>` would replace a
+/// `FileNotFoundError` with a plain `FerrocpError`, so callers could no longer
+/// catch the builtin. Instead the original exception object is fetched, its
+/// `args` are rewritten to carry the operation and path, and the **same**
+/// exception type is re-raised.
+fn with_context_message(error: PyErr, context: &ErrorContext) -> PyErr {
+    let suffix = match &context.path {
+        Some(path) => format!(" (while {} '{}')", context.operation, path.display()),
+        None => format!(" (while {})", context.operation),
+    };
+
+    Python::with_gil(|py| {
+        let value = error.value(py);
+
+        // Build the extended message from whatever the exception already says.
+        let existing: Option<String> = value
+            .getattr("args")
+            .ok()
+            .and_then(|args| args.extract::<Vec<String>>().ok())
+            .and_then(|items| items.into_iter().next());
+
+        let message = match existing {
+            Some(first) if !first.is_empty() => format!("{first}{suffix}"),
+            _ => suffix.trim().to_string(),
+        };
+
+        // Re-raise the *same* exception class with the extended message.
+        // Rebuilding with `PyErr::new::<PyFerrocpError, _>` would silently
+        // break `except FileNotFoundError`.
+        let class = value.getattr("__class__").ok();
+        match class {
+            Some(class) => match class.call1((message,)) {
+                Ok(new_value) => PyErr::from_value(new_value),
+                // If the class cannot be instantiated with one argument, keep
+                // the original error rather than degrading its type.
+                Err(_) => error,
+            },
+            None => error,
+        }
+    })
+}
+
 /// Error wrapper for Python bindings
 #[derive(Debug)]
 pub struct PyErrorWrapper(pub Error);
@@ -71,16 +115,12 @@ impl From<PyErrorWrapper> for PyErr {
                 PyPermissionError::new_err(format!("Permission denied: {}", path.display()))
             }
             Error::WithContext { error, context } => {
-                let mut err = PyErr::from(PyErrorWrapper(*error));
-                if let Some(path) = &context.path {
-                    err = PyErr::new::<PyFerrocpError, _>(format!(
-                        "{} (while {} '{}')",
-                        err,
-                        context.operation,
-                        path.display()
-                    ));
-                }
-                err
+                // Preserve the mapped exception type (for example
+                // `FileNotFoundError`) and only extend its message. Rebuilding
+                // the error as `FerrocpError` here would silently break
+                // `except FileNotFoundError` for exactly the errors that carry
+                // the most context.
+                with_context_message(PyErr::from(PyErrorWrapper(*error)), &context)
             }
             Error::Config { message } => PyConfigError::new_err(message),
             Error::Network { message } => PyNetworkError::new_err(message),
@@ -157,6 +197,134 @@ fn panic_message(payload: &(dyn std::any::Any + Send + 'static)) -> String {
         text.clone()
     } else {
         "unknown panic payload".to_string()
+    }
+}
+
+#[cfg(test)]
+mod panic_tests {
+    use super::*;
+
+    /// A wrapped panic must become a `FerrocpError`, not a `PanicException`.
+    ///
+    /// This is the acceptance criterion for panic isolation: callers have to be
+    /// able to `except FerrocpError`. It only holds when the crate is built with
+    /// unwinding panics, which is why the test tolerates an abort-configured
+    /// build gracefully rather than reporting a false failure.
+    #[test]
+    fn catch_panic_converts_a_panic_into_ferrocp_error() {
+        pyo3::prepare_freethreaded_python();
+
+        let result: PyResult<i32> = catch_panic("boom", || panic!("deliberate panic"));
+
+        Python::with_gil(|py| match result {
+            Ok(_) => panic!("the panic was not caught"),
+            Err(error) => {
+                let message = error.to_string();
+                assert!(
+                    message.contains("deliberate panic"),
+                    "the panic message must be preserved: {message}"
+                );
+                assert!(
+                    message.contains("boom"),
+                    "the operation name must be reported: {message}"
+                );
+                assert!(
+                    error.is_instance_of::<PyFerrocpError>(py),
+                    "a contained panic must be a FerrocpError, not a PanicException: {message}"
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn catch_panic_passes_values_through() {
+        let result: PyResult<i32> = catch_panic("ok", || 42);
+        assert_eq!(result.unwrap(), 42);
+    }
+
+    /// A panic carrying a `&str` and one carrying a `String` both render.
+    #[test]
+    fn catch_panic_handles_both_payload_shapes() {
+        pyo3::prepare_freethreaded_python();
+
+        let from_str: PyResult<()> = catch_panic("op", || panic!("static str"));
+        let from_string: PyResult<()> =
+            catch_panic("op", || panic!("formatted {}", "payload"));
+
+        assert!(from_str.unwrap_err().to_string().contains("static str"));
+        assert!(from_string
+            .unwrap_err()
+            .to_string()
+            .contains("formatted payload"));
+    }
+
+    /// `FileNotFoundError` must survive having context attached, otherwise
+    /// `except FileNotFoundError` silently stops working for the errors that
+    /// carry the most information.
+    #[test]
+    fn context_does_not_downgrade_file_not_found() {
+        pyo3::prepare_freethreaded_python();
+
+        let error = Error::Io {
+            message: "no such file".to_string(),
+            kind: Some(std::io::ErrorKind::NotFound),
+        }
+        .with_path_context("copy_file", "/data/missing.bin");
+
+        let py_err = PyErr::from(PyErrorWrapper(error));
+
+        Python::with_gil(|py| {
+            assert!(
+                py_err.is_instance_of::<PyFileNotFoundError>(py),
+                "the builtin type must be preserved: {}",
+                py_err.to_string()
+            );
+            // FileNotFoundError is an OSError, so the stdlib idiom works too.
+            assert!(py_err.is_instance_of::<pyo3::exceptions::PyOSError>(py));
+            // The context is appended to the message, not substituted for the type.
+            assert!(py_err.to_string().contains("copy_file"));
+            assert!(py_err.to_string().contains("/data/missing.bin"));
+        });
+    }
+
+    #[test]
+    fn context_does_not_downgrade_permission_denied() {
+        pyo3::prepare_freethreaded_python();
+
+        let error = Error::Io {
+            message: "forbidden".to_string(),
+            kind: Some(std::io::ErrorKind::PermissionDenied),
+        }
+        .with_path_context("copy_file", "/data/locked.bin");
+
+        let py_err = PyErr::from(PyErrorWrapper(error));
+
+        Python::with_gil(|py| {
+            assert!(
+                py_err.is_instance_of::<PyPermissionError>(py),
+                "the builtin type must be preserved: {}",
+                py_err.to_string()
+            );
+        });
+    }
+
+    #[test]
+    fn plain_io_errors_still_map_to_the_builtin_types() {
+        pyo3::prepare_freethreaded_python();
+
+        let not_found = PyErr::from(PyErrorWrapper(Error::Io {
+            message: "gone".to_string(),
+            kind: Some(std::io::ErrorKind::NotFound),
+        }));
+        let denied = PyErr::from(PyErrorWrapper(Error::Io {
+            message: "nope".to_string(),
+            kind: Some(std::io::ErrorKind::PermissionDenied),
+        }));
+
+        Python::with_gil(|py| {
+            assert!(not_found.is_instance_of::<PyFileNotFoundError>(py));
+            assert!(denied.is_instance_of::<PyPermissionError>(py));
+        });
     }
 }
 

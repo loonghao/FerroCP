@@ -3,6 +3,7 @@
 //! This module provides intelligent caching for Python objects and string representations,
 //! reducing the overhead of repeated object creation and GIL acquisition.
 
+use crate::error::catch_panic;
 use once_cell::sync::Lazy;
 use pyo3::prelude::*;
 use std::collections::HashMap;
@@ -528,9 +529,11 @@ where
     K: Hash,
     F: FnOnce(Python<'_>) -> PyResult<Py<PyAny>>,
 {
-    let binding = global_cache();
-    let mut cache = write_cache(&binding);
-    cache.get_or_insert_object(py, key, factory)
+    catch_panic("get_or_insert_object", || {
+        let binding = global_cache();
+        let mut cache = write_cache(&binding);
+        cache.get_or_insert_object(py, key, factory)
+    })?
 }
 
 /// Get global cache statistics
@@ -753,25 +756,29 @@ impl From<PyCacheConfig> for PythonCacheConfig {
 
 /// Python functions for cache management
 #[pyfunction]
-pub fn get_cache_stats() -> PyCacheStats {
-    global_cache_stats().into()
+pub fn get_cache_stats() -> PyResult<PyCacheStats> {
+    catch_panic("get_cache_stats", || global_cache_stats().into())
 }
 
 /// Clear all cache entries
 #[pyfunction]
-pub fn clear_cache() {
-    let binding = global_cache();
-    let mut cache = write_cache(&binding);
-    cache.clear();
+pub fn clear_cache() -> PyResult<()> {
+    catch_panic("clear_cache", || {
+        let binding = global_cache();
+        let mut cache = write_cache(&binding);
+        cache.clear();
+    })
 }
 
 /// Configure the global cache with new settings
 #[pyfunction]
-pub fn configure_cache(config: PyCacheConfig) {
-    let rust_config = PythonCacheConfig::from(config);
-    let binding = global_cache();
-    let mut cache = write_cache(&binding);
-    *cache = PythonCacheManager::with_config(rust_config);
+pub fn configure_cache(config: PyCacheConfig) -> PyResult<()> {
+    catch_panic("configure_cache", || {
+        let rust_config = PythonCacheConfig::from(config);
+        let binding = global_cache();
+        let mut cache = write_cache(&binding);
+        *cache = PythonCacheManager::with_config(rust_config);
+    })
 }
 
 #[cfg(test)]
@@ -839,6 +846,9 @@ mod tests {
         assert_eq!(stats.string_misses, 2);
         assert_eq!(stats.string_hits, 1);
         assert_eq!(stats.string_entries, 2);
+        // Compare with a tolerance: the exact value of `1.0 / 3.0 * 100.0`
+        // depends on floating-point rounding, so an exact comparison is a
+        // latent flake rather than an assertion.
         assert_approx_eq(stats.string_hit_rate(), 100.0 / 3.0); // 1/3 * 100
     }
 
@@ -909,6 +919,7 @@ mod tests {
         let py_stats = PyCacheStats::from(rust_stats);
         assert_eq!(py_stats.string_hits, 10);
         assert_eq!(py_stats.string_misses, 5);
+        // Tolerance comparison: see the note in `test_cache_stats`.
         assert_approx_eq(py_stats.string_hit_rate(), 1000.0 / 15.0); // 10/15 * 100
         assert_approx_eq(py_stats.object_hit_rate(), 80.0); // 8/10 * 100
         assert_approx_eq(py_stats.overall_hit_rate(), 72.0); // 18/25 * 100

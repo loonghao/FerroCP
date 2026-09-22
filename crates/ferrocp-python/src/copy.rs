@@ -2,7 +2,7 @@
 
 use crate::async_support::{create_cancellable_task, report_progress, PyAsyncManager};
 use crate::config::PyCopyOptions;
-use crate::error::PyErrorWrapper;
+use crate::error::{catch_panic, PyErrorWrapper};
 use crate::gil_optimization::{GilFreeProgressReporter, GilOptimizationManager};
 use crate::progress::{call_progress_callback, ProgressCallback, PyProgress};
 use ferrocp_engine::{task::CopyRequest, CopyEngine};
@@ -438,8 +438,10 @@ pub fn copy_file<'py>(
     options: Option<PyCopyOptions>,
     progress_callback: Option<ProgressCallback>,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let engine = PyCopyEngine::new()?;
-    engine.copy_file(py, source, destination, options, progress_callback)
+    catch_panic("copy_file", || {
+        let engine = PyCopyEngine::new()?;
+        engine.copy_file(py, source, destination, options, progress_callback)
+    })?
 }
 
 /// Convenience function to copy a directory
@@ -452,8 +454,10 @@ pub fn copy_directory<'py>(
     options: Option<PyCopyOptions>,
     progress_callback: Option<ProgressCallback>,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let engine = PyCopyEngine::new()?;
-    engine.copy_directory(py, source, destination, options, progress_callback)
+    catch_panic("copy_directory", || {
+        let engine = PyCopyEngine::new()?;
+        engine.copy_directory(py, source, destination, options, progress_callback)
+    })?
 }
 
 /// Get FerroCP version
@@ -470,7 +474,7 @@ pub fn quick_copy<'py>(
     source: String,
     destination: String,
 ) -> PyResult<Bound<'py, PyAny>> {
-    copy_file(py, source, destination, None, None)
+    catch_panic("quick_copy", || copy_file(py, source, destination, None, None))?
 }
 
 /// Copy with verification enabled
@@ -482,9 +486,11 @@ pub fn copy_with_verification<'py>(
     destination: String,
     progress_callback: Option<ProgressCallback>,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let mut options = PyCopyOptions::default();
-    options.verify = true;
-    copy_file(py, source, destination, Some(options), progress_callback)
+    catch_panic("copy_with_verification", || {
+        let mut options = PyCopyOptions::default();
+        options.verify = true;
+        copy_file(py, source, destination, Some(options), progress_callback)
+    })?
 }
 
 /// Copy with compression enabled
@@ -496,9 +502,11 @@ pub fn copy_with_compression<'py>(
     destination: String,
     progress_callback: Option<ProgressCallback>,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let mut options = PyCopyOptions::default();
-    options.enable_compression = true;
-    copy_file(py, source, destination, Some(options), progress_callback)
+    catch_panic("copy_with_compression", || {
+        let mut options = PyCopyOptions::default();
+        options.enable_compression = true;
+        copy_file(py, source, destination, Some(options), progress_callback)
+    })?
 }
 
 /// Async copy function with cancellation support
@@ -510,14 +518,16 @@ pub fn copy_file_async<'py>(
     destination: String,
     options: Option<PyCopyOptions>,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let engine = PyCopyEngine::new()?;
-    engine.copy_file_async(py, source, destination, options)
+    catch_panic("copy_file_async", || {
+        let engine = PyCopyEngine::new()?;
+        engine.copy_file_async(py, source, destination, options)
+    })?
 }
 
 /// Create a new async manager
 #[pyfunction]
-pub fn create_async_manager() -> PyAsyncManager {
-    PyAsyncManager::new()
+pub fn create_async_manager() -> PyResult<PyAsyncManager> {
+    catch_panic("create_async_manager", PyAsyncManager::new)
 }
 
 /// Format bytes as human-readable string

@@ -328,7 +328,12 @@ impl Error {
             Self::FileNotFound { .. } | Self::PermissionDenied { .. } | Self::Config { .. } => {
                 false
             }
-            Self::DeviceDetection { .. } | Self::Sync { .. } | Self::Other { .. } => true,
+            Self::DeviceDetection { .. } | Self::Sync { .. } => true,
+            // `Other` is the catch-all variant. Most of its uses are permanent
+            // conditions (a destination is a directory, a policy refused the
+            // copy, a platform does not support an operation), so claiming it
+            // is recoverable would retry something that cannot succeed.
+            Self::Other { .. } => false,
             Self::WithContext { error, .. } => error.is_recoverable(),
         }
     }
@@ -785,6 +790,38 @@ mod tests {
         .with_context("copy_file");
         assert!(error.is_recoverable());
         assert_eq!(error.kind(), ErrorKind::Io);
+    }
+
+    #[test]
+    fn test_other_is_not_recoverable() {
+        // `Other` is the catch-all, and most call sites use it for permanent
+        // conditions (a destination is a directory, a policy refused the copy).
+        // Treating it as recoverable would retry something that cannot succeed.
+        let error = Error::other("destination is a directory");
+        assert!(!error.is_recoverable());
+        assert!(!error.should_retry());
+    }
+
+    #[test]
+    fn test_permanent_policy_errors_are_not_recoverable() {
+        // These are the errors the overwrite and symlink policies raise.
+        for error in [
+            Error::other("destination already exists and the overwrite policy is 'fail'"),
+            Error::other("symbolic link found but the symlink mode is 'fail'"),
+        ] {
+            assert!(
+                !error.is_recoverable(),
+                "policy refusals must not be retried: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_other_still_carries_its_message_and_kind() {
+        let error = Error::other("boom");
+        assert_eq!(error.kind(), ErrorKind::Other);
+        assert_eq!(error.severity(), ErrorSeverity::Medium);
+        assert!(error.to_string().contains("boom"));
     }
 
     #[test]
