@@ -2,6 +2,7 @@
 
 <div align="center">
 
+[![CI](https://github.com/loonghao/FerroCP/actions/workflows/ci.yml/badge.svg)](https://github.com/loonghao/FerroCP/actions/workflows/ci.yml)
 [![Release](https://github.com/loonghao/FerroCP/workflows/Release/badge.svg)](https://github.com/loonghao/FerroCP/actions)
 [![VFX Platform](https://img.shields.io/badge/VFX%20Platform-CY2025%20Compatible-brightgreen)](https://vfxplatform.com/)
 [![Python Version](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue)](https://github.com/loonghao/FerroCP)
@@ -252,17 +253,25 @@ For detailed VFX Platform compatibility information, see [docs/VFX_PLATFORM_COMP
 
 ### CI
 
-The repository currently ships three GitHub Actions workflows in `.github/workflows/`:
+The repository ships four GitHub Actions workflows in `.github/workflows/`:
 
 | Workflow | Purpose |
 |----------|---------|
+| `ci.yml` | Merge gate: Rust fmt/clippy/test on Linux, Windows and macOS, Python lint and tests, and the `cargo deny` / `cargo audit` dependency gate |
 | `release-please.yml` | Opens/updates the release PR from conventional commits |
 | `goreleaser.yml` | Cross-compiles and attaches CLI binaries to a release |
 | `test-goreleaser.yml` | Validates the GoReleaser configuration |
 
-There is currently **no** test or documentation workflow, and no VFX platform test workflow.
-Local checks are available through the helper scripts in `scripts/` (for example
-`scripts/local-ci-check.ps1`, `scripts/quick-ci-check.ps1` and `scripts/run-tests.ps1`).
+The CI gate covers the whole workspace and every target
+(`cargo check --workspace --all-targets --all-features`) rather than a single
+package or binary. Local checks are available through the helper scripts in
+`scripts/` (for example `scripts/local-ci-check.ps1`, `scripts/quick-ci-check.ps1`
+and `scripts/run-tests.ps1`).
+
+There is no separate VFX platform workflow. The VFX badge above describes a
+project target, not a verified test result; VFX-shaped coverage (large asset
+copies, platform-specific metadata handling) is exercised by the regular
+three-platform test matrix instead of a dedicated workflow.
 
 ## 🔬 Development
 

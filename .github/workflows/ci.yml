@@ -1,0 +1,214 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  rust-fmt:
+    name: Rust fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  # Lint levels follow the `.cargo/config.toml` `dev-clippy` alias: correctness,
+  # suspicious and complexity are blocking, perf and style stay advisory.
+  #
+  # Note: do NOT use `-D warnings` here. The `[workspace.lints.clippy]` table in
+  # the root Cargo.toml deliberately allows a long list of style lints
+  # (must_use_candidate, cast_precision_loss, doc_markdown, ...) and command-line
+  # lint flags override manifest levels, so `-D warnings` would silently
+  # resurrect every one of them and bury real findings in noise.
+  rust-clippy:
+    name: Rust clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: clippy
+
+      - name: Run clippy
+        run: |
+          cargo clippy --workspace --all-targets --all-features -- \
+            -D clippy::correctness \
+            -D clippy::suspicious \
+            -D clippy::complexity \
+            -W clippy::perf \
+            -W clippy::style
+
+  # `cargo check --workspace --all-targets --all-features` is the gate that was
+  # missing: --workspace every crate and --all-targets every target (benches and
+  # examples included). Building only `--bin ferrocp`, or checking a single
+  # package, is what let the workspace sit uncompilable without anyone noticing.
+  #
+  # `cargo test --workspace` then runs lib, integration and doc tests. Benchmarks
+  # are compiled by the step above but not executed here: they are criterion
+  # harnesses, not correctness checks.
+  rust-test:
+    name: Rust test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libssl-dev lld clang
+
+      - name: Check every crate and target
+        run: cargo check --workspace --all-targets --all-features
+
+      - name: Run tests
+        run: cargo test --workspace
+
+  # Dependency gate. `deny.toml` and `.cargo/audit.toml` hold the accepted-risk
+  # list (currently RUSTSEC-2025-0141, the unmaintained `bincode`); both are
+  # wired in here so new advisories and license/ban violations block the PR.
+  cargo-deny:
+    name: cargo deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: deny
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@cargo-deny
+
+      - name: Run cargo deny
+        run: cargo deny check
+
+  cargo-audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: audit
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@cargo-audit
+
+      - name: Run cargo audit
+        run: cargo audit --deny warnings
+
+  python-lint:
+    name: Python lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      # --no-install-project: linting only needs the lint tools, not a compiled
+      # `ferrocp` extension module. Building the project here would make this job
+      # report the extension build status instead of the lint status.
+      - name: Install lint dependencies
+        run: uv sync --group linting --no-install-project
+
+      - name: Run ruff check
+        run: uv run --no-sync ruff check .
+
+      - name: Run ruff format check
+        run: uv run --no-sync ruff format --check .
+
+      - name: Run mypy
+        run: uv run --no-sync mypy python/ferrocp --strict
+
+  python-test:
+    name: Python test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: python-test-${{ matrix.os }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libssl-dev lld clang
+
+      # `nox -s test` builds the extension with maturin and runs pytest across
+      # the Python versions declared in noxfile.py. This job is expected to fail
+      # until crates/ferrocp-python is buildable again: it inherits `pyo3` from
+      # the workspace root, where the dependency is currently commented out, and
+      # the crate is not a workspace member.
+      - name: Install test dependencies
+        run: uv sync --group testing --no-install-project
+
+      - name: Run pytest
+        run: uv run --no-sync nox -s test

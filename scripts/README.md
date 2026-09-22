@@ -4,7 +4,7 @@ This directory contains scripts to help ensure your code passes CI checks before
 
 ## Overview
 
-The CI pipeline runs several checks based on `.github/workflows/build-test.yml`:
+The CI pipeline runs several checks based on `.github/workflows/ci.yml`:
 
 1. **Format Check** - `cargo fmt --all -- --check`
 2. **Clippy Check** - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
