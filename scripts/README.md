@@ -4,14 +4,17 @@ This directory contains scripts to help ensure your code passes CI checks before
 
 ## Overview
 
-The CI pipeline runs several checks based on `.github/workflows/build-test.yml`:
+The CI pipeline runs several checks based on `.github/workflows/ci.yml`:
 
 1. **Format Check** - `cargo fmt --all -- --check`
-2. **Clippy Check** - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
-3. **Unit Tests** - `cargo test --workspace --exclude ferrocp-python --lib`
-4. **Integration Tests** - `cargo test --workspace --exclude ferrocp-python --test '*'`
-5. **Build Test** - GoReleaser build simulation
-6. **Benchmark Tests** - `cargo bench --workspace --exclude ferrocp-python`
+2. **Clippy Check** - `cargo clippy --workspace --all-targets --all-features -- -D clippy::correctness -D clippy::suspicious -D clippy::complexity -W clippy::perf -W clippy::style`
+3. **Tests** - `cargo test --workspace` (lib, integration and doc tests, `ferrocp-python` included)
+4. **Build Test** - GoReleaser build simulation (`test-goreleaser.yml`, not part of `ci.yml`)
+5. **Cargo.lock Check** - `cargo metadata --locked` (`cargo-lock.yml`, not part of `ci.yml`)
+
+Benchmarks are compiled by the check above (`--all-targets`) but never executed
+in CI: they are criterion harnesses, not correctness checks. Run them locally
+with `cargo bench --workspace`.
 
 ## Scripts
 

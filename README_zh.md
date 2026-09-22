@@ -2,6 +2,7 @@
 
 <div align="center">
 
+[![CI](https://github.com/loonghao/FerroCP/actions/workflows/ci.yml/badge.svg)](https://github.com/loonghao/FerroCP/actions/workflows/ci.yml)
 [![Release](https://github.com/loonghao/FerroCP/workflows/Release/badge.svg)](https://github.com/loonghao/FerroCP/actions)
 [![Python Version](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue)](https://github.com/loonghao/FerroCP)
 [![License](https://img.shields.io/github/license/loonghao/FerroCP.svg)](https://github.com/loonghao/FerroCP/blob/main/LICENSE)
@@ -324,17 +325,24 @@ pip install sphinx>=7.0.0 pydata-sphinx-theme>=0.14.1
 
 ## CI 与 VFX 平台
 
-仓库当前在 `.github/workflows/` 中包含三个 GitHub Actions 工作流：
+仓库当前在 `.github/workflows/` 中包含五个 GitHub Actions 工作流：
 
 | 工作流 | 用途 |
 |--------|------|
+| `ci.yml` | 合并门禁：Linux / Windows / macOS 三平台 Rust fmt、clippy、test，Python lint，Python 扩展模块构建，以及 `cargo deny` / `cargo audit` 依赖门禁 |
+| `cargo-lock.yml` | 依赖可复现门禁：`cargo metadata --locked` 在 manifest 改动而 `Cargo.lock` 未同步更新时失败 |
 | `release-please.yml` | 根据 conventional commits 创建/更新 release PR |
 | `goreleaser.yml` | 交叉编译 CLI 二进制并附加到 release |
 | `test-goreleaser.yml` | 校验 GoReleaser 配置 |
 
-目前**没有**测试工作流、文档工作流和 VFX 平台测试工作流。本地检查可以使用 `scripts/`
-下的辅助脚本（例如 `scripts/local-ci-check.ps1`、`scripts/quick-ci-check.ps1` 和
-`scripts/run-tests.ps1`）。
+CI 门禁覆盖整个 workspace 与全部 target
+（`cargo check --workspace --all-targets --all-features`），而不是单个包或单个二进制。
+本地检查可以使用 `scripts/` 下的辅助脚本（例如 `scripts/local-ci-check.ps1`、
+`scripts/quick-ci-check.ps1` 和 `scripts/run-tests.ps1`）。
+
+目前没有独立的 VFX 平台工作流。上方的 VFX 徽章描述的是项目目标，而非已验证的测试结论；
+VFX 场景的覆盖（大文件资产复制、平台相关的元数据处理）由常规的三平台测试矩阵承担，
+而不是单独的工作流。
 
 如需详细的 VFX 平台兼容性信息，请参阅 [docs/VFX_PLATFORM_COMPATIBILITY.md](docs/VFX_PLATFORM_COMPATIBILITY.md)。
 

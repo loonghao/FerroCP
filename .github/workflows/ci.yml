@@ -1,0 +1,269 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  rust-fmt:
+    name: Rust fmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  # Lint levels follow the `.cargo/config.toml` `dev-clippy` alias: correctness,
+  # suspicious and complexity are blocking, perf and style stay advisory.
+  #
+  # Note: do NOT use `-D warnings` here. The `[workspace.lints.clippy]` table in
+  # the root Cargo.toml deliberately allows a long list of style lints
+  # (must_use_candidate, cast_precision_loss, doc_markdown, ...) and command-line
+  # lint flags override manifest levels, so `-D warnings` would silently
+  # resurrect every one of them and bury real findings in noise.
+  rust-clippy:
+    name: Rust clippy
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: clippy
+
+      - name: Run clippy
+        run: |
+          cargo clippy --workspace --all-targets --all-features -- \
+            -D clippy::correctness \
+            -D clippy::suspicious \
+            -D clippy::complexity \
+            -W clippy::perf \
+            -W clippy::style
+
+  # `cargo check --workspace --all-targets --all-features` is the gate that was
+  # missing: --workspace every crate and --all-targets every target (benches and
+  # examples included). Building only `--bin ferrocp`, or checking a single
+  # package, is what let the workspace sit uncompilable without anyone noticing.
+  #
+  # `cargo test --workspace` then runs lib, integration and doc tests. Benchmarks
+  # are compiled by the step above but not executed here: they are criterion
+  # harnesses, not correctness checks.
+  rust-test:
+    name: Rust test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libssl-dev lld clang
+
+      - name: Check every crate and target
+        run: cargo check --workspace --all-targets --all-features
+
+      # Deliberately without `--all-features` (unlike the check step above).
+      # `ferrocp-python`'s `extension-module` feature turns on
+      # `pyo3/extension-module`, which stops the cdylib from linking against
+      # libpython; the crate's own Cargo.toml documents that this feature must
+      # stay off for `cargo test`. No test in the workspace is currently gated
+      # behind a non-default feature, so nothing is lost today. When one is,
+      # add a dedicated `cargo test -p <crate> --features <f>` step rather than
+      # flipping `--all-features` on here.
+      - name: Run tests
+        run: cargo test --workspace
+
+  # Dependency gate. `deny.toml` and `.cargo/audit.toml` hold the accepted-risk
+  # list (currently RUSTSEC-2025-0141, the unmaintained `bincode`); both are
+  # wired in here so new advisories and license/ban violations block the PR.
+  cargo-deny:
+    name: cargo deny
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: deny
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@cargo-deny
+
+      - name: Run cargo deny
+        run: cargo deny check
+
+  cargo-audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: audit
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@cargo-audit
+
+      - name: Run cargo audit
+        run: cargo audit --deny warnings
+
+  python-lint:
+    name: Python lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      # --no-install-project: linting only needs the lint tools, not a compiled
+      # `ferrocp` extension module. Building the project here would make this job
+      # report the extension build status instead of the lint status.
+      - name: Install lint dependencies
+        run: uv sync --group linting --no-install-project
+
+      - name: Run ruff check
+        run: uv run --no-sync ruff check .
+
+      - name: Run ruff format check
+        run: uv run --no-sync ruff format --check .
+
+      - name: Run mypy
+        run: uv run --no-sync mypy python/ferrocp --strict
+
+  # The Python bindings are gated by a build + import check only; there is
+  # deliberately no `python-test` job. Two independent blockers make a pytest
+  # run impossible to land in this gate today:
+  #
+  # 1. `ferrocp.copy_file()` / `copy_directory()` never return.
+  #    `PyCopyEngine::new()` builds a `CopyEngine` but never calls
+  #    `CopyEngine::start()`, so the scheduler dispatch loop that hands tasks to
+  #    the executor is not running and every submitted task stays `Pending`
+  #    forever. The Rust CLI is unaffected because it calls `engine.start()`
+  #    before `execute()` (crates/ferrocp-cli/src/main.rs).
+  #    `crates/ferrocp-python/tests/copy_completes.rs` is the ignored regression
+  #    test for exactly this and points at the engine fix (PIP-3203). Every test
+  #    in tests/test_cli.py except `test_cli_version` drives that path, so a
+  #    pytest run hangs instead of failing.
+  # 2. `nox -s test` cannot drive the suite even once that is fixed. noxfile's
+  #    `install_with_groups` shells out to `uv sync`, and uv ignores the
+  #    session's `VIRTUAL_ENV` ("does not match the project environment path
+  #    `.venv` and will be ignored; use `--active`"), so the test dependencies
+  #    land in `.venv` while nox runs `maturin` and `pytest` from
+  #    `.nox/test-3.X`. It also fans out over four interpreters, each triggering
+  #    a full release build under the workspace's `lto = "fat",
+  #    codegen-units = 1` profile.
+  #
+  # Restore `python-test` (uv sync --group testing --no-install-project;
+  # maturin develop; pytest tests/) once PIP-3203 has landed and the noxfile
+  # installs into the session environment.
+  #
+  # Until then this job guards the part that did break in practice and that the
+  # Rust jobs do not cover: linking the cdylib against pyo3's abi3 import
+  # library without libpython (the `extension-module` feature), which
+  # `cargo check` never exercises.
+  python-build:
+    name: Python extension build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+      # Pin the interpreter: `requires-python = ">=3.9"` alone lets uv resolve
+      # to a CPython newer than the declared support matrix.
+      UV_PYTHON: "3.11"
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: python-build-${{ matrix.os }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libssl-dev lld clang
+
+      # --no-install-project keeps this job from building the extension twice:
+      # `uv sync` would otherwise run the maturin PEP 517 backend before
+      # `maturin develop` runs it again.
+      - name: Install build dependencies
+        run: uv sync --group testing --no-install-project
+
+      # Debug profile on purpose. This job checks the pyo3 link step, not
+      # release performance, and the workspace release profile is
+      # `lto = "fat", codegen-units = 1`, which costs hours on a hosted runner.
+      - name: Build the extension module
+        run: uv run --no-sync maturin develop
+
+      - name: Import the extension module
+        run: |
+          uv run --no-sync python -c "import ferrocp; print(ferrocp.__version__); assert ferrocp.__version__"
