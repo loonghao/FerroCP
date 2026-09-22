@@ -76,6 +76,19 @@ builds:
       post: cp target/x86_64-apple-darwin/release/ferrocp {{ .Path }}
 
   # macOS ARM64 (Apple Silicon) - VFX Platform CY2025+
+  #
+  # `MACOSX_DEPLOYMENT_TARGET` is a declaration here, not a build input: GoReleaser
+  # only compiles `scripts/fake-main.go` with `CGO_ENABLED=0`, and the `post` hook
+  # copies in the Rust binary that the release workflow already cross-compiled. The
+  # minimum OS version actually welded into the shipped artifact comes from the
+  # `MACOSX_DEPLOYMENT_TARGET` env of `.github/workflows/goreleaser.yml`, mirrored
+  # by the `test-cross-compiled-targets` matrix in `test-goreleaser.yml`; keep the
+  # three in sync so this file documents what ships.
+  #
+  # arm64 is 11.0 because every Apple Silicon Mac ships at least macOS 11.0 (Big
+  # Sur), one major lower than the Intel target, which follows VFX Platform CY2025
+  # at 12.0. Raising either value would only shrink the supported user base, so the
+  # workflow stays the source of truth and this block follows it.
   - id: ferrocp-darwin-arm64
     binary: ferrocp
     main: ./scripts/fake-main.go
@@ -83,7 +96,7 @@ builds:
     goarch: [arm64]
     env:
       - CGO_ENABLED=0
-      - MACOSX_DEPLOYMENT_TARGET=14.0
+      - MACOSX_DEPLOYMENT_TARGET=11.0
     hooks:
       post: cp target/aarch64-apple-darwin/release/ferrocp {{ .Path }}
 

@@ -1,0 +1,46 @@
+name: Cargo lock
+
+# Guards the dependency reproducibility gate: Cargo.lock is committed, so it has
+# to stay in sync with the manifests. `cargo metadata --locked` is the
+# authoritative check -- it fails with "the lock file ... needs to be updated but
+# --locked was passed" whenever a manifest changed without a matching lock
+# update, which is exactly what release-please did when it bumped
+# `[workspace.package] version` (see the `sync-cargo-lock` job of
+# release-please.yml).
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'crates/**/Cargo.toml'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cargo-lock-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cargo-lock:
+    name: Cargo.lock matches the manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: cargo-lock
+
+      # `--no-deps` skips dependency resolution entirely and passes even when the
+      # lock is stale, so run the full resolution.
+      - name: Verify Cargo.lock is up to date
+        run: cargo metadata --locked --format-version 1 > /dev/null
