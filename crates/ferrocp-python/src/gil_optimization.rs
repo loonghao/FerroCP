@@ -3,10 +3,33 @@
 //! This module provides optimized mechanisms for releasing the Python Global Interpreter Lock (GIL)
 //! during CPU-intensive and I/O operations to improve performance in multi-threaded environments.
 
+use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
+
+/// Runtime used when the caller has no ambient Tokio runtime
+///
+/// Building a multi-thread runtime per call is wasteful, so it is created once
+/// and reused. A failure to build it is returned to Python instead of panicking
+/// inside `expect`, which would abort the host process when the extension is
+/// built with `panic = "abort"`.
+fn fallback_runtime() -> PyResult<tokio::runtime::Handle> {
+    static RUNTIME: OnceLock<Result<tokio::runtime::Runtime, String>> = OnceLock::new();
+
+    match RUNTIME.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| error.to_string())
+    }) {
+        Ok(runtime) => Ok(runtime.handle().clone()),
+        Err(error) => Err(PyRuntimeError::new_err(format!(
+            "failed to create Tokio runtime: {error}"
+        ))),
+    }
+}
 
 /// Progress callback that can be called without holding the GIL
 pub type GilFreeProgressCallback = Arc<dyn Fn(f64, String) + Send + Sync>;
@@ -195,15 +218,20 @@ where
 {
     // Release GIL during the async operation
     py.detach(|| {
-        // Create a new Tokio runtime for this operation if needed
-        let rt = tokio::runtime::Handle::try_current().unwrap_or_else(|_| {
-            tokio::runtime::Builder::new_multi_thread()
-                .enable_all() // Enable all features including timers
-                .build()
-                .expect("Failed to create Tokio runtime")
-                .handle()
-                .clone()
-        });
+        // Reuse the ambient runtime when there is one. Otherwise build a
+        // runtime once and keep it: creating one per call is expensive, and a
+        // failure to build it must not abort the host process.
+        let rt = match tokio::runtime::Handle::try_current() {
+            Ok(handle) => handle,
+            Err(_) => match fallback_runtime() {
+                Ok(handle) => handle,
+                Err(error) => {
+                    return Err(PyRuntimeError::new_err(format!(
+                        "failed to create Tokio runtime: {error}"
+                    )));
+                }
+            },
+        };
 
         rt.block_on(operation())
     })

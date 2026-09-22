@@ -84,6 +84,7 @@ pub fn decide_overwrite(
                     destination.display(),
                     error
                 ),
+                kind: None,
             });
         }
     };

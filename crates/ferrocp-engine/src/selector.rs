@@ -662,6 +662,7 @@ impl EngineSelector {
     async fn get_file_size(&self, path: &Path) -> Result<u64> {
         let metadata = fs::metadata(path).await.map_err(|e| Error::Io {
             message: format!("Failed to get file metadata for {}: {}", path.display(), e),
+            kind: None,
         })?;
         Ok(metadata.len())
     }

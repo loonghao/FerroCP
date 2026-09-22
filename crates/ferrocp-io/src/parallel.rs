@@ -259,6 +259,7 @@ impl ParallelCopyEngine {
             tokio::try_join!(reader_handle, processor_handle, writer_handle).map_err(|e| {
                 Error::Io {
                     message: format!("Parallel copy task failed: {}", e),
+                    kind: None,
                 }
             })?;
 
@@ -323,6 +324,7 @@ impl ParallelCopyEngine {
                 // Acquire semaphore permit for memory control
                 let _permit = semaphore.acquire().await.map_err(|_| Error::Io {
                     message: "Failed to acquire semaphore permit".to_string(),
+                    kind: None,
                 })?;
 
                 // Check memory usage
@@ -543,6 +545,7 @@ impl CopyEngine for ParallelCopyEngine {
             .await
             .map_err(|e| Error::Io {
                 message: format!("Failed to get file metadata: {}", e),
+                kind: Some(e.kind()),
             })?;
 
         let file_size = metadata.len();
@@ -607,6 +610,7 @@ impl ParallelCopyEngine {
             .await
             .map_err(|e| Error::Io {
                 message: format!("Sequential copy failed: {}", e),
+                kind: Some(e.kind()),
             })?;
 
         Ok(CopyStats {

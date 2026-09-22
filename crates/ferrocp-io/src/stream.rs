@@ -25,10 +25,12 @@ impl FileStream {
         let path = path.into();
         let file = File::open(&path).await.map_err(|e| Error::Io {
             message: format!("Failed to open file '{}': {}", path.display(), e),
+            kind: None,
         })?;
 
         let metadata = file.metadata().await.map_err(|e| Error::Io {
             message: format!("Failed to read file metadata: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         let file_size = metadata.len();
@@ -93,6 +95,7 @@ impl Stream for FileStream {
             }
             Poll::Ready(Err(e)) => Poll::Ready(Some(Err(Error::Io {
                 message: format!("Failed to read from file: {}", e),
+                kind: Some(e.kind()),
             }))),
             Poll::Pending => Poll::Pending,
         }
@@ -217,12 +220,14 @@ pub mod utils {
             use tokio::io::AsyncWriteExt;
             writer.write_all(&chunk).await.map_err(|e| Error::Io {
                 message: format!("Failed to write chunk: {}", e),
+                kind: Some(e.kind()),
             })?;
             total_bytes += chunk.len() as u64;
         }
 
         writer.flush().await.map_err(|e| Error::Io {
             message: format!("Failed to flush writer: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         Ok(total_bytes)

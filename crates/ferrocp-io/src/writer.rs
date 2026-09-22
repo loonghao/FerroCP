@@ -20,6 +20,7 @@ impl AsyncFileWriter {
         let path = path.as_ref();
         let file = File::create(path).await.map_err(|e| Error::Io {
             message: format!("Failed to create file '{}': {}", path.display(), e),
+            kind: None,
         })?;
 
         let writer = BufWriter::new(file);
@@ -42,6 +43,7 @@ impl AsyncFileWriter {
             .await
             .map_err(|e| Error::Io {
                 message: format!("Failed to open file '{}': {}", path.display(), e),
+                kind: None,
             })?;
 
         let writer = BufWriter::new(file);
@@ -63,6 +65,7 @@ impl AsyncFileWriter {
         let data = &buffer.as_ref()[..len];
         let bytes_written = self.writer.write(data).await.map_err(|e| Error::Io {
             message: format!("Failed to write to file: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         self.bytes_written += bytes_written as u64;
@@ -78,6 +81,7 @@ impl AsyncFileWriter {
     pub async fn write(&mut self, data: &[u8]) -> Result<usize> {
         let bytes_written = self.writer.write(data).await.map_err(|e| Error::Io {
             message: format!("Failed to write to file: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         self.bytes_written += bytes_written as u64;
@@ -88,6 +92,7 @@ impl AsyncFileWriter {
     pub async fn write_all(&mut self, data: &[u8]) -> Result<()> {
         self.writer.write_all(data).await.map_err(|e| Error::Io {
             message: format!("Failed to write all data: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         self.bytes_written += data.len() as u64;
@@ -98,6 +103,7 @@ impl AsyncFileWriter {
     pub async fn flush(&mut self) -> Result<()> {
         self.writer.flush().await.map_err(|e| Error::Io {
             message: format!("Failed to flush writer: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         debug!("Flushed writer");
@@ -112,6 +118,7 @@ impl AsyncFileWriter {
             .await
             .map_err(|e| Error::Io {
                 message: format!("Failed to sync to disk: {}", e),
+                kind: Some(e.kind()),
             })?;
 
         debug!("Synced all data to disk");
@@ -137,6 +144,7 @@ impl FileWriter {
         let path = path.as_ref();
         let file = std::fs::File::create(path).map_err(|e| Error::Io {
             message: format!("Failed to create file '{}': {}", path.display(), e),
+            kind: None,
         })?;
 
         let writer = std::io::BufWriter::new(file);
@@ -158,6 +166,7 @@ impl FileWriter {
             .open(path)
             .map_err(|e| Error::Io {
                 message: format!("Failed to open file '{}': {}", path.display(), e),
+                kind: None,
             })?;
 
         let writer = std::io::BufWriter::new(file);
@@ -176,6 +185,7 @@ impl FileWriter {
 
         let bytes_written = self.writer.write(data).map_err(|e| Error::Io {
             message: format!("Failed to write to file: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         self.bytes_written += bytes_written as u64;
@@ -188,6 +198,7 @@ impl FileWriter {
 
         self.writer.write_all(data).map_err(|e| Error::Io {
             message: format!("Failed to write all data: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         self.bytes_written += data.len() as u64;
@@ -200,6 +211,7 @@ impl FileWriter {
 
         self.writer.flush().map_err(|e| Error::Io {
             message: format!("Failed to flush writer: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         debug!("Flushed writer");
@@ -210,6 +222,7 @@ impl FileWriter {
     pub fn sync_all(&mut self) -> Result<()> {
         self.writer.get_mut().sync_all().map_err(|e| Error::Io {
             message: format!("Failed to sync to disk: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         debug!("Synced all data to disk");

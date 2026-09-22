@@ -275,20 +275,22 @@ impl PyCopyOptions {
 
 impl Default for PyCopyOptions {
     fn default() -> Self {
-        Self::new(
-            "auto".to_string(),
-            "always".to_string(),
-            None,
-            true,
-            true,
-            false,
-            false,
-            6,
-            64 * 1024,
-            0,
-            false,
-        )
-        .expect("default options must be valid")
+        // The defaults are literals that are known to be valid, so build the
+        // struct directly instead of going through the validating constructor
+        // and unwrapping the result.
+        Self {
+            mode: "auto".to_string(),
+            overwrite: "always".to_string(),
+            overwrite_callback: None,
+            preserve_timestamps: true,
+            preserve_permissions: true,
+            follow_symlinks: false,
+            enable_compression: false,
+            compression_level: 6,
+            buffer_size: 64 * 1024,
+            num_threads: 0,
+            verify: false,
+        }
     }
 }
 
