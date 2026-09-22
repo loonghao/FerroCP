@@ -39,6 +39,7 @@ pub fn read_link(link: &Path) -> Result<PathBuf> {
             link.display(),
             error
         ),
+        kind: None,
     })
 }
 
@@ -58,6 +59,7 @@ pub fn follow_link(link: &Path) -> Result<std::fs::Metadata> {
             link.display(),
             error
         ),
+        kind: None,
     })
 }
 
@@ -107,6 +109,7 @@ pub fn create_symlink(link: &Path, destination: &Path) -> Result<()> {
                 target.display(),
                 error
             ),
+            kind: None,
         })?;
     }
 
@@ -135,6 +138,7 @@ pub fn copy_link_target(link: &Path, destination: &Path) -> Result<u64> {
             link.display(),
             error
         ),
+        kind: None,
     })?;
 
     std::fs::write(destination, &bytes).map_err(|error| Error::Io {
@@ -144,6 +148,7 @@ pub fn copy_link_target(link: &Path, destination: &Path) -> Result<u64> {
             link.display(),
             error
         ),
+        kind: None,
     })?;
 
     Ok(bytes.len() as u64)

@@ -15,9 +15,33 @@ mod exceptions {
     create_exception!(ferrocp_python, PyConfigError, PyFerrocpError);
     create_exception!(ferrocp_python, PyNetworkError, PyFerrocpError);
     create_exception!(ferrocp_python, PySyncError, PyFerrocpError);
+
+    // These derive from the matching builtins so `except FileNotFoundError`
+    // and `except PermissionError` work for callers. They intentionally do not
+    // derive from PyFerrocpError: Python has single inheritance here, and
+    // matching the stdlib contract is what users catch.
+    create_exception!(
+        ferrocp_python,
+        PyFileNotFoundError,
+        pyo3::exceptions::PyFileNotFoundError
+    );
+    create_exception!(
+        ferrocp_python,
+        PyPermissionError,
+        pyo3::exceptions::PyPermissionError
+    );
 }
 
 pub use exceptions::*;
+
+/// Render an error for Python, including its context chain
+///
+/// The chain is part of the message because Python callers only see the
+/// exception text: "copy_file: I/O error: ..." is actionable, "I/O error: ..."
+/// alone is not.
+fn error_message(error: &Error) -> String {
+    error.chain()
+}
 
 /// Error wrapper for Python bindings
 #[derive(Debug)]
@@ -33,12 +57,30 @@ impl From<Error> for PyErrorWrapper {
 impl From<PyErrorWrapper> for PyErr {
     fn from(wrapper: PyErrorWrapper) -> Self {
         match wrapper.0 {
-            Error::Io { message } => PyIoError::new_err(message),
+            // Errors that carry an os-level kind map onto the matching builtin
+            // exception, so `except OSError` and friends work as users expect.
+            Error::Io { message, kind } => match kind {
+                Some(std::io::ErrorKind::NotFound) => PyFileNotFoundError::new_err(message),
+                Some(std::io::ErrorKind::PermissionDenied) => PyPermissionError::new_err(message),
+                _ => PyIoError::new_err(error_message(&Error::Io { message, kind })),
+            },
             Error::FileNotFound { path } => {
-                PyIoError::new_err(format!("File not found: {}", path.display()))
+                PyFileNotFoundError::new_err(format!("File not found: {}", path.display()))
             }
             Error::PermissionDenied { path } => {
-                PyIoError::new_err(format!("Permission denied: {}", path.display()))
+                PyPermissionError::new_err(format!("Permission denied: {}", path.display()))
+            }
+            Error::WithContext { error, context } => {
+                let mut err = PyErr::from(PyErrorWrapper(*error));
+                if let Some(path) = &context.path {
+                    err = PyErr::new::<PyFerrocpError, _>(format!(
+                        "{} (while {} '{}')",
+                        err,
+                        context.operation,
+                        path.display()
+                    ));
+                }
+                err
             }
             Error::Config { message } => PyConfigError::new_err(message),
             Error::Network { message } => PyNetworkError::new_err(message),
@@ -78,6 +120,46 @@ pub fn handle_async_error<T>(result: Result<T, Error>) -> PyResult<T> {
     result.into_py_result()
 }
 
+/// Run a closure and convert a Rust panic into a Python exception
+///
+/// Without this, a panic inside the extension module surfaces as
+/// `pyo3_runtime.PanicException`, which callers do not expect and which leaves
+/// any lock held during the panic poisoned. Catching it at the boundary leaves
+/// an actionable `FerrocpError` instead.
+///
+/// Note: this only helps when the crate is built with unwinding panics. The
+/// workspace release profile sets `panic = "abort"`, which makes any panic in a
+/// release-built wheel abort the host interpreter; the Python extension must be
+/// built with unwinding for this to apply.
+pub fn catch_panic<T>(operation: &str, f: impl FnOnce() -> T) -> PyResult<T> {
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+    match outcome {
+        Ok(value) => Ok(value),
+        Err(payload) => {
+            let message = panic_message(payload.as_ref());
+            tracing::error!(
+                "internal panic in '{}' was converted to a Python exception: {}",
+                operation,
+                message
+            );
+            Err(PyFerrocpError::new_err(format!(
+                "internal error during '{operation}': {message}"
+            )))
+        }
+    }
+}
+
+/// Extract a readable message from a caught panic payload
+fn panic_message(payload: &(dyn std::any::Any + Send + 'static)) -> String {
+    if let Some(text) = payload.downcast_ref::<&str>() {
+        (*text).to_string()
+    } else if let Some(text) = payload.downcast_ref::<String>() {
+        text.clone()
+    } else {
+        "unknown panic payload".to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -96,6 +178,7 @@ mod tests {
 
         let io_error = Error::Io {
             message: "Test IO error".to_string(),
+            kind: None,
         };
         let py_err: PyErr = PyErrorWrapper::from(io_error).into();
 
@@ -112,6 +195,7 @@ mod tests {
         // Runtime testing is skipped due to DLL dependency issues
         let io_error = Error::Io {
             message: "Test IO error".to_string(),
+            kind: None,
         };
         let _wrapper = PyErrorWrapper::from(io_error);
         // Just verify compilation, don't run Python-specific code

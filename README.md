@@ -261,6 +261,12 @@ Overwrite policy, symbolic-link handling and the platform behaviour matrix are
 specified in [docs/COPY_SEMANTICS.md](docs/COPY_SEMANTICS.md). That document is
 the normative contract: behaviour not listed there is undefined.
 
+### Errors
+
+How failures are classified, what context they carry, and which Python
+exception they map to is specified in
+[docs/ERROR_MODEL.md](docs/ERROR_MODEL.md).
+
 ### CI
 
 The repository ships five GitHub Actions workflows in `.github/workflows/`:

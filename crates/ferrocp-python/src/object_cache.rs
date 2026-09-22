@@ -300,14 +300,17 @@ impl PythonCacheManager {
                 }
                 return Ok(entry.access().clone_ref(py));
             } else {
-                // Entry is expired, remove it
-                let removed_entry = self.object_cache.remove(&hash_key).unwrap();
-                if self.config.enable_stats {
-                    self.stats.expired_removals += 1;
-                    self.stats.memory_usage = self
-                        .stats
-                        .memory_usage
-                        .saturating_sub(removed_entry.estimated_size);
+                // Entry is expired, remove it. `if let` instead of `unwrap()`:
+                // the entry can disappear between the lookup and the removal,
+                // and that is not a panic.
+                if let Some(removed_entry) = self.object_cache.remove(&hash_key) {
+                    if self.config.enable_stats {
+                        self.stats.expired_removals += 1;
+                        self.stats.memory_usage = self
+                            .stats
+                            .memory_usage
+                            .saturating_sub(removed_entry.estimated_size);
+                    }
                 }
             }
         }
@@ -485,6 +488,29 @@ pub fn global_cache() -> Arc<RwLock<PythonCacheManager>> {
     GLOBAL_CACHE.clone()
 }
 
+/// Take a write lock, recovering from a poisoned lock
+///
+/// A panic while the lock is held used to poison it, and the `unwrap()` on the
+/// next access turned that into a second panic at the PyO3 boundary. A cache
+/// lock guards no invariants that a panic could have broken, so the data is
+/// still safe to use.
+fn write_cache(
+    binding: &Arc<RwLock<PythonCacheManager>>,
+) -> std::sync::RwLockWriteGuard<'_, PythonCacheManager> {
+    binding
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// Take a read lock, recovering from a poisoned lock
+fn read_cache(
+    binding: &Arc<RwLock<PythonCacheManager>>,
+) -> std::sync::RwLockReadGuard<'_, PythonCacheManager> {
+    binding
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Convenience function to get or insert a string in the global cache
 pub fn get_or_insert_string<K, F>(key: K, factory: F) -> String
 where
@@ -492,7 +518,7 @@ where
     F: FnOnce() -> String,
 {
     let binding = global_cache();
-    let mut cache = binding.write().unwrap();
+    let mut cache = write_cache(&binding);
     cache.get_or_insert_string(key, factory)
 }
 
@@ -503,14 +529,14 @@ where
     F: FnOnce(Python<'_>) -> PyResult<Py<PyAny>>,
 {
     let binding = global_cache();
-    let mut cache = binding.write().unwrap();
+    let mut cache = write_cache(&binding);
     cache.get_or_insert_object(py, key, factory)
 }
 
 /// Get global cache statistics
 pub fn global_cache_stats() -> PythonCacheStats {
     let binding = global_cache();
-    let cache = binding.read().unwrap();
+    let cache = read_cache(&binding);
     cache.stats().clone()
 }
 
@@ -735,7 +761,7 @@ pub fn get_cache_stats() -> PyCacheStats {
 #[pyfunction]
 pub fn clear_cache() {
     let binding = global_cache();
-    let mut cache = binding.write().unwrap();
+    let mut cache = write_cache(&binding);
     cache.clear();
 }
 
@@ -744,7 +770,7 @@ pub fn clear_cache() {
 pub fn configure_cache(config: PyCacheConfig) {
     let rust_config = PythonCacheConfig::from(config);
     let binding = global_cache();
-    let mut cache = binding.write().unwrap();
+    let mut cache = write_cache(&binding);
     *cache = PythonCacheManager::with_config(rust_config);
 }
 

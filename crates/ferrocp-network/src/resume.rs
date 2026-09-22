@@ -135,6 +135,7 @@ impl ResumeManager {
                         config.resume_dir.display(),
                         e
                     ),
+                    kind: None,
                 })?;
         }
 
@@ -170,6 +171,7 @@ impl ResumeManager {
                 resume_file.display(),
                 e
             ),
+            kind: None,
         })?;
 
         // Store in memory
@@ -204,6 +206,7 @@ impl ResumeManager {
                 resume_file.display(),
                 e
             ),
+            kind: None,
         })?;
 
         let resume_info: ResumeInfo =
@@ -241,6 +244,7 @@ impl ResumeManager {
                     resume_file.display(),
                     e
                 ),
+                kind: None,
             })?;
         }
 
@@ -282,11 +286,13 @@ impl ResumeManager {
                     self.config.resume_dir.display(),
                     e
                 ),
+                kind: None,
             })?;
 
         let mut loaded_count = 0;
         while let Some(entry) = entries.next_entry().await.map_err(|e| Error::Io {
             message: format!("Failed to read directory entry: {}", e),
+            kind: Some(e.kind()),
         })? {
             let path = entry.path();
             if path.extension().and_then(|s| s.to_str()) == Some("resume") {

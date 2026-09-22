@@ -2,6 +2,7 @@
 
 use crate::async_support::{create_cancellable_task, report_progress, PyAsyncManager};
 use crate::config::PyCopyOptions;
+use crate::error::PyErrorWrapper;
 use crate::gil_optimization::{GilFreeProgressReporter, GilOptimizationManager};
 use crate::progress::{call_progress_callback, ProgressCallback, PyProgress};
 use ferrocp_engine::{task::CopyRequest, CopyEngine};
@@ -12,6 +13,19 @@ use pyo3_async_runtimes::tokio::future_into_py;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+
+/// Build the Python exception for a copy task that reported failure
+///
+/// The engine returns a `CopyResult` rather than an `Err` when a task fails
+/// after it has started, so the failure has to be turned into an exception
+/// here instead of being returned as a successful-looking result object.
+fn copy_result_error(result: &ferrocp_engine::task::CopyResult) -> PyErr {
+    let message = result
+        .error
+        .clone()
+        .unwrap_or_else(|| "copy task failed without an error message".to_string());
+    PyErr::from(PyErrorWrapper(ferrocp_types::Error::other(message)))
+}
 
 /// Apply the Python-side `CopyOptions` to a `CopyRequest`
 ///
@@ -134,9 +148,26 @@ impl From<CopyStats> for PyCopyResult {
             files_copied: stats.files_copied,
             duration_seconds,
             transfer_rate,
-            success: true,
-            error_message: None,
+            // Statistics alone cannot tell whether the operation succeeded.
+            // Callers must set `success`/`error_message` from the task status;
+            // a failed copy must never look like a successful one.
+            success: false,
+            error_message: Some(
+                "copy status unknown: the caller did not provide a task result".to_string(),
+            ),
         }
+    }
+}
+
+impl From<ferrocp_engine::task::CopyResult> for PyCopyResult {
+    fn from(result: ferrocp_engine::task::CopyResult) -> Self {
+        // Read the status before moving the stats out.
+        let success = result.is_success();
+        let error = result.error.clone();
+        let mut py_result = PyCopyResult::from(result.stats);
+        py_result.success = success;
+        py_result.error_message = error;
+        py_result
     }
 }
 
@@ -209,15 +240,16 @@ impl PyCopyEngine {
 
                     match result {
                         Ok(copy_result) => {
-                            let stats = copy_result.stats;
-                            Ok(PyCopyResult::from(stats))
+                            // A task can fail without returning `Err`: for
+                            // example `--overwrite fail` aborts after the
+                            // policy check. Check the status too, otherwise
+                            // the failure is swallowed.
+                            if !copy_result.is_success() {
+                                return Err(copy_result_error(&copy_result));
+                            }
+                            Ok(PyCopyResult::from(copy_result))
                         }
-                        Err(e) => {
-                            let mut result = PyCopyResult::new();
-                            result.success = false;
-                            result.error_message = Some(e.to_string());
-                            Ok(result)
-                        }
+                        Err(e) => Err(PyErr::from(PyErrorWrapper::from(e))),
                     }
                 })
                 .await?;
@@ -281,15 +313,16 @@ impl PyCopyEngine {
 
                     match result {
                         Ok(copy_result) => {
-                            let stats = copy_result.stats;
-                            Ok(PyCopyResult::from(stats))
+                            // A task can fail without returning `Err`: for
+                            // example `--overwrite fail` aborts after the
+                            // policy check. Check the status too, otherwise
+                            // the failure is swallowed.
+                            if !copy_result.is_success() {
+                                return Err(copy_result_error(&copy_result));
+                            }
+                            Ok(PyCopyResult::from(copy_result))
                         }
-                        Err(e) => {
-                            let mut result = PyCopyResult::new();
-                            result.success = false;
-                            result.error_message = Some(e.to_string());
-                            Ok(result)
-                        }
+                        Err(e) => Err(PyErr::from(PyErrorWrapper::from(e))),
                     }
                 })
                 .await?;
@@ -370,15 +403,16 @@ impl PyCopyEngine {
 
                     match result {
                         Ok(copy_result) => {
-                            let stats = copy_result.stats;
-                            Ok(PyCopyResult::from(stats))
+                            // A task can fail without returning `Err`: for
+                            // example `--overwrite fail` aborts after the
+                            // policy check. Check the status too, otherwise
+                            // the failure is swallowed.
+                            if !copy_result.is_success() {
+                                return Err(copy_result_error(&copy_result));
+                            }
+                            Ok(PyCopyResult::from(copy_result))
                         }
-                        Err(e) => {
-                            let mut result = PyCopyResult::new();
-                            result.success = false;
-                            result.error_message = Some(e.to_string());
-                            Ok(result)
-                        }
+                        Err(e) => Err(PyErr::from(PyErrorWrapper::from(e))),
                     }
                 }
             })
