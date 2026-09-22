@@ -143,13 +143,13 @@ impl ProtocolMessage {
     }
 
     /// Serialize message to bytes
-    pub fn to_bytes(&self) -> Result<Vec<u8>, bincode::Error> {
-        bincode::serialize(self)
+    pub fn to_bytes(&self) -> Result<Vec<u8>, crate::codec::EncodeError> {
+        crate::codec::serialize(self)
     }
 
     /// Deserialize message from bytes
-    pub fn from_bytes(data: &[u8]) -> Result<Self, bincode::Error> {
-        bincode::deserialize(data)
+    pub fn from_bytes(data: &[u8]) -> Result<Self, crate::codec::DecodeError> {
+        crate::codec::deserialize(data)
     }
 }
 

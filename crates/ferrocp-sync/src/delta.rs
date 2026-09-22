@@ -76,14 +76,14 @@ impl DeltaPatch {
 
     /// Serialize the patch to bytes
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
-        bincode::serialize(self).map_err(|e| Error::Network {
+        crate::codec::serialize(self).map_err(|e| Error::Network {
             message: format!("Failed to serialize delta patch: {}", e),
         })
     }
 
     /// Deserialize patch from bytes
     pub fn from_bytes(data: &[u8]) -> Result<Self> {
-        bincode::deserialize(data).map_err(|e| Error::Network {
+        crate::codec::deserialize(data).map_err(|e| Error::Network {
             message: format!("Failed to deserialize delta patch: {}", e),
         })
     }

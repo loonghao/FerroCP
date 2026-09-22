@@ -307,9 +307,10 @@ impl NetworkClient {
         connection: &Arc<tokio::sync::Mutex<dyn crate::connection::NetworkConnection>>,
     ) -> Result<()> {
         let handshake_info = HandshakeInfo::new("ferrocp-client".to_string());
-        let handshake_data = bincode::serialize(&handshake_info).map_err(|e| Error::Network {
-            message: format!("Failed to serialize handshake: {}", e),
-        })?;
+        let handshake_data =
+            crate::codec::serialize(&handshake_info).map_err(|e| Error::Network {
+                message: format!("Failed to serialize handshake: {}", e),
+            })?;
 
         let handshake_message = ProtocolMessage::new(MessageType::Handshake, handshake_data);
 
@@ -370,7 +371,7 @@ impl NetworkClient {
             options: request.options.clone(),
         };
 
-        let data = bincode::serialize(&request_data).map_err(|e| Error::Network {
+        let data = crate::codec::serialize(&request_data).map_err(|e| Error::Network {
             message: format!("Failed to serialize transfer request: {}", e),
         })?;
 
@@ -383,7 +384,7 @@ impl NetworkClient {
         _request: &TransferRequest,
         resume_info: &crate::resume::ResumeInfo,
     ) -> Result<ProtocolMessage> {
-        let data = bincode::serialize(resume_info).map_err(|e| Error::Network {
+        let data = crate::codec::serialize(resume_info).map_err(|e| Error::Network {
             message: format!("Failed to serialize resume request: {}", e),
         })?;
 

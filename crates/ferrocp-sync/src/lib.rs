@@ -30,6 +30,7 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod cache;
+pub(crate) mod codec;
 pub mod conflict;
 pub mod delta;
 pub mod diff;

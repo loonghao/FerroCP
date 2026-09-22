@@ -77,7 +77,10 @@ tmp-*
 
 # Rust build artifacts
 target/
-Cargo.lock
+
+# Cargo.lock is intentionally committed. FerroCP ships binaries and wheels, so
+# the lock file is what makes builds reproducible and makes the cargo deny /
+# cargo audit gates meaningful. Do not add it back here.
 
 # Wheel build artifacts
 wheelhouse/

@@ -395,7 +395,7 @@ impl NetworkServer {
         session: &mut ClientSession,
     ) -> Result<ProtocolMessage> {
         let client_handshake: HandshakeInfo =
-            bincode::deserialize(&message.payload).map_err(|e| Error::Network {
+            crate::codec::deserialize(&message.payload).map_err(|e| Error::Network {
                 message: format!("Failed to deserialize handshake: {}", e),
             })?;
 
@@ -409,9 +409,10 @@ impl NetworkServer {
 
         // Create server handshake response
         let server_handshake = HandshakeInfo::new("ferrocp-server".to_string());
-        let response_data = bincode::serialize(&server_handshake).map_err(|e| Error::Network {
-            message: format!("Failed to serialize handshake response: {}", e),
-        })?;
+        let response_data =
+            crate::codec::serialize(&server_handshake).map_err(|e| Error::Network {
+                message: format!("Failed to serialize handshake response: {}", e),
+            })?;
 
         Ok(ProtocolMessage::new(MessageType::Handshake, response_data))
     }

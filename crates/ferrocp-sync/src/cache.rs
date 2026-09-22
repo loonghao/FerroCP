@@ -216,7 +216,7 @@ impl HashCache {
             })?;
 
         let entries: HashMap<PathBuf, CacheEntry> =
-            bincode::deserialize(&data).map_err(|e| Error::Network {
+            crate::codec::deserialize(&data).map_err(|e| Error::Network {
                 message: format!("Failed to deserialize cache: {}", e),
             })?;
 
@@ -244,7 +244,7 @@ impl HashCache {
             return Ok(());
         }
 
-        let data = bincode::serialize(&self.entries).map_err(|e| Error::Network {
+        let data = crate::codec::serialize(&self.entries).map_err(|e| Error::Network {
             message: format!("Failed to serialize cache: {}", e),
         })?;
 
@@ -314,7 +314,7 @@ impl Drop for HashCache {
             let entries = self.entries.clone();
 
             tokio::spawn(async move {
-                if let Ok(data) = bincode::serialize(&entries) {
+                if let Ok(data) = crate::codec::serialize(&entries) {
                     let _ = fs::write(&cache_file, data).await;
                 }
             });

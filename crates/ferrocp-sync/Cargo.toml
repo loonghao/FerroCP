@@ -30,7 +30,7 @@ xxhash-rust = { version = "0.8", features = ["xxh3"] }
 
 # Serialization
 serde = { workspace = true, features = ["derive"] }
-bincode = { version = "3.0" }
+bincode = { workspace = true }
 
 # File system operations
 walkdir = { version = "2.4" }

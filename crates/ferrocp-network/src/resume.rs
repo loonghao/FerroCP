@@ -159,7 +159,7 @@ impl ResumeManager {
         let resume_file = self.get_resume_file_path(&resume_info.request_id);
 
         // Serialize resume info
-        let data = bincode::serialize(&resume_info).map_err(|e| Error::Network {
+        let data = crate::codec::serialize(&resume_info).map_err(|e| Error::Network {
             message: format!("Failed to serialize resume info: {}", e),
         })?;
 
@@ -206,9 +206,10 @@ impl ResumeManager {
             ),
         })?;
 
-        let resume_info: ResumeInfo = bincode::deserialize(&data).map_err(|e| Error::Network {
-            message: format!("Failed to deserialize resume info: {}", e),
-        })?;
+        let resume_info: ResumeInfo =
+            crate::codec::deserialize(&data).map_err(|e| Error::Network {
+                message: format!("Failed to deserialize resume info: {}", e),
+            })?;
 
         // Check if still valid
         if !resume_info.is_valid(self.config.max_resume_age) {
@@ -290,7 +291,7 @@ impl ResumeManager {
             let path = entry.path();
             if path.extension().and_then(|s| s.to_str()) == Some("resume") {
                 if let Ok(data) = fs::read(&path).await {
-                    if let Ok(resume_info) = bincode::deserialize::<ResumeInfo>(&data) {
+                    if let Ok(resume_info) = crate::codec::deserialize::<ResumeInfo>(&data) {
                         if resume_info.is_valid(self.config.max_resume_age) {
                             self.resume_info
                                 .write()

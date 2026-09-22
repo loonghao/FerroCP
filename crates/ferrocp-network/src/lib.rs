@@ -34,6 +34,7 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod client;
+pub mod codec;
 pub mod connection;
 pub mod protocol;
 pub mod resume;

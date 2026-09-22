@@ -1,0 +1,15 @@
+# cargo-audit configuration for FerroCP.
+#
+# Run locally with:
+#   cargo audit --deny warnings
+
+[advisories]
+# RUSTSEC-2025-0141: `bincode` is permanently unmaintained upstream (development
+# was discontinued after a harassment incident; the maintainers consider 1.3.3
+# complete and published 3.0.0 as a placeholder). There is no patched release, so
+# the advisory fires on every bincode version, including the 2.x line in use.
+#
+# Accepted risk, tracked for follow-up: leaving bincode changes the wire and
+# on-disk format, so it needs an explicit owner decision plus a protocol version
+# bump. See the PR discussion on PIP-3199.
+ignore = ["RUSTSEC-2025-0141"]

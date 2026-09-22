@@ -292,7 +292,10 @@ mod tests {
 
     #[test]
     fn test_engine_lifecycle() {
-        assert_eq!(crate::ferrocp_init(), 0);
+        // The FFI runtime is process-global, so another test in this binary may
+        // have initialized it already; -1 (already initialized) is acceptable here.
+        let init_result = crate::ferrocp_init();
+        assert!(init_result == 0 || init_result == -1);
 
         let handle = ferrocp_engine_create();
         assert_ne!(handle, 0);
