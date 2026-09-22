@@ -53,35 +53,10 @@ jobs:
         with:
           go-version: '1.24'
 
-      # Install cross-compilation dependencies
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            pkg-config \
-            libssl-dev \
-            binutils \
-            lld \
-            clang \
-            gcc-aarch64-linux-gnu \
-            g++-aarch64-linux-gnu
-
-      # Install the cross-compilation toolchain here as well as in the
-      # GoReleaser `before` hooks below, because the binaries are built before
-      # GoReleaser runs.
-      - name: Install cargo-zigbuild and zig
-        run: |
-          cargo install --locked cargo-zigbuild
-          pip install ziglang
-
-      - name: Add Rust targets
-        run: |
-          rustup target add x86_64-unknown-linux-gnu
-          rustup target add aarch64-unknown-linux-gnu
-          rustup target add x86_64-apple-darwin
-          rustup target add aarch64-apple-darwin
-          rustup target add x86_64-pc-windows-msvc
+      # Installed here as well as in the GoReleaser `before` hooks below,
+      # because the binaries are built before GoReleaser runs.
+      - name: Set up cross-compilation toolchain
+        uses: ./.github/actions/setup-cross-compile
 
       # Cross-compile the Rust CLI for every release target, sequentially.
       #
@@ -90,12 +65,16 @@ jobs:
       # target directory race on cargo's `target/.rustc_info.json` and abort
       # with `Error: File exists (os error 17)`. GoReleaser then only packages
       # these binaries.
+      #
+      # The Apple targets pin MACOSX_DEPLOYMENT_TARGET explicitly: rustc
+      # defaults x86_64-apple-darwin to 10.12, which is below the 10.13
+      # minimum the bundled macOS SDK accepts.
       - name: Cross-compile ferrocp for all release targets
         run: |
           cargo zigbuild --bin ferrocp --target x86_64-unknown-linux-gnu --release
           cargo zigbuild --bin ferrocp --target aarch64-unknown-linux-gnu --release
-          cargo zigbuild --bin ferrocp --target x86_64-apple-darwin --release
-          cargo zigbuild --bin ferrocp --target aarch64-apple-darwin --release
+          MACOSX_DEPLOYMENT_TARGET=12.0 cargo zigbuild --bin ferrocp --target x86_64-apple-darwin --release
+          MACOSX_DEPLOYMENT_TARGET=11.0 cargo zigbuild --bin ferrocp --target aarch64-apple-darwin --release
           cargo zigbuild --bin ferrocp --target x86_64-pc-windows-msvc --release
 
       - name: Run GoReleaser

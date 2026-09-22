@@ -10,6 +10,7 @@ on:
       - '.goreleaser.yml'
       - '.github/workflows/goreleaser.yml'
       - '.github/workflows/test-goreleaser.yml'
+      - '.github/actions/**'
       - '.cargo/config.toml'
       - 'scripts/**'
       - 'Cargo.toml'
@@ -24,7 +25,7 @@ on:
 jobs:
   test-goreleaser:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -49,19 +50,8 @@ jobs:
         with:
           python-version: '3.11'
 
-      # Install cross-compilation dependencies
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            pkg-config \
-            libssl-dev \
-            binutils \
-            lld \
-            clang \
-            gcc-aarch64-linux-gnu \
-            g++-aarch64-linux-gnu
+      - name: Set up cross-compilation toolchain
+        uses: ./.github/actions/setup-cross-compile
 
       # Test GoReleaser configuration
       - name: Test GoReleaser config
@@ -73,24 +63,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Test build for one target to verify cargo-zigbuild works
-      - name: Test cargo-zigbuild installation and build
+      # The linux/amd64 binary is what `goreleaser build --snapshot
+      # --single-target` packages below, so it has to exist first. The other
+      # release targets are covered by the `test-release-targets` matrix.
+      - name: Build ferrocp for linux/amd64
         run: |
-          echo "🔧 Installing cargo-zigbuild..."
-          cargo install --locked cargo-zigbuild
-          
-          echo "🔧 Installing zig..."
-          pip install ziglang
-          
-          echo "🔧 Adding Rust target..."
-          rustup target add x86_64-unknown-linux-gnu
-          
-          echo "🔧 Testing cargo-zigbuild..."
+          echo "🔧 Building ferrocp for x86_64-unknown-linux-gnu..."
           cargo zigbuild --bin ferrocp --target x86_64-unknown-linux-gnu --release
-          
-          echo "✅ cargo-zigbuild test completed successfully!"
-          
-          # Check if binary was created
+
           if [ -f "target/x86_64-unknown-linux-gnu/release/ferrocp" ]; then
             echo "✅ Binary created successfully"
             ls -la target/x86_64-unknown-linux-gnu/release/ferrocp
@@ -119,9 +99,64 @@ jobs:
             target/*/release/ferrocp*
           retention-days: 1
 
+  # Every release target has to cross-compile here, not just Linux. The
+  # `Release` workflow used to build all five targets only at tag time, so the
+  # darwin targets stayed broken (missing macOS SDK) across the whole 0.4.x
+  # line with no PR-stage signal at all. This matrix surfaces that class of
+  # failure on the PR instead of after the release tag has already been cut.
+  test-release-targets:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            macosx_deployment_target: ''
+          - target: aarch64-unknown-linux-gnu
+            macosx_deployment_target: ''
+          - target: x86_64-apple-darwin
+            macosx_deployment_target: '12.0'
+          - target: aarch64-apple-darwin
+            macosx_deployment_target: '11.0'
+          - target: x86_64-pc-windows-msvc
+            macosx_deployment_target: ''
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Set up cross-compilation toolchain
+        uses: ./.github/actions/setup-cross-compile
+
+      - name: Cross-compile ferrocp for ${{ matrix.target }}
+        env:
+          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.macosx_deployment_target }}
+        run: |
+          cargo zigbuild --bin ferrocp --target "${{ matrix.target }}" --release
+
+          if [ -f "target/${{ matrix.target }}/release/ferrocp" ] || [ -f "target/${{ matrix.target }}/release/ferrocp.exe" ]; then
+            echo "✅ Binary produced for ${{ matrix.target }}"
+            ls -la "target/${{ matrix.target }}/release/"
+          else
+            echo "❌ No binary produced for ${{ matrix.target }}"
+            exit 1
+          fi
+
   test-cross-compilation-scripts:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -138,18 +173,18 @@ jobs:
         run: |
           echo "🧪 Testing zigbuild cross-compilation script..."
           chmod +x scripts/zigbuild-cross.sh
-          
+
           # Test script help
           ./scripts/zigbuild-cross.sh --help
-          
+
           # Test single target build
           ./scripts/zigbuild-cross.sh --target x86_64-unknown-linux-gnu --verbose
-          
+
           echo "✅ Cross-compilation script test completed!"
 
   test-makefile-targets:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -165,45 +200,50 @@ jobs:
       - name: Test Makefile targets
         run: |
           echo "🧪 Testing Makefile targets..."
-          
+
           # Test help target
           make help | grep "build-cross"
-          
+
           echo "✅ Makefile targets test completed!"
 
   summary:
     runs-on: ubuntu-latest
-    needs: [test-goreleaser, test-cross-compilation-scripts, test-makefile-targets]
+    needs: [test-goreleaser, test-release-targets, test-cross-compilation-scripts, test-makefile-targets]
     if: always()
-    
+
     steps:
       - name: Test Results Summary
         run: |
           echo "## 🧪 GoReleaser Configuration Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
           if [ "${{ needs.test-goreleaser.result }}" == "success" ]; then
             echo "✅ **GoReleaser Configuration**: PASSED" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ **GoReleaser Configuration**: FAILED" >> $GITHUB_STEP_SUMMARY
           fi
-          
+
+          if [ "${{ needs.test-release-targets.result }}" == "success" ]; then
+            echo "✅ **Release Target Cross-Compilation**: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Release Target Cross-Compilation**: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+
           if [ "${{ needs.test-cross-compilation-scripts.result }}" == "success" ]; then
             echo "✅ **Cross-compilation Scripts**: PASSED" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ **Cross-compilation Scripts**: FAILED" >> $GITHUB_STEP_SUMMARY
           fi
-          
+
           if [ "${{ needs.test-makefile-targets.result }}" == "success" ]; then
             echo "✅ **Makefile Targets**: PASSED" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ **Makefile Targets**: FAILED" >> $GITHUB_STEP_SUMMARY
           fi
-          
+
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📋 Test Details" >> $GITHUB_STEP_SUMMARY
           echo "- GoReleaser configuration syntax validation" >> $GITHUB_STEP_SUMMARY
-          echo "- cargo-zigbuild installation and functionality" >> $GITHUB_STEP_SUMMARY
-          echo "- Cross-compilation for x86_64-linux target" >> $GITHUB_STEP_SUMMARY
+          echo "- Cross-compilation for every release target (linux, darwin, windows)" >> $GITHUB_STEP_SUMMARY
           echo "- Script functionality and help output" >> $GITHUB_STEP_SUMMARY
           echo "- Makefile target availability" >> $GITHUB_STEP_SUMMARY
