@@ -3,6 +3,7 @@
 //! This module implements a parallel copy engine that uses chunked processing
 //! and pipelined I/O to maximize throughput for large files (>10MB).
 
+use crate::policy::CopyGate;
 use crate::{AsyncFileReader, AsyncFileWriter, CopyEngine, CopyOptions};
 use ferrocp_types::{CopyStats, DeviceType, Error, Result};
 use std::path::Path;
@@ -286,6 +287,7 @@ impl ParallelCopyEngine {
             bytes_copied: final_bytes_copied,
             files_skipped: 0,
             errors: 0,
+            symlinks_created: 0,
             duration: elapsed,
             zerocopy_operations: 0,
             zerocopy_bytes: 0,
@@ -521,10 +523,12 @@ impl CopyEngine for ParallelCopyEngine {
         &mut self,
         source: P,
         destination: P,
-        _options: CopyOptions,
+        options: CopyOptions,
     ) -> Result<CopyStats> {
         let source_path = source.as_ref();
         let dest_path = destination.as_ref();
+
+        options.validate()?;
 
         // Get file size
         let metadata = tokio::fs::metadata(source_path)
@@ -532,6 +536,28 @@ impl CopyEngine for ParallelCopyEngine {
             .map_err(|e| Error::Io {
                 message: format!("Failed to get file metadata: {}", e),
             })?;
+
+        // Apply the overwrite policy before the destination is opened for
+        // writing: the parallel writer truncates as soon as it starts.
+        match CopyGate::evaluate(
+            source_path,
+            &metadata,
+            dest_path,
+            options.overwrite_policy,
+            options.overwrite_prompt.as_ref(),
+        )? {
+            CopyGate::Proceed => {}
+            CopyGate::Skip => {
+                debug!(
+                    "Skipping '{}': destination '{}' exists and the {:?} policy keeps it",
+                    source_path.display(),
+                    dest_path.display(),
+                    options.overwrite_policy
+                );
+                return Ok(CopyStats::skipped_one());
+            }
+        }
+
         let file_size = metadata.len();
 
         // Check if we should use parallel processing
@@ -589,6 +615,7 @@ impl ParallelCopyEngine {
             bytes_copied: file_size,
             files_skipped: 0,
             errors: 0,
+            symlinks_created: 0,
             duration: start_time.elapsed(),
             zerocopy_operations: 0,
             zerocopy_bytes: 0,

@@ -46,3 +46,7 @@ pub use selector::{
     EngineSelection, EngineSelectionConfig, EngineSelectionStats, EngineSelector, EngineType,
 };
 pub use task::{CopyRequest, CopyResult, Task, TaskId, TaskStatus};
+
+// Re-export the copy-semantics types so callers can express the contract
+// without depending on `ferrocp-types` directly.
+pub use ferrocp_types::{OverwriteDecision, OverwritePolicy, SymlinkMode};

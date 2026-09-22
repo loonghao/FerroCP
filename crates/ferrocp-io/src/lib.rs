@@ -32,14 +32,19 @@ pub mod memory;
 pub mod memory_map;
 pub mod micro_copy;
 pub mod parallel;
+pub mod policy;
 pub mod preread;
 pub mod reader;
 pub mod stream;
+pub mod symlink;
 pub mod writer;
 
 // Temporarily disabled due to missing proptest dependency
 // #[cfg(test)]
 // mod property_tests;
+
+#[cfg(test)]
+mod copy_contract_tests;
 
 #[cfg(test)]
 mod error_tests;
@@ -50,7 +55,9 @@ pub use memory::{MemoryAlert, MemoryMonitor, MemoryThresholds, MemoryUsageStats}
 pub use memory_map::{MemoryMapOptions, MemoryMappedFile};
 pub use micro_copy::{MicroCopyStats, MicroCopyStrategy, MicroFileCopyEngine};
 pub use parallel::{ParallelCopyConfig, ParallelCopyEngine, ParallelCopyStats};
+pub use policy::{OverwritePrompt, OverwritePromptFn};
 pub use preread::{PreReadBuffer, PreReadStats, PreReadStrategy};
 pub use reader::{AsyncFileReader, FileReader};
 pub use stream::{FileStream, ProgressStream};
+pub use symlink as symlink_utils;
 pub use writer::{AsyncFileWriter, FileWriter};

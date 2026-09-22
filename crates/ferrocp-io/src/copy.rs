@@ -1,15 +1,22 @@
 //! High-performance file copying engine
 
+use crate::policy::{CopyGate, OverwritePrompt};
 use crate::{
     AdaptiveBuffer, AsyncFileReader, AsyncFileWriter, BufferPool, PreReadBuffer, PreReadStrategy,
 };
-use ferrocp_types::{CopyStats, DeviceType, Error, ProgressInfo, Result};
+use ferrocp_types::{
+    CopyStats, DeviceType, Error, OverwritePolicy, ProgressInfo, Result, SymlinkMode,
+};
 use std::path::Path;
 use std::time::{Duration, Instant};
 use tokio::fs;
 use tracing::{debug, info};
 
 /// Copy options for customizing copy behavior
+///
+/// The `overwrite_policy`, `symlink_mode`, `preserve_timestamps` and
+/// `preserve_permissions` fields are part of FerroCP's public copy-semantics
+/// contract and are honoured by every engine. See `docs/COPY_SEMANTICS.md`.
 #[derive(Debug, Clone)]
 pub struct CopyOptions {
     /// Buffer size for I/O operations
@@ -20,8 +27,19 @@ pub struct CopyOptions {
     pub progress_interval: Duration,
     /// Enable verification after copy
     pub verify_copy: bool,
-    /// Preserve file metadata
-    pub preserve_metadata: bool,
+    /// Preserve file modification and access times
+    pub preserve_timestamps: bool,
+    /// Preserve file permission bits
+    ///
+    /// On Unix the full mode is preserved. On Windows only the read-only
+    /// attribute is preserved; ACLs and ownership are not.
+    pub preserve_permissions: bool,
+    /// How to treat a destination path that already exists
+    pub overwrite_policy: OverwritePolicy,
+    /// Handler used when `overwrite_policy` is [`OverwritePolicy::Prompt`]
+    pub overwrite_prompt: Option<OverwritePrompt>,
+    /// How to treat symbolic links in the source
+    pub symlink_mode: SymlinkMode,
     /// Enable zero-copy optimizations
     pub enable_zero_copy: bool,
     /// Maximum number of retry attempts
@@ -43,7 +61,12 @@ impl Default for CopyOptions {
             enable_progress: true,
             progress_interval: Duration::from_millis(100),
             verify_copy: false,
-            preserve_metadata: true,
+            preserve_timestamps: true,
+            preserve_permissions: true,
+            // Defaults reproduce FerroCP's historical behaviour.
+            overwrite_policy: OverwritePolicy::Always,
+            overwrite_prompt: None,
+            symlink_mode: SymlinkMode::Preserve,
             enable_zero_copy: true,
             max_retries: 3,
             enable_preread: true,   // Enable pre-read by default for large files
@@ -51,6 +74,26 @@ impl Default for CopyOptions {
             enable_compression: false, // Disabled by default
             compression_level: 3,   // Balanced compression level
         }
+    }
+}
+
+impl CopyOptions {
+    /// Validate the semantic options before any I/O happens
+    ///
+    /// Catches combinations that cannot be honoured, so they fail fast with a
+    /// precise message instead of degrading into a different behaviour.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Config`] when `overwrite_policy` is
+    /// [`OverwritePolicy::Prompt`] but no prompt handler is registered.
+    pub fn validate(&self) -> Result<()> {
+        if self.overwrite_policy == OverwritePolicy::Prompt && self.overwrite_prompt.is_none() {
+            return Err(Error::config(
+                "overwrite policy 'prompt' requires an overwrite prompt handler to be registered",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -127,6 +170,9 @@ impl BufferedCopyEngine {
             dest_path.display()
         );
 
+        // Reject impossible option combinations before touching the filesystem.
+        options.validate()?;
+
         let start_time = Instant::now();
         let mut stats = CopyStats::new();
 
@@ -134,6 +180,27 @@ impl BufferedCopyEngine {
         let source_metadata = fs::metadata(source_path).await.map_err(|e| Error::Io {
             message: format!("Failed to read source metadata: {}", e),
         })?;
+
+        // Apply the overwrite policy before the destination is opened for
+        // writing: once the writer exists the destination is already truncated.
+        match CopyGate::evaluate(
+            source_path,
+            &source_metadata,
+            dest_path,
+            options.overwrite_policy,
+            options.overwrite_prompt.as_ref(),
+        )? {
+            CopyGate::Proceed => {}
+            CopyGate::Skip => {
+                debug!(
+                    "Skipping '{}': destination '{}' exists and the {:?} policy keeps it",
+                    source_path.display(),
+                    dest_path.display(),
+                    options.overwrite_policy
+                );
+                return Ok(CopyStats::skipped_one());
+            }
+        }
 
         let file_size = source_metadata.len();
         stats.bytes_copied = 0;
@@ -249,9 +316,8 @@ impl BufferedCopyEngine {
         writer.flush().await?;
 
         // Preserve metadata if requested
-        if options.preserve_metadata {
-            self.preserve_file_metadata(source_path, dest_path).await?;
-        }
+        self.preserve_file_metadata(source_path, dest_path, &options)
+            .await?;
 
         // Verify copy if requested
         if options.verify_copy {
@@ -310,41 +376,115 @@ impl BufferedCopyEngine {
     }
 
     /// Preserve file metadata from source to destination
+    ///
+    /// Timestamps are preserved on every platform. Permissions are preserved
+    /// on Unix (full mode bits) and on Windows (read-only attribute only);
+    /// ACLs and ownership are never preserved. See `docs/COPY_SEMANTICS.md`.
     async fn preserve_file_metadata<P: AsRef<Path>>(
         &self,
         source: P,
         destination: P,
+        options: &CopyOptions,
     ) -> Result<()> {
+        if !options.preserve_timestamps && !options.preserve_permissions {
+            return Ok(());
+        }
+
         let source_metadata = fs::metadata(source.as_ref()).await.map_err(|e| Error::Io {
             message: format!("Failed to read source metadata: {}", e),
         })?;
 
-        // Set file times
-        let accessed = source_metadata
-            .accessed()
-            .unwrap_or_else(|_| std::time::SystemTime::now());
-        let modified = source_metadata
-            .modified()
-            .unwrap_or_else(|_| std::time::SystemTime::now());
+        if options.preserve_timestamps {
+            // Set file times
+            let accessed = source_metadata
+                .accessed()
+                .unwrap_or_else(|_| std::time::SystemTime::now());
+            let modified = source_metadata
+                .modified()
+                .unwrap_or_else(|_| std::time::SystemTime::now());
 
-        filetime::set_file_times(
-            destination.as_ref(),
-            filetime::FileTime::from_system_time(accessed),
-            filetime::FileTime::from_system_time(modified),
-        )
-        .map_err(|e| Error::Io {
-            message: format!("Failed to set file times: {}", e),
-        })?;
+            filetime::set_file_times(
+                destination.as_ref(),
+                filetime::FileTime::from_system_time(accessed),
+                filetime::FileTime::from_system_time(modified),
+            )
+            .map_err(|e| Error::Io {
+                message: format!("Failed to set file times: {}", e),
+            })?;
+        }
 
-        // Set permissions on Unix systems
+        if options.preserve_permissions {
+            self.preserve_permissions(source.as_ref(), &source_metadata, destination.as_ref())
+                .await?;
+        }
+
+        Ok(())
+    }
+
+    /// Preserve permission bits, platform by platform
+    ///
+    /// * Unix: copies the full mode (including the executable and setuid bits).
+    /// * Windows: copies the read-only attribute. Other attributes and ACLs are
+    ///   deliberately not copied - see `docs/COPY_SEMANTICS.md`.
+    async fn preserve_permissions(
+        &self,
+        source: &Path,
+        source_metadata: &std::fs::Metadata,
+        destination: &Path,
+    ) -> Result<()> {
         #[cfg(unix)]
         {
             let permissions = source_metadata.permissions();
-            fs::set_permissions(destination.as_ref(), permissions)
+            fs::set_permissions(destination, permissions)
                 .await
                 .map_err(|e| Error::Io {
-                    message: format!("Failed to set permissions: {}", e),
+                    message: format!(
+                        "Failed to set permissions on '{}': {}",
+                        destination.display(),
+                        e
+                    ),
                 })?;
+        }
+
+        #[cfg(windows)]
+        {
+            // Windows has no POSIX mode. Mirror the read-only attribute, which
+            // is the part of `std::fs::Permissions` that maps onto a file
+            // attribute; clear it when the source is writable so a stale
+            // read-only destination does not survive a re-copy.
+            let source_readonly = source_metadata.permissions().readonly();
+            let dest_metadata = fs::metadata(destination).await.map_err(|e| Error::Io {
+                message: format!(
+                    "Failed to read destination metadata '{}': {}",
+                    destination.display(),
+                    e
+                ),
+            })?;
+
+            let mut permissions = dest_metadata.permissions();
+            if permissions.readonly() != source_readonly {
+                permissions.set_readonly(source_readonly);
+                fs::set_permissions(destination, permissions)
+                    .await
+                    .map_err(|e| Error::Io {
+                        message: format!(
+                            "Failed to set read-only attribute on '{}' (source '{}'): {}",
+                            destination.display(),
+                            source.display(),
+                            e
+                        ),
+                    })?;
+            }
+        }
+
+        #[cfg(not(any(unix, windows)))]
+        {
+            let _ = (source, destination);
+            debug!(
+                "Permission preservation is not implemented on this platform: {} -> {}",
+                source.display(),
+                destination.display()
+            );
         }
 
         Ok(())

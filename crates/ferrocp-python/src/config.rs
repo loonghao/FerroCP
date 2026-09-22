@@ -1,27 +1,52 @@
 //! Configuration for Python bindings
 
-use ferrocp_types::{CopyMode, NetworkProtocol};
+use ferrocp_types::{CopyMode, NetworkProtocol, OverwriteDecision, OverwritePolicy, SymlinkMode};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::IntoPyObjectExt;
 use std::collections::HashMap;
 
 /// Python wrapper for copy options
+///
+/// The `mode`, `overwrite`, `follow_symlinks` and `preserve_*` fields are part
+/// of FerroCP's copy-semantics contract and are honoured by every copy path.
+/// Unknown values raise `ValueError` instead of falling back to a default, so
+/// the Python API can never promise a behaviour it does not implement.
+///
+/// See `docs/COPY_SEMANTICS.md` for the full contract and the platform matrix.
 #[pyclass(name = "CopyOptions", from_py_object)]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PyCopyOptions {
-    /// Copy mode
+    /// Copy mode: "all", "newer" or "different"
+    ///
+    /// "mirror" is declared but not implemented and raises `ValueError`.
     #[pyo3(get, set)]
     pub mode: String,
-    /// Overwrite mode
+    /// Overwrite policy: "always", "never", "if_newer", "if_different",
+    /// "fail" or "prompt"
+    ///
+    /// "prompt" requires `overwrite_callback` to be set.
     #[pyo3(get, set)]
     pub overwrite: String,
+    /// Optional callable used when `overwrite` is "prompt"
+    ///
+    /// It is called as `callback(source, destination) -> bool`: return `True`
+    /// to overwrite, `False` to skip.
+    #[pyo3(get, set)]
+    pub overwrite_callback: Option<Py<PyAny>>,
     /// Whether to preserve timestamps
     #[pyo3(get, set)]
     pub preserve_timestamps: bool,
     /// Whether to preserve permissions
+    ///
+    /// On Unix the full mode is preserved; on Windows only the read-only
+    /// attribute is.
     #[pyo3(get, set)]
     pub preserve_permissions: bool,
     /// Whether to follow symbolic links
+    ///
+    /// `True` copies the content a link points at; `False` (the default)
+    /// recreates the link itself.
     #[pyo3(get, set)]
     pub follow_symlinks: bool,
     /// Whether to enable compression
@@ -41,13 +66,43 @@ pub struct PyCopyOptions {
     pub verify: bool,
 }
 
+impl Clone for PyCopyOptions {
+    /// Clone the options
+    ///
+    /// `Py<PyAny>` is `Clone` only for pyclasses, so the callback reference is
+    /// cloned explicitly: cloning a Python reference needs the GIL.
+    fn clone(&self) -> Self {
+        Self {
+            mode: self.mode.clone(),
+            overwrite: self.overwrite.clone(),
+            overwrite_callback: self
+                .overwrite_callback
+                .as_ref()
+                .map(|callback| Python::attach(|py| callback.clone_ref(py))),
+            preserve_timestamps: self.preserve_timestamps,
+            preserve_permissions: self.preserve_permissions,
+            follow_symlinks: self.follow_symlinks,
+            enable_compression: self.enable_compression,
+            compression_level: self.compression_level,
+            buffer_size: self.buffer_size,
+            num_threads: self.num_threads,
+            verify: self.verify,
+        }
+    }
+}
+
 #[pymethods]
 impl PyCopyOptions {
     /// Create new copy options with defaults
+    ///
+    /// The default `overwrite` is `"always"`, which is the behaviour FerroCP has
+    /// always had. It used to be `"prompt"`, but nothing ever prompted, so the
+    /// old default advertised protection that did not exist.
     #[new]
     #[pyo3(signature = (
         mode = "auto".to_string(),
-        overwrite = "prompt".to_string(),
+        overwrite = "always".to_string(),
+        overwrite_callback = None,
         preserve_timestamps = true,
         preserve_permissions = true,
         follow_symlinks = false,
@@ -60,6 +115,7 @@ impl PyCopyOptions {
     pub fn new(
         mode: String,
         overwrite: String,
+        overwrite_callback: Option<Py<PyAny>>,
         preserve_timestamps: bool,
         preserve_permissions: bool,
         follow_symlinks: bool,
@@ -68,10 +124,11 @@ impl PyCopyOptions {
         buffer_size: usize,
         num_threads: usize,
         verify: bool,
-    ) -> Self {
-        Self {
+    ) -> PyResult<Self> {
+        let options = Self {
             mode,
             overwrite,
+            overwrite_callback,
             preserve_timestamps,
             preserve_permissions,
             follow_symlinks,
@@ -80,15 +137,22 @@ impl PyCopyOptions {
             buffer_size,
             num_threads,
             verify,
-        }
+        };
+        // Validate eagerly: an invalid value must surface when the options are
+        // built, not half-way through a copy.
+        options.copy_mode()?;
+        options.overwrite_policy()?;
+        options.overwrite_prompt()?;
+        Ok(options)
     }
 
     /// Create options optimized for speed
     #[staticmethod]
     pub fn for_speed() -> Self {
         Self {
-            mode: "fast".to_string(),
-            overwrite: "overwrite".to_string(),
+            mode: "all".to_string(),
+            overwrite: "always".to_string(),
+            overwrite_callback: None,
             preserve_timestamps: false,
             preserve_permissions: false,
             follow_symlinks: false,
@@ -101,11 +165,16 @@ impl PyCopyOptions {
     }
 
     /// Create options optimized for safety
+    ///
+    /// "safe" means never replacing an existing destination: `overwrite` is
+    /// `"never"`, so existing files are reported as skipped instead of being
+    /// truncated.
     #[staticmethod]
     pub fn for_safety() -> Self {
         Self {
-            mode: "safe".to_string(),
-            overwrite: "prompt".to_string(),
+            mode: "all".to_string(),
+            overwrite: "never".to_string(),
+            overwrite_callback: None,
             preserve_timestamps: true,
             preserve_permissions: true,
             follow_symlinks: false,
@@ -121,8 +190,9 @@ impl PyCopyOptions {
     #[staticmethod]
     pub fn for_compression() -> Self {
         Self {
-            mode: "auto".to_string(),
-            overwrite: "overwrite".to_string(),
+            mode: "all".to_string(),
+            overwrite: "always".to_string(),
+            overwrite_callback: None,
             preserve_timestamps: true,
             preserve_permissions: true,
             follow_symlinks: false,
@@ -181,12 +251,24 @@ impl PyCopyOptions {
     /// Representation
     fn __repr__(&self) -> String {
         format!(
-            "CopyOptions(mode='{}', overwrite='{}', preserve_timestamps={}, preserve_permissions={}, \
-             follow_symlinks={}, enable_compression={}, compression_level={}, buffer_size={}, \
-             num_threads={}, verify={})",
-            self.mode, self.overwrite, self.preserve_timestamps, self.preserve_permissions,
-            self.follow_symlinks, self.enable_compression, self.compression_level,
-            self.buffer_size, self.num_threads, self.verify
+            "CopyOptions(mode='{}', overwrite='{}', overwrite_callback={}, preserve_timestamps={}, \
+             preserve_permissions={}, follow_symlinks={}, enable_compression={}, \
+             compression_level={}, buffer_size={}, num_threads={}, verify={})",
+            self.mode,
+            self.overwrite,
+            if self.overwrite_callback.is_some() {
+                "<callable>"
+            } else {
+                "None"
+            },
+            self.preserve_timestamps,
+            self.preserve_permissions,
+            self.follow_symlinks,
+            self.enable_compression,
+            self.compression_level,
+            self.buffer_size,
+            self.num_threads,
+            self.verify
         )
     }
 }
@@ -195,7 +277,8 @@ impl Default for PyCopyOptions {
     fn default() -> Self {
         Self::new(
             "auto".to_string(),
-            "prompt".to_string(),
+            "always".to_string(),
+            None,
             true,
             true,
             false,
@@ -205,19 +288,111 @@ impl Default for PyCopyOptions {
             0,
             false,
         )
+        .expect("default options must be valid")
     }
 }
 
+/// Build the error raised for an unrecognised option value
+fn invalid_value(option: &str, value: &str, accepted: &[&str]) -> PyErr {
+    PyValueError::new_err(format!(
+        "invalid {option} value '{value}'; accepted values: {}",
+        accepted.join(", ")
+    ))
+}
+
 impl PyCopyOptions {
-    /// Convert to Rust CopyMode
-    pub fn to_copy_mode(&self) -> CopyMode {
-        match self.mode.as_str() {
-            "all" => CopyMode::All,
-            "newer" => CopyMode::Newer,
-            "different" => CopyMode::Different,
-            "mirror" => CopyMode::Mirror,
-            _ => CopyMode::All,
+    /// Convert to Rust `CopyMode`
+    ///
+    /// Raises `ValueError` for unknown values. `mirror` is rejected explicitly
+    /// because it is not implemented, rather than silently behaving like `all`.
+    pub fn copy_mode(&self) -> PyResult<CopyMode> {
+        match self.mode.trim().to_ascii_lowercase().as_str() {
+            "all" | "auto" => Ok(CopyMode::All),
+            "newer" => Ok(CopyMode::Newer),
+            "different" => Ok(CopyMode::Different),
+            "mirror" => Err(PyValueError::new_err(
+                "copy mode 'mirror' is declared but not implemented; refusing to run instead of \
+                 silently degrading to 'all'",
+            )),
+            other => Err(invalid_value("mode", other, &["all", "newer", "different"])),
         }
+    }
+
+    /// Convert to Rust `OverwritePolicy`
+    ///
+    /// Raises `ValueError` for unknown values instead of defaulting, because a
+    /// defaulted policy silently changes which files get replaced.
+    pub fn overwrite_policy(&self) -> PyResult<OverwritePolicy> {
+        OverwritePolicy::parse(&self.overwrite).ok_or_else(|| {
+            invalid_value(
+                "overwrite",
+                &self.overwrite,
+                OverwritePolicy::accepted_values(),
+            )
+        })
+    }
+
+    /// Convert `follow_symlinks` to Rust `SymlinkMode`
+    pub fn symlink_mode(&self) -> PyResult<SymlinkMode> {
+        Ok(if self.follow_symlinks {
+            SymlinkMode::Follow
+        } else {
+            SymlinkMode::Preserve
+        })
+    }
+
+    /// Build the prompt handler for `overwrite="prompt"`
+    ///
+    /// Returns an error when the policy is `prompt` but no callback was
+    /// supplied: an unanswered prompt must never turn into "overwrite".
+    pub fn overwrite_prompt(&self) -> PyResult<Option<ferrocp_io::OverwritePrompt>> {
+        if self.overwrite_policy()? != OverwritePolicy::Prompt {
+            return Ok(None);
+        }
+
+        let callback = self
+            .overwrite_callback
+            .as_ref()
+            .map(|callback| Python::attach(|py| callback.clone_ref(py)))
+            .ok_or_else(|| {
+                PyValueError::new_err(
+                    "overwrite='prompt' requires overwrite_callback to be set (it is called as \
+                 callback(source, destination) -> bool)",
+                )
+            })?;
+
+        Ok(Some(ferrocp_io::OverwritePrompt::new(
+            move |source: &std::path::Path, destination: &std::path::Path| {
+                let source = source.to_path_buf();
+                let destination = destination.to_path_buf();
+                // Cloning a Python reference needs the GIL.
+                let callback = Python::attach(|py| callback.clone_ref(py));
+
+                // The callback may be a Python callable, so the GIL must be
+                // held while it runs.
+                Python::attach(|py| {
+                    let args = (
+                        source.display().to_string(),
+                        destination.display().to_string(),
+                    );
+                    match callback.call1(py, args) {
+                        Ok(value) => match value.extract::<bool>(py) {
+                            // An exception is not an answer: keep the existing file.
+                            Ok(true) => OverwriteDecision::Proceed,
+                            Ok(false) | Err(_) => OverwriteDecision::Skip,
+                        },
+                        Err(error) => {
+                            tracing::warn!(
+                                "overwrite_callback raised for '{}', skipping: {}",
+                                destination.display(),
+                                error
+                            );
+                            OverwriteDecision::Skip
+                        }
+                    }
+                })
+            },
+        )))
     }
 }
 
@@ -306,11 +481,23 @@ mod tests {
     mod full_tests {
         use super::*;
 
+        /// Start the interpreter before a test that inspects a `PyErr`.
+        ///
+        /// `PyErr` renders through Python's C API, so an interpreter has to be
+        /// running. pyo3 no longer initialises one implicitly (the
+        /// `auto-initialize` feature was removed in 0.26). `initialize()` is
+        /// idempotent and race-safe, so calling it per test also removes the
+        /// dependency on which test the harness happens to schedule first.
+        fn with_interpreter() {
+            Python::initialize();
+        }
+
         #[test]
         fn test_copy_options_creation() {
             let options = PyCopyOptions::new(
                 "auto".to_string(),
-                "prompt".to_string(),
+                "always".to_string(),
+                None,
                 true,
                 true,
                 false,
@@ -319,21 +506,36 @@ mod tests {
                 64 * 1024,
                 0,
                 false,
-            );
+            )
+            .unwrap();
 
             assert_eq!(options.mode, "auto");
-            assert_eq!(options.overwrite, "prompt");
+            assert_eq!(options.overwrite, "always");
             assert!(options.preserve_timestamps);
         }
 
         #[test]
+        fn test_default_overwrite_is_always_not_prompt() {
+            // The historical default was "prompt", which implied protection
+            // that never existed. The default must be the behaviour that
+            // actually happens.
+            with_interpreter();
+            let options = PyCopyOptions::default();
+            assert_eq!(options.overwrite, "always");
+            assert_eq!(options.overwrite_policy().unwrap(), OverwritePolicy::Always);
+        }
+
+        #[test]
         fn test_copy_options_presets() {
+            with_interpreter();
             let speed_options = PyCopyOptions::for_speed();
-            assert_eq!(speed_options.mode, "fast");
+            assert_eq!(speed_options.mode, "all");
+            assert_eq!(speed_options.overwrite, "always");
             assert!(!speed_options.verify);
 
             let safety_options = PyCopyOptions::for_safety();
-            assert_eq!(safety_options.mode, "safe");
+            // "safe" must mean it never replaces an existing destination.
+            assert_eq!(safety_options.overwrite, "never");
             assert!(safety_options.verify);
 
             let compression_options = PyCopyOptions::for_compression();
@@ -341,7 +543,78 @@ mod tests {
         }
 
         #[test]
+        fn test_presets_are_valid() {
+            with_interpreter();
+            for options in [
+                PyCopyOptions::for_speed(),
+                PyCopyOptions::for_safety(),
+                PyCopyOptions::for_compression(),
+            ] {
+                options
+                    .copy_mode()
+                    .expect("preset mode must be a valid copy mode");
+                options
+                    .overwrite_policy()
+                    .expect("preset overwrite must be a valid policy");
+            }
+        }
+
+        #[test]
+        fn test_unknown_overwrite_value_is_rejected() {
+            with_interpreter();
+            let options = PyCopyOptions {
+                overwrite: "maybe".to_string(),
+                ..PyCopyOptions::default()
+            };
+            let error = options.overwrite_policy().unwrap_err();
+            assert!(error
+                .to_string()
+                .contains("invalid overwrite value 'maybe'"));
+        }
+
+        #[test]
+        fn test_prompt_without_callback_is_rejected() {
+            with_interpreter();
+            let options = PyCopyOptions {
+                overwrite: "prompt".to_string(),
+                overwrite_callback: None,
+                ..PyCopyOptions::default()
+            };
+            assert_eq!(options.overwrite_policy().unwrap(), OverwritePolicy::Prompt);
+            let error = options.overwrite_prompt().unwrap_err();
+            assert!(error.to_string().contains("requires overwrite_callback"));
+        }
+
+        #[test]
+        fn test_mirror_mode_is_rejected() {
+            with_interpreter();
+            let options = PyCopyOptions {
+                mode: "mirror".to_string(),
+                ..PyCopyOptions::default()
+            };
+            let error = options.copy_mode().unwrap_err();
+            assert!(error.to_string().contains("not implemented"));
+        }
+
+        #[test]
+        fn test_follow_symlinks_maps_to_symlink_mode() {
+            with_interpreter();
+            let options = PyCopyOptions {
+                follow_symlinks: true,
+                ..PyCopyOptions::default()
+            };
+            assert_eq!(options.symlink_mode().unwrap(), SymlinkMode::Follow);
+
+            let options = PyCopyOptions {
+                follow_symlinks: false,
+                ..PyCopyOptions::default()
+            };
+            assert_eq!(options.symlink_mode().unwrap(), SymlinkMode::Preserve);
+        }
+
+        #[test]
         fn test_network_config() {
+            with_interpreter();
             let config = PyNetworkConfig::new("quic".to_string(), 10, 10.0, 300.0, true, 3);
 
             assert_eq!(config.protocol, "quic");
@@ -360,7 +633,8 @@ mod tests {
             // Test compilation only, avoid Python runtime dependencies
             let _options = PyCopyOptions::new(
                 "auto".to_string(),
-                "prompt".to_string(),
+                "always".to_string(),
+                None,
                 true,
                 true,
                 false,

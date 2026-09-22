@@ -3,6 +3,7 @@
 //! This module provides a specialized copy engine for very small files,
 //! using zero-syscall optimization strategies and stack-allocated buffers to minimize overhead.
 
+use crate::policy::CopyGate;
 use crate::{CopyEngine, CopyOptions};
 use ferrocp_types::{CopyStats, DeviceType, Error, Result};
 use std::fs;
@@ -204,6 +205,7 @@ impl MicroFileCopyEngine {
             bytes_copied,
             files_skipped: 0,
             errors: 0,
+            symlinks_created: 0,
             duration: elapsed,
             zerocopy_operations: 0,
             zerocopy_bytes: 0,
@@ -274,6 +276,7 @@ impl MicroFileCopyEngine {
             bytes_copied,
             files_skipped: 0,
             errors: 0,
+            symlinks_created: 0,
             duration: elapsed,
             zerocopy_operations: 0,
             zerocopy_bytes: 0,
@@ -365,6 +368,7 @@ impl MicroFileCopyEngine {
             bytes_copied,
             files_skipped: 0,
             errors: 0,
+            symlinks_created: 0,
             duration: elapsed,
             zerocopy_operations: 0,
             zerocopy_bytes: 0,
@@ -446,6 +450,7 @@ impl MicroFileCopyEngine {
             bytes_copied,
             files_skipped: 0,
             errors: 0,
+            symlinks_created: 0,
             duration: elapsed,
             zerocopy_operations: 0,
             zerocopy_bytes: 0,
@@ -568,6 +573,7 @@ impl MicroFileCopyEngine {
             bytes_copied,
             files_skipped: 0,
             errors: 0,
+            symlinks_created: 0,
             duration: elapsed,
             zerocopy_operations: 0,
             zerocopy_bytes: 0,
@@ -703,10 +709,40 @@ impl CopyEngine for MicroFileCopyEngine {
         &mut self,
         source: P,
         destination: P,
-        _options: CopyOptions,
+        options: CopyOptions,
     ) -> Result<CopyStats> {
-        // For micro files, options are largely ignored as we use optimized path
-        self.copy_file(source, destination).await
+        // Only the tuning knobs are ignored for micro files; the semantic
+        // contract (overwrite policy) is always honoured.
+        options.validate()?;
+
+        let source_path = source.as_ref();
+        let dest_path = destination.as_ref();
+        let source_metadata = std::fs::metadata(source_path).map_err(|e| Error::Io {
+            message: format!(
+                "Failed to read source metadata '{}': {}",
+                source_path.display(),
+                e
+            ),
+        })?;
+
+        match CopyGate::evaluate(
+            source_path,
+            &source_metadata,
+            dest_path,
+            options.overwrite_policy,
+            options.overwrite_prompt.as_ref(),
+        )? {
+            CopyGate::Proceed => self.copy_file(source, destination).await,
+            CopyGate::Skip => {
+                debug!(
+                    "Skipping '{}': destination '{}' exists and the {:?} policy keeps it",
+                    source_path.display(),
+                    dest_path.display(),
+                    options.overwrite_policy
+                );
+                Ok(CopyStats::skipped_one())
+            }
+        }
     }
 
     async fn detect_device_type<P: AsRef<Path> + Send>(&self, _path: P) -> Result<DeviceType> {
