@@ -196,6 +196,10 @@ python-source = "python"
 module-name = "ferrocp._ferrocp"
 bindings = "pyo3"
 manifest-path = "crates/ferrocp-python/Cargo.toml"
+# `extension-module` keeps the wheel from linking against libpython. It is an
+# opt-in feature rather than a default so that `cargo test --workspace` can
+# link libpython and run the crate's unit tests.
+features = ["extension-module"]
 # Compatibility settings
 abi3 = true
 # Strip debug symbols in release

@@ -109,7 +109,7 @@ impl StringCacheEntry {
 /// Cache entry for Python objects
 #[derive(Debug)]
 struct ObjectCacheEntry {
-    object: PyObject,
+    object: Py<PyAny>,
     created_at: Instant,
     access_count: u64,
     last_accessed: Instant,
@@ -117,7 +117,7 @@ struct ObjectCacheEntry {
 }
 
 impl ObjectCacheEntry {
-    fn new(object: PyObject, estimated_size: usize) -> Self {
+    fn new(object: Py<PyAny>, estimated_size: usize) -> Self {
         let now = Instant::now();
         Self {
             object,
@@ -128,7 +128,7 @@ impl ObjectCacheEntry {
         }
     }
 
-    fn access(&mut self) -> &PyObject {
+    fn access(&mut self) -> &Py<PyAny> {
         self.access_count += 1;
         self.last_accessed = Instant::now();
         &self.object
@@ -285,10 +285,10 @@ impl PythonCacheManager {
         py: Python<'_>,
         key: K,
         factory: F,
-    ) -> PyResult<PyObject>
+    ) -> PyResult<Py<PyAny>>
     where
         K: Hash,
-        F: FnOnce(Python<'_>) -> PyResult<PyObject>,
+        F: FnOnce(Python<'_>) -> PyResult<Py<PyAny>>,
     {
         let hash_key = self.hash_key(&key);
 
@@ -362,9 +362,9 @@ impl PythonCacheManager {
         hasher.finish()
     }
 
-    fn estimate_object_size(&self, _object: &PyObject) -> usize {
+    fn estimate_object_size(&self, _object: &Py<PyAny>) -> usize {
         // Conservative estimate - in practice, this could be more sophisticated
-        std::mem::size_of::<PyObject>() + 256
+        std::mem::size_of::<Py<PyAny>>() + 256
     }
 
     fn evict_lru_strings(&mut self) {
@@ -497,10 +497,10 @@ where
 }
 
 /// Convenience function to get or insert an object in the global cache
-pub fn get_or_insert_object<K, F>(py: Python<'_>, key: K, factory: F) -> PyResult<PyObject>
+pub fn get_or_insert_object<K, F>(py: Python<'_>, key: K, factory: F) -> PyResult<Py<PyAny>>
 where
     K: Hash,
-    F: FnOnce(Python<'_>) -> PyResult<PyObject>,
+    F: FnOnce(Python<'_>) -> PyResult<Py<PyAny>>,
 {
     let binding = global_cache();
     let mut cache = binding.write().unwrap();
@@ -515,7 +515,7 @@ pub fn global_cache_stats() -> PythonCacheStats {
 }
 
 /// Python binding for cache statistics
-#[pyclass(name = "CacheStats")]
+#[pyclass(name = "CacheStats", from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PyCacheStats {
     /// Total number of string cache hits
@@ -612,7 +612,7 @@ impl From<PythonCacheStats> for PyCacheStats {
 }
 
 /// Python binding for cache configuration
-#[pyclass(name = "CacheConfig")]
+#[pyclass(name = "CacheConfig", from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PyCacheConfig {
     /// Maximum number of string entries in cache
@@ -752,6 +752,16 @@ pub fn configure_cache(config: PyCacheConfig) {
 mod tests {
     use super::*;
 
+    /// Compare hit rates with a tolerance: they are the result of an integer
+    /// division promoted to `f64`, so the exact bit pattern depends on the
+    /// association order and must not be asserted literally.
+    fn assert_approx_eq(actual: f64, expected: f64) {
+        assert!(
+            (actual - expected).abs() < 1e-9,
+            "expected {expected}, got {actual}"
+        );
+    }
+
     #[test]
     fn test_cache_manager_creation() {
         let manager = PythonCacheManager::new();
@@ -803,7 +813,7 @@ mod tests {
         assert_eq!(stats.string_misses, 2);
         assert_eq!(stats.string_hits, 1);
         assert_eq!(stats.string_entries, 2);
-        assert_eq!(stats.string_hit_rate(), 33.333333333333336); // 1/3 * 100
+        assert_approx_eq(stats.string_hit_rate(), 100.0 / 3.0); // 1/3 * 100
     }
 
     #[test]
@@ -873,8 +883,8 @@ mod tests {
         let py_stats = PyCacheStats::from(rust_stats);
         assert_eq!(py_stats.string_hits, 10);
         assert_eq!(py_stats.string_misses, 5);
-        assert_eq!(py_stats.string_hit_rate(), 66.66666666666667); // 10/15 * 100
-        assert_eq!(py_stats.object_hit_rate(), 80.0); // 8/10 * 100
-        assert_eq!(py_stats.overall_hit_rate(), 72.0); // 18/25 * 100
+        assert_approx_eq(py_stats.string_hit_rate(), 1000.0 / 15.0); // 10/15 * 100
+        assert_approx_eq(py_stats.object_hit_rate(), 80.0); // 8/10 * 100
+        assert_approx_eq(py_stats.overall_hit_rate(), 72.0); // 18/25 * 100
     }
 }

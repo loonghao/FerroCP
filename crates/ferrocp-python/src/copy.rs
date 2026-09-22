@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// Python wrapper for copy results
-#[pyclass(name = "CopyResult")]
+#[pyclass(name = "CopyResult", from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PyCopyResult {
     /// Total bytes copied
@@ -118,7 +118,7 @@ impl From<CopyStats> for PyCopyResult {
 }
 
 /// Python wrapper for copy engine
-#[pyclass(name = "CopyEngine")]
+#[pyclass(name = "CopyEngine", skip_from_py_object)]
 pub struct PyCopyEngine {
     engine: CopyEngine,
     async_manager: Arc<PyAsyncManager>,
@@ -217,7 +217,7 @@ impl PyCopyEngine {
                     duration: gil_result.duration,
                     ..Default::default()
                 });
-                Python::with_gil(|py| call_progress_callback(py, &progress_callback, &progress))?;
+                Python::attach(|py| call_progress_callback(py, &progress_callback, &progress))?;
             }
 
             Ok(gil_result.result)
@@ -299,7 +299,7 @@ impl PyCopyEngine {
                     duration: gil_result.duration,
                     ..Default::default()
                 });
-                Python::with_gil(|py| call_progress_callback(py, &progress_callback, &progress))?;
+                Python::attach(|py| call_progress_callback(py, &progress_callback, &progress))?;
             }
 
             Ok(gil_result.result)
@@ -308,7 +308,7 @@ impl PyCopyEngine {
 
     /// Get engine statistics
     pub fn get_statistics<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
-        let dict = PyDict::new_bound(py);
+        let dict = PyDict::new(py);
         // TODO: Implement actual statistics collection from engine
         dict.set_item("total_operations", 0)?;
         dict.set_item("total_bytes_copied", 0)?;
@@ -324,7 +324,7 @@ impl PyCopyEngine {
 
     /// Get supported features
     pub fn get_features<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
-        let dict = PyDict::new_bound(py);
+        let dict = PyDict::new(py);
         dict.set_item("zero_copy", true)?;
         dict.set_item("compression", true)?;
         dict.set_item("network_transfer", true)?;

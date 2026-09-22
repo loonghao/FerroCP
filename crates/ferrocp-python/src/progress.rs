@@ -5,7 +5,7 @@ use pyo3::prelude::*;
 use std::time::Duration;
 
 /// Python wrapper for progress information
-#[pyclass(name = "Progress")]
+#[pyclass(name = "Progress", from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PyProgress {
     /// Total bytes to copy
@@ -142,7 +142,7 @@ impl From<CopyStats> for PyProgress {
 }
 
 /// Python callback wrapper for progress updates
-pub type ProgressCallback = PyObject;
+pub type ProgressCallback = Py<PyAny>;
 
 /// Call Python progress callback
 pub fn call_progress_callback(

@@ -8,7 +8,7 @@ use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 /// Async operation handle for cancellation and progress tracking
-#[pyclass(name = "AsyncOperation")]
+#[pyclass(name = "AsyncOperation", from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PyAsyncOperation {
     id: Uuid,
@@ -114,7 +114,7 @@ impl PyAsyncOperation {
 }
 
 /// Async operation manager
-#[pyclass(name = "AsyncManager")]
+#[pyclass(name = "AsyncManager", from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PyAsyncManager {
     operations: Arc<RwLock<std::collections::HashMap<Uuid, PyAsyncOperation>>>,

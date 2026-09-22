@@ -194,7 +194,7 @@ where
     T: Send + 'static,
 {
     // Release GIL during the async operation
-    py.allow_threads(|| {
+    py.detach(|| {
         // Create a new Tokio runtime for this operation if needed
         let rt = tokio::runtime::Handle::try_current().unwrap_or_else(|_| {
             tokio::runtime::Builder::new_multi_thread()
