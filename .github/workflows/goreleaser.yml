@@ -30,8 +30,63 @@ on:
         type: boolean
 
 jobs:
+  # The Windows artifact is built natively rather than cross-compiled.
+  #
+  # `x86_64-pc-windows-msvc` cannot be cross-compiled from Linux with
+  # cargo-zigbuild: rustc emits MSVC `link.exe`-style arguments (`/NOLOGO`,
+  # `/NXCOMPAT`, `/OUT:`) that zig's driver rejects with
+  # `error: /NOLOGO: unrecognized file extension`, and neither zig nor
+  # cargo-zigbuild ships the Windows SDK import libraries (`msvcrt.lib`,
+  # `vcruntime`, `ucrt`) that the msvc target links against. The
+  # `windows-latest` image ships MSVC build tools and the Windows SDK
+  # preinstalled, so it has both missing pieces out of the box.
+  #
+  # Keeping the msvc ABI also keeps the compatibility promise the repo already
+  # documents in `.goreleaser.yml` ("VFX Platform CY2025: VS 2022 v17.6+,
+  # Windows SDK 10.0.20348+") and lets `.goreleaser.yml` stay untouched, since
+  # it copies from `target/x86_64-pc-windows-msvc/release/ferrocp.exe` either
+  # way.
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build ferrocp for x86_64-pc-windows-msvc
+        run: cargo build --bin ferrocp --target x86_64-pc-windows-msvc --release
+
+      - name: Verify binary
+        shell: bash
+        run: |
+          if [ -f "target/x86_64-pc-windows-msvc/release/ferrocp.exe" ]; then
+            echo "Built ferrocp.exe:"
+            ls -la target/x86_64-pc-windows-msvc/release/ferrocp.exe
+          else
+            echo "No binary produced for x86_64-pc-windows-msvc"
+            exit 1
+          fi
+
+      - name: Upload Windows binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: ferrocp-windows-msvc
+          path: target/x86_64-pc-windows-msvc/release/ferrocp.exe
+          if-no-files-found: error
+          retention-days: 1
+
   goreleaser:
     runs-on: ubuntu-latest
+    needs: build-windows
 
     steps:
       - name: Checkout
@@ -58,7 +113,16 @@ jobs:
       - name: Set up cross-compilation toolchain
         uses: ./.github/actions/setup-cross-compile
 
-      # Cross-compile the Rust CLI for every release target, sequentially.
+      # Collect the Windows binary produced by the `build-windows` job, so
+      # GoReleaser finds it where `.goreleaser.yml` already expects it.
+      - name: Download Windows binary
+        uses: actions/download-artifact@v7
+        with:
+          name: ferrocp-windows-msvc
+          path: target/x86_64-pc-windows-msvc/release
+
+      # Cross-compile the Rust CLI for the Linux and Apple release targets,
+      # sequentially. Windows is built by the `build-windows` job instead.
       #
       # This deliberately does not use GoReleaser `pre` hooks: those run
       # concurrently, and parallel `cargo zigbuild` invocations sharing one
@@ -69,13 +133,12 @@ jobs:
       # The Apple targets pin MACOSX_DEPLOYMENT_TARGET explicitly: rustc
       # defaults x86_64-apple-darwin to 10.12, which is below the 10.13
       # minimum the bundled macOS SDK accepts.
-      - name: Cross-compile ferrocp for all release targets
+      - name: Cross-compile ferrocp for the Linux and Apple release targets
         run: |
           cargo zigbuild --bin ferrocp --target x86_64-unknown-linux-gnu --release
           cargo zigbuild --bin ferrocp --target aarch64-unknown-linux-gnu --release
           MACOSX_DEPLOYMENT_TARGET=12.0 cargo zigbuild --bin ferrocp --target x86_64-apple-darwin --release
           MACOSX_DEPLOYMENT_TARGET=11.0 cargo zigbuild --bin ferrocp --target aarch64-apple-darwin --release
-          cargo zigbuild --bin ferrocp --target x86_64-pc-windows-msvc --release
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7

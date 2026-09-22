@@ -99,12 +99,19 @@ jobs:
             target/*/release/ferrocp*
           retention-days: 1
 
-  # Every release target has to cross-compile here, not just Linux. The
-  # `Release` workflow used to build all five targets only at tag time, so the
-  # darwin targets stayed broken (missing macOS SDK) across the whole 0.4.x
-  # line with no PR-stage signal at all. This matrix surfaces that class of
-  # failure on the PR instead of after the release tag has already been cut.
-  test-release-targets:
+  # The Linux and Apple release targets are cross-compiled here, not just the
+  # Linux one. The `Release` workflow used to build every target only at tag
+  # time, so the darwin targets stayed broken (missing macOS SDK) across the
+  # whole 0.4.x line with no PR-stage signal at all. This matrix surfaces that
+  # class of failure on the PR instead of after the release tag is cut.
+  #
+  # `x86_64-pc-windows-msvc` is deliberately absent: it is not cross-compiled
+  # from Linux at all (rustc emits `link.exe`-style linker arguments that zig
+  # rejects with `error: /NOLOGO: unrecognized file extension`, and zig ships
+  # no Windows SDK import libraries). Testing it here would only assert a
+  # combination the release pipeline never uses, so it is covered by
+  # `test-windows-native` below.
+  test-cross-compiled-targets:
     runs-on: ubuntu-latest
 
     strategy:
@@ -119,8 +126,6 @@ jobs:
             macosx_deployment_target: '12.0'
           - target: aarch64-apple-darwin
             macosx_deployment_target: '11.0'
-          - target: x86_64-pc-windows-msvc
-            macosx_deployment_target: ''
 
     steps:
       - name: Checkout
@@ -151,6 +156,36 @@ jobs:
             ls -la "target/${{ matrix.target }}/release/"
           else
             echo "❌ No binary produced for ${{ matrix.target }}"
+            exit 1
+          fi
+
+  # Mirrors the `build-windows` job of the `Release` workflow: the Windows
+  # artifact is produced natively on a Windows runner, exactly as it is at
+  # release time.
+  test-windows-native:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build ferrocp for x86_64-pc-windows-msvc
+        run: cargo build --bin ferrocp --target x86_64-pc-windows-msvc --release
+
+      - name: Verify binary
+        shell: bash
+        run: |
+          if [ -f "target/x86_64-pc-windows-msvc/release/ferrocp.exe" ]; then
+            echo "✅ Binary produced for x86_64-pc-windows-msvc"
+            ls -la target/x86_64-pc-windows-msvc/release/ferrocp.exe
+          else
+            echo "❌ No binary produced for x86_64-pc-windows-msvc"
             exit 1
           fi
 
@@ -208,7 +243,7 @@ jobs:
 
   summary:
     runs-on: ubuntu-latest
-    needs: [test-goreleaser, test-release-targets, test-cross-compilation-scripts, test-makefile-targets]
+    needs: [test-goreleaser, test-cross-compiled-targets, test-windows-native, test-cross-compilation-scripts, test-makefile-targets]
     if: always()
 
     steps:
@@ -223,10 +258,16 @@ jobs:
             echo "❌ **GoReleaser Configuration**: FAILED" >> $GITHUB_STEP_SUMMARY
           fi
 
-          if [ "${{ needs.test-release-targets.result }}" == "success" ]; then
-            echo "✅ **Release Target Cross-Compilation**: PASSED" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.test-cross-compiled-targets.result }}" == "success" ]; then
+            echo "✅ **Linux + Apple Cross-Compilation**: PASSED" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ **Release Target Cross-Compilation**: FAILED" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Linux + Apple Cross-Compilation**: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ needs.test-windows-native.result }}" == "success" ]; then
+            echo "✅ **Windows Native Build**: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Windows Native Build**: FAILED" >> $GITHUB_STEP_SUMMARY
           fi
 
           if [ "${{ needs.test-cross-compilation-scripts.result }}" == "success" ]; then
@@ -244,6 +285,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📋 Test Details" >> $GITHUB_STEP_SUMMARY
           echo "- GoReleaser configuration syntax validation" >> $GITHUB_STEP_SUMMARY
-          echo "- Cross-compilation for every release target (linux, darwin, windows)" >> $GITHUB_STEP_SUMMARY
+          echo "- Cross-compilation for every Linux and Apple release target" >> $GITHUB_STEP_SUMMARY
+          echo "- Native Windows build for x86_64-pc-windows-msvc" >> $GITHUB_STEP_SUMMARY
           echo "- Script functionality and help output" >> $GITHUB_STEP_SUMMARY
           echo "- Makefile target availability" >> $GITHUB_STEP_SUMMARY
