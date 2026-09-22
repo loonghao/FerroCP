@@ -7,7 +7,7 @@ This directory contains scripts to help ensure your code passes CI checks before
 The CI pipeline runs several checks based on `.github/workflows/ci.yml`:
 
 1. **Format Check** - `cargo fmt --all -- --check`
-2. **Clippy Check** - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+2. **Clippy Check** - `cargo clippy --workspace --all-targets --all-features -- -D clippy::correctness -D clippy::suspicious -D clippy::complexity -W clippy::perf -W clippy::style`
 3. **Unit Tests** - `cargo test --workspace --exclude ferrocp-python --lib`
 4. **Integration Tests** - `cargo test --workspace --exclude ferrocp-python --test '*'`
 5. **Build Test** - GoReleaser build simulation

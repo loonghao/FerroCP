@@ -257,7 +257,7 @@ The repository ships four GitHub Actions workflows in `.github/workflows/`:
 
 | Workflow | Purpose |
 |----------|---------|
-| `ci.yml` | Merge gate: Rust fmt/clippy/test on Linux, Windows and macOS, Python lint and tests, and the `cargo deny` / `cargo audit` dependency gate |
+| `ci.yml` | Merge gate: Rust fmt/clippy/test on Linux, Windows and macOS, Python lint, the Python extension build, and the `cargo deny` / `cargo audit` dependency gate |
 | `release-please.yml` | Opens/updates the release PR from conventional commits |
 | `goreleaser.yml` | Cross-compiles and attaches CLI binaries to a release |
 | `test-goreleaser.yml` | Validates the GoReleaser configuration |

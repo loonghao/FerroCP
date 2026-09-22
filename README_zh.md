@@ -329,7 +329,7 @@ pip install sphinx>=7.0.0 pydata-sphinx-theme>=0.14.1
 
 | 工作流 | 用途 |
 |--------|------|
-| `ci.yml` | 合并门禁：Linux / Windows / macOS 三平台 Rust fmt、clippy、test，Python lint 与测试，以及 `cargo deny` / `cargo audit` 依赖门禁 |
+| `ci.yml` | 合并门禁：Linux / Windows / macOS 三平台 Rust fmt、clippy、test，Python lint，Python 扩展模块构建，以及 `cargo deny` / `cargo audit` 依赖门禁 |
 | `release-please.yml` | 根据 conventional commits 创建/更新 release PR |
 | `goreleaser.yml` | 交叉编译 CLI 二进制并附加到 release |
 | `test-goreleaser.yml` | 校验 GoReleaser 配置 |
