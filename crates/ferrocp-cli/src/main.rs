@@ -169,19 +169,19 @@ async fn main() -> Result<()> {
             } else {
                 mode.into()
             };
-            copy_command(
+            copy_command(CopyOptions {
                 source,
                 destination,
-                copy_mode,
-                threads,
+                mode: copy_mode,
+                _threads: threads,
                 compress,
-                compression_level,
-                zero_copy,
+                _compression_level: compression_level,
+                _zero_copy: zero_copy,
                 exclude,
                 include,
-                cli.quiet,
+                quiet: cli.quiet,
                 json,
-            )
+            })
             .await?;
         }
         Commands::Sync {
@@ -233,19 +233,40 @@ fn init_logging(debug: bool, quiet: bool, verbose: bool) -> Result<()> {
     Ok(())
 }
 
-async fn copy_command(
+/// Everything the `copy` sub-command collected from the CLI.
+///
+/// Grouped into a struct so the handler keeps a readable signature instead of
+/// tripping `clippy::too_many_arguments`.
+struct CopyOptions {
     source: PathBuf,
     destination: PathBuf,
     mode: CopyMode,
+    // Accepted for CLI compatibility; the engine sizes its own thread pool.
     _threads: Option<usize>,
     compress: bool,
+    // Accepted for CLI compatibility; the compression level is engine-internal.
     _compression_level: u8,
+    // Accepted for CLI compatibility; zero-copy is chosen by the engine.
     _zero_copy: bool,
     exclude: Vec<String>,
     include: Vec<String>,
     quiet: bool,
     json: bool,
-) -> Result<()> {
+}
+
+async fn copy_command(options: CopyOptions) -> Result<()> {
+    let CopyOptions {
+        source,
+        destination,
+        mode,
+        compress,
+        exclude,
+        include,
+        quiet,
+        json,
+        ..
+    } = options;
+
     info!("Starting copy operation");
     info!("Source: {}", source.display());
     info!("Destination: {}", destination.display());
