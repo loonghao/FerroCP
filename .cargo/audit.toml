@@ -11,5 +11,5 @@
 #
 # Accepted risk, tracked for follow-up: leaving bincode changes the wire and
 # on-disk format, so it needs an explicit owner decision plus a protocol version
-# bump. See the PR discussion on PIP-3199.
+# bump before it can be replaced.
 ignore = ["RUSTSEC-2025-0141"]
