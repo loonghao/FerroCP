@@ -428,9 +428,10 @@ uv run nox -s build
 uv run nox -s verify_build
 ```
 
-> PGO builds are not available: the `build_pgo` nox session was removed, so
-> `make build-pgo` (and the `nox -s build_pgo` call behind it) currently fails.
-> The approach is still documented in [docs/development/PGO_BUILD.md](docs/development/PGO_BUILD.md).
+> PGO builds are not available: the `build_pgo` nox session and the
+> `make build-pgo` target that called it were both removed, so there is no
+> automated PGO entry point. A manual recipe is still documented in
+> [docs/development/PGO_BUILD.md](docs/development/PGO_BUILD.md).
 
 ### Continuous Performance Monitoring with CodSpeed
 

@@ -245,7 +245,7 @@ def move(
     copy helpers cannot do that today. They are awaitables backed by an engine
     that never starts its scheduler dispatch loop, so the submitted copy task
     is never executed and the await only resolves when the executor's 3600
-    second timeout fires, returning ``Err(Timeout waiting for task ...))``
+    second timeout fires, returning ``Err(Timeout waiting for task ...)``
     after an hour (see
     ``crates/ferrocp-python/tests/copy_completes.rs``).
 

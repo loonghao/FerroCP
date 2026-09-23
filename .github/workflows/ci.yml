@@ -187,20 +187,23 @@ jobs:
       - name: Run mypy
         run: uv run --no-sync mypy python/ferrocp --strict
 
-  # The Python bindings are gated by a build + import check only; there is
-  # deliberately no `python-test` job. Two independent blockers make a pytest
-  # run impossible to land in this gate today:
+  # The Python bindings are covered by two jobs: `python-build` below (build
+  # plus import check) and `python-test`, which runs a deliberately narrow
+  # subset of the test suite.
   #
-  # 1. `ferrocp.copy_file()` / `copy_directory()` never return.
+  # A full pytest run still cannot land in this gate, for two reasons:
+  #
+  # 1. A copy driven through the Python bindings does not complete.
   #    `PyCopyEngine::new()` builds a `CopyEngine` but never calls
   #    `CopyEngine::start()`, so the scheduler dispatch loop that hands tasks to
   #    the executor is not running and every submitted task stays `Pending`
-  #    forever. The Rust CLI is unaffected because it calls `engine.start()`
-  #    before `execute()` (crates/ferrocp-cli/src/main.rs).
+  #    until the executor's 3600 second timeout fires, which surfaces as
+  #    `Err(Timeout waiting for task ...)` after an hour. The Rust CLI is
+  #    unaffected because it calls `engine.start()` before `execute()`
+  #    (crates/ferrocp-cli/src/main.rs).
   #    `crates/ferrocp-python/tests/copy_completes.rs` is the ignored regression
-  #    test for exactly this and points at the engine fix (PIP-3203). Every test
-  #    in tests/test_cli.py except `test_cli_version` drives that path, so a
-  #    pytest run hangs instead of failing.
+  #    test that tracks the engine fix. Every test in tests/test_cli.py except
+  #    `test_cli_version` drives that path.
   # 2. `nox -s test` cannot drive the suite even once that is fixed. noxfile's
   #    `install_with_groups` shells out to `uv sync`, and uv ignores the
   #    session's `VIRTUAL_ENV` ("does not match the project environment path
@@ -210,13 +213,19 @@ jobs:
   #    a full release build under the workspace's `lto = "fat",
   #    codegen-units = 1` profile.
   #
-  # Restore `python-test` (uv sync --group testing --no-install-project;
-  # maturin develop; pytest tests/) once PIP-3203 has landed and the noxfile
-  # installs into the session environment.
+  # `python-test` therefore lists its test files explicitly rather than
+  # collecting `tests/`. Before adding a file to that list, confirm it never
+  # calls `copy_file`, `copy_directory`, `CopyEngine::copy_*`, or any other
+  # real copy path: such a test will not fail, it will block and eventually be
+  # killed when the job hits its 30 minute `timeout-minutes`.
   #
-  # Until then this job guards the part that did break in practice and that the
-  # Rust jobs do not cover: linking the cdylib against pyo3's abi3 import
-  # library without libpython (the `extension-module` feature), which
+  # Widen `python-test` to the whole suite once the engine dispatch path is
+  # fixed (re-enable copy_completes.rs) and the noxfile installs into the
+  # session environment.
+  #
+  # Until then `python-build` guards the part that did break in practice and
+  # that the Rust jobs do not cover: linking the cdylib against pyo3's abi3
+  # import library without libpython (the `extension-module` feature), which
   # `cargo check` never exercises.
   python-build:
     name: Python extension build (${{ matrix.os }})
@@ -273,8 +282,8 @@ jobs:
   # `tests/test_cli.py` and the benchmark tests are deliberately excluded: the
   # Python bindings never start the scheduler dispatch loop, so anything that
   # drives a real copy blocks until the executor's one-hour timeout instead of
-  # finishing. Pulling those files in would hang this job rather than fail it,
-  # which is why the repo has no catch-all `python-test` job.
+  # finishing. Pulling those files in would hang this job until its 30 minute
+  # `timeout-minutes` kills it, rather than failing it.
   #
   # The files listed here are safe: they assert that `move()` fails fast and
   # that version metadata is present, neither of which reaches the engine.
