@@ -20,7 +20,7 @@
 ### 🔧 CI/CD 文档
 - [GoReleaser 配置](ci-cd/GORELEASER.md) - 自动化发布配置详解
 - [CI 清理计划（已归档）](ci-cd/CI_CLEANUP_PLAN.md) - 历史 CI/CD 工作流优化计划，仅作背景保留
-- [CodSpeed 设置](ci-cd/codspeed-setup.md) - 性能监控服务配置
+- [CodSpeed 设置](ci-cd/codspeed-setup.md) - 性能监控服务配置（当前未在 CI 中启用，仅作接入参考）
 
 ### 🏛️ 架构设计
 - [设备缓存增强](architecture/device-cache-enhancement.md) - 设备缓存优化设计

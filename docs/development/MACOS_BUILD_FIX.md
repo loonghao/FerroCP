@@ -81,7 +81,12 @@ rustflags = [
 
 ### 3. 环境变量配置
 
-为 macOS 构建设置特定的环境变量：
+> **当前状态**：与第 1 节同源，下面这些变量当前**没有**在 CI 中配置（`grep -r RING_PREGENERATE_ASM .github/`
+> 零命中），仅作为排查 `ring` 编译失败时的参考。
+> 其中 `MACOSX_DEPLOYMENT_TARGET` 的实际取值以 `goreleaser.yml` 为准（x86_64 为 `12.0`，aarch64 为 `11.0`），
+> 不是下面写的 `10.15`。
+
+历史记录——为 macOS 构建设置过的环境变量：
 - `MACOSX_DEPLOYMENT_TARGET=10.15`: 确保向后兼容性
 - `CC=clang`: 使用系统 clang 编译器
 - `CXX=clang++`: 使用系统 clang++ 编译器

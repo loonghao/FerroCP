@@ -1,5 +1,11 @@
 # CodSpeed Integration Setup
 
+> **Status**: CodSpeed is **not** wired into CI today. This repository ships no CodSpeed workflow
+> (`.github/workflows/codspeed.yml` was removed with the other legacy benchmark workflows) and
+> `ci.yml` does not run it. The setup steps below are a reference for enabling CodSpeed, not a
+> description of the current configuration. Benchmarks live in `benchmarks/test_codspeed.py` and run
+> on demand with `uv run nox -s codspeed`.
+
 This document explains how to set up CodSpeed continuous performance monitoring for the ferrocp project.
 
 ## What is CodSpeed?
@@ -65,10 +71,8 @@ These benchmarks are specifically optimized for CodSpeed:
 
 ### 4. CI Integration
 
-> **Status**: the repository currently ships no CodSpeed workflow. `.github/workflows/codspeed.yml`
-> was removed together with the other legacy benchmark workflows, and `ci.yml` does not run CodSpeed.
-> The benchmarks live in `benchmarks/test_codspeed.py` and are executed on demand with
-> `uv run nox -s codspeed`. The job layout below is kept as a reference for re-enabling CodSpeed in CI.
+The job layout below is a reference for re-enabling CodSpeed in CI; it is not the current
+configuration (see the status note at the top of this document).
 
 The CodSpeed workflow (`.github/workflows/codspeed.yml`) included:
 

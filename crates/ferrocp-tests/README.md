@@ -179,6 +179,12 @@ Benchmark output is written locally, not uploaded as CI artifacts:
 
 ### Continuous Monitoring
 
+> **Status**: monitoring is **not** continuous today. There are no scheduled benchmark runs, no
+> trend tracking pipeline and no automated alerting — see [CI/CD Integration](#cicd-integration).
+> The list below describes the intended target state, not what the repository currently does.
+
+Target state (not yet implemented):
+
 - Daily automated benchmark runs
 - Performance trend tracking
 - Regression alerts for significant changes (>5%)
