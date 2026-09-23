@@ -87,7 +87,7 @@ def test_move_honours_custom_copy_function_signature(tmp_path: Path) -> None:
     src = tmp_path / "source.txt"
     src.write_text("payload")
 
-    async def failing_copy(source: str, destination: str):
+    async def failing_copy(source: str, destination: str) -> None:
         raise RuntimeError("copy_function must not be reached")
 
     with pytest.raises(NotImplementedError):

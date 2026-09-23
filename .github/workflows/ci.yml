@@ -267,3 +267,49 @@ jobs:
       - name: Import the extension module
         run: |
           uv run --no-sync python -c "import ferrocp; print(ferrocp.__version__); assert ferrocp.__version__"
+
+  # Runs only the test files that never touch the copy engine.
+  #
+  # `tests/test_cli.py` and the benchmark tests are deliberately excluded: the
+  # Python bindings never start the scheduler dispatch loop, so anything that
+  # drives a real copy blocks until the executor's one-hour timeout instead of
+  # finishing. Pulling those files in would hang this job rather than fail it,
+  # which is why the repo has no catch-all `python-test` job.
+  #
+  # The files listed here are safe: they assert that `move()` fails fast and
+  # that version metadata is present, neither of which reaches the engine.
+  python-test:
+    name: Python tests (no-copy subset)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      UV_PYTHON: "3.11"
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: python-test-ubuntu
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libssl-dev lld clang
+
+      - name: Install test dependencies
+        run: uv sync --group testing --no-install-project
+
+      - name: Build the extension module
+        run: uv run --no-sync maturin develop
+
+      - name: Run the no-copy test subset
+        run: uv run --no-sync pytest tests/test_move.py tests/test_version.py -v -W error::RuntimeWarning
