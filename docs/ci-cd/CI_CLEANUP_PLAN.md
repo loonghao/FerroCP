@@ -1,5 +1,15 @@
 # CI/CD Configuration Cleanup Plan
 
+> **Archived** — historical document, kept for context only. Do not follow it as a plan.
+>
+> Every workflow this plan discusses has since been removed from the repository:
+> `release.yml`, `test.yml`, `benchmark.yml`, `docs.yml`, `bumpversion.yml`, `codspeed.yml`,
+> `test-pgo.yml` and `rust-benchmarks.yml` are all gone, and the shared
+> `.github/workflows/shared/` components proposed here were never created.
+> The plan was therefore executed, but not in the shape described below.
+>
+> For the workflows that exist today, see the CI table in the root [README](../../README.md#ci).
+
 ## Overview
 
 After adding GoReleaser configuration, we have identified several redundant CI workflows that can be cleaned up to reduce complexity and maintenance overhead.

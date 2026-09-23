@@ -67,11 +67,13 @@ uv run pytest benchmarks/ --benchmark-only --benchmark-group=file_copy_sizes
 
 ### 3. CodSpeed Benchmarks (`test_codspeed.py`)
 
-Optimized benchmarks for continuous performance monitoring:
+Optimized benchmarks for performance monitoring (run them locally, or from a CodSpeed workflow you add
+yourself — see [Continuous Performance Monitoring](#continuous-performance-monitoring); nothing invokes
+them automatically today):
 - **Deterministic**: Use fixed patterns for reproducible results
 - **Focused**: Each benchmark tests a specific performance aspect
-- **CI-Optimized**: Designed for stable CI execution
-- **Regression Detection**: Automatically detect performance regressions
+- **CI-Ready**: Stable enough to run in CI, though no workflow invokes them at the moment
+- **Regression Detection**: Compare against a saved baseline to detect performance regressions
 
 ```bash
 # Run CodSpeed benchmarks locally
@@ -171,9 +173,15 @@ pytest benchmarks/ --benchmark-only --benchmark-autosave --benchmark-save-data
 
 ## Continuous Performance Monitoring
 
+> **Status**: monitoring is **not** continuous today — no scheduled benchmark runs and no automated
+> regression alerting. See [CI Integration](#ci-integration) below.
+
 ### CI Integration
 
-Benchmarks run automatically in CI to detect performance regressions:
+Benchmarks are **not** run automatically in CI today — no `benchmark.yml` workflow exists anymore and
+`ci.yml` does not invoke the benchmark suite. Run them locally to detect performance regressions
+(`uv run nox -s benchmark`), or use the snippet below as a starting point if you want to add a
+dedicated benchmark workflow:
 
 ```yaml
 # .github/workflows/benchmark.yml

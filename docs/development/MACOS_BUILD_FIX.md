@@ -24,14 +24,17 @@ error[E0080]: evaluation of constant value failed
 
 ### 1. CI/CD 工作流修复
 
-#### 修改的文件：
-- `.github/workflows/test.yml`
-- `.github/workflows/rust-benchmarks.yml`
-- `.github/workflows/release.yml`
-- `.github/workflows/benchmark.yml`
-- `.github/workflows/test-pgo.yml`
+#### 当前在 macOS 上执行的工作流：
 
-#### 添加的步骤：
+- `.github/workflows/ci.yml` — 合并门禁，`rust-test` 与 `python-build` 两个作业的 matrix 均包含 `macos-latest`
+- `.github/workflows/goreleaser.yml` — macOS 目标交叉编译，显式固定 `MACOSX_DEPLOYMENT_TARGET`（x86_64 为 `12.0`，aarch64 为 `11.0`）
+
+> **注意**：本节早期版本列出的 `test.yml`、`rust-benchmarks.yml`、`release.yml`、`benchmark.yml`、
+> `test-pgo.yml` 五个工作流均已在仓库中删除，下面的修复步骤也随之从 CI 中移除。
+> 这些步骤当前**没有**在 `ci.yml` 中启用，仅作为排查 `ring` 编译失败时的参考。
+
+#### 参考步骤：
+
 ```yaml
 # Clean build cache on macOS to avoid ring compilation issues
 - name: Clean build cache (macOS)
@@ -55,6 +58,12 @@ error[E0080]: evaluation of constant value failed
 
 #### 修改文件：`.cargo/config.toml`
 
+> **当前状态**：仓库的 `.cargo/config.toml` 已不再对 Apple 目标使用 `-C target-cpu=native`。
+> `native` 按构建机解析，既会在更老的 CPU 上产生 SIGILL 二进制，也会破坏 `cargo zigbuild`
+> （x86_64 runner 上解析出 `znver4`，zig 的 clang 不认该 aarch64 target CPU 名）。
+> 现在 `x86_64-apple-darwin` 固定为 `target-cpu=x86-64-v2`，`aarch64-apple-darwin` 不指定
+> `target-cpu`。下面的内容是历史记录，不要再照抄。
+
 添加 macOS 特定的 rustflags：
 ```toml
 [target.x86_64-apple-darwin]
@@ -72,7 +81,12 @@ rustflags = [
 
 ### 3. 环境变量配置
 
-为 macOS 构建设置特定的环境变量：
+> **当前状态**：与第 1 节同源，下面这些变量当前**没有**在 CI 中配置（`grep -r RING_PREGENERATE_ASM .github/`
+> 零命中），仅作为排查 `ring` 编译失败时的参考。
+> 其中 `MACOSX_DEPLOYMENT_TARGET` 的实际取值以 `goreleaser.yml` 为准（x86_64 为 `12.0`，aarch64 为 `11.0`），
+> 不是下面写的 `10.15`。
+
+历史记录——为 macOS 构建设置过的环境变量：
 - `MACOSX_DEPLOYMENT_TARGET=10.15`: 确保向后兼容性
 - `CC=clang`: 使用系统 clang 编译器
 - `CXX=clang++`: 使用系统 clang++ 编译器

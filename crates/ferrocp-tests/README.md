@@ -159,15 +159,17 @@ Current performance characteristics (example results):
 
 ### GitHub Actions
 
-The project includes automated performance testing:
+The project does **not** run performance benchmarks in CI today. The benchmark workflow
+(`rust-benchmarks.yml`) was removed with the other legacy benchmark workflows, and `ci.yml`
+only runs the fmt/clippy/test and dependency gates. Benchmarks are therefore run on demand:
 
-- **rust-benchmarks.yml**: Runs performance benchmarks on multiple platforms
-- **Performance Regression Check**: Automatically detects significant performance changes in PRs
-- **Trend Analysis**: Tracks performance trends over time
+- **Local benchmarks**: `cargo bench` (see `benches/`), or `uv run nox -s benchmark` for the Python suite
+- **Regression check**: compare against a saved baseline manually; there is no automated PR gate
+- **Trend analysis**: not automated; keep your own baseline history
 
 ### Benchmark Artifacts
 
-Benchmark results are automatically uploaded as artifacts:
+Benchmark output is written locally, not uploaded as CI artifacts:
 
 - JSON results for programmatic analysis
 - HTML reports for visual inspection
@@ -176,6 +178,12 @@ Benchmark results are automatically uploaded as artifacts:
 ## Performance Monitoring
 
 ### Continuous Monitoring
+
+> **Status**: monitoring is **not** continuous today. There are no scheduled benchmark runs, no
+> trend tracking pipeline and no automated alerting — see [CI/CD Integration](#cicd-integration).
+> The list below describes the intended target state, not what the repository currently does.
+
+Target state (not yet implemented):
 
 - Daily automated benchmark runs
 - Performance trend tracking

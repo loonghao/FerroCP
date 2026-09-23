@@ -19,8 +19,8 @@
 
 ### 🔧 CI/CD 文档
 - [GoReleaser 配置](ci-cd/GORELEASER.md) - 自动化发布配置详解
-- [CI 清理计划](ci-cd/CI_CLEANUP_PLAN.md) - CI/CD 工作流优化计划
-- [CodSpeed 设置](ci-cd/codspeed-setup.md) - 性能监控服务配置
+- [CI 清理计划（已归档）](ci-cd/CI_CLEANUP_PLAN.md) - 历史 CI/CD 工作流优化计划，仅作背景保留
+- [CodSpeed 设置](ci-cd/codspeed-setup.md) - 性能监控服务配置（当前未在 CI 中启用，仅作接入参考）
 
 ### 🏛️ 架构设计
 - [设备缓存增强](architecture/device-cache-enhancement.md) - 设备缓存优化设计
@@ -32,7 +32,7 @@
 - [基准测试](../benchmarks/README.md) - 基准测试框架和结果
 
 ### 📖 其他资源
-- [工作流说明](../.github/workflows/README.md) - GitHub Actions 工作流文档
+- [CI 工作流说明](../README.md#ci) - 仓库当前的 GitHub Actions 工作流（见根 README 的 CI 章节）
 - [安全政策](../.github/SECURITY.md) - 安全漏洞报告指南
 - [行为准则](../.github/CODE_OF_CONDUCT.md) - 社区行为准则
 
@@ -42,7 +42,6 @@
 docs/
 ├── README.md                    # 本文档 - 文档导航
 ├── index.md                     # 文档首页
-├── MARKDOWN_CLEANUP_PLAN.md     # 文档整理计划
 ├── architecture/                # 架构设计文档
 │   ├── device-cache-enhancement.md
 │   ├── engine-selector-optimization.md
