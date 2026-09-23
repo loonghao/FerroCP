@@ -22,8 +22,9 @@ PGO typically provides 5-15% performance improvements for CPU-intensive applicat
 
 > **Status: not available.** There is no automated PGO entry point. The
 > `build_pgo` nox session and the `make build-pgo` target were removed because
-> the profile-collection step cannot run: it drives `CopyEngine::copy_file`,
-> which never completes. See "Why there is no automated build" below.
+> the profile-collection step cannot finish: it drives `CopyEngine::copy_file`,
+> which only resolves when the executor's 3600 second timeout fires. See
+> "Why there is no automated build" below.
 
 ### Manual PGO Build
 
@@ -86,10 +87,12 @@ uv run nox -s codspeed
 
 A PGO build has to exercise the code being optimized. For ferrocp that means
 running copy operations, and the Python bindings never start the engine's
-scheduler dispatch loop, so `CopyEngine::copy_file` does not return. The
-profile-collection step therefore never finishes, which is why the `build_pgo`
-nox session and the `make build-pgo` target were removed rather than left in
-the tree.
+scheduler dispatch loop, so a copy submitted through them is never executed.
+The await only resolves when the executor's 3600 second timeout fires, which
+surfaces as `Err(Timeout waiting for task ...)` after an hour, so the
+profile-collection step stalls for that whole time instead of finishing. That
+is why the `build_pgo` nox session and the `make build-pgo` target were removed
+rather than left in the tree.
 
 Restoring an automated build needs the engine dispatch path fixed first; the
 Rust CLI is unaffected because it starts the engine explicitly.
