@@ -241,13 +241,18 @@ def move(
 
     Not implemented: this always raises NotImplementedError.
 
-    A move must finish copying before it removes the source. The FerroCP copy
-    helpers are awaitables, and the engine behind them does not run its
-    scheduler dispatch loop, so awaiting one never returns (see
-    ``crates/ferrocp-python/tests/copy_completes.rs``). Awaiting here would
-    hang forever, and the previous implementation skipped the await, deleted
-    the source and silently lost data. Failing fast is the only safe behaviour
-    until the engine dispatch path is fixed.
+    A move must finish copying before it removes the source, but the FerroCP
+    copy helpers cannot do that today. They are awaitables backed by an engine
+    that never starts its scheduler dispatch loop, so the submitted copy task
+    is never executed and the await only resolves when the executor's 3600
+    second timeout fires, returning ``Err(Timeout waiting for task ...))``
+    after an hour (see
+    ``crates/ferrocp-python/tests/copy_completes.rs``).
+
+    The previous implementation skipped the await, deleted the source and
+    silently lost data; awaiting it would instead block for an hour and then
+    fail. Failing fast is the only safe behaviour until the engine dispatch
+    path is fixed.
 
     Args:
         src: Source path
@@ -262,8 +267,9 @@ def move(
     """
     raise NotImplementedError(
         "ferrocp.move() is not implemented and would otherwise lose data: "
-        "the FerroCP copy helpers never complete because the engine dispatch "
-        "loop is not started. Use shutil.move() instead."
+        "the FerroCP copy helpers are backed by an engine whose dispatch loop "
+        "is never started, so a copy only ends when the executor's one-hour "
+        "timeout fires. Use shutil.move() instead."
     )
 
 

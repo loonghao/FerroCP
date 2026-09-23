@@ -31,8 +31,9 @@
 
 ### ⚠️ **尚未实现（已按 `main` 分支代码逐条核对）**
 - **`move` 直接抛出 `NotImplementedError`**：`ferrocp.move()` 会显式拒绝执行，而不再假装可用。
-  移动操作必须先完成复制再删除源路径，但 FerroCP 的复制辅助函数永远不会完成——引擎的调度器分发循环没有启动。
-  此前的实现跳过 `await` 就删除源路径，导致静默数据丢失；改为等待则只会永久挂起。
+  移动操作必须先完成复制再删除源路径，但通过 Python API 提交的复制任务永远不会被执行——引擎的调度器分发循环没有启动。
+  该 await 只会在执行器 3600 秒超时触发时才返回，即阻塞一小时后以 `Timeout waiting for task` 失败。
+  此前的实现跳过 `await` 就删除源路径，导致静默数据丢失。
   在引擎分发路径修复之前，请改用 `shutil.move()`。
 - **`ferrocp sync`、`ferrocp verify`、`ferrocp config`** 可被解析，但只打印占位信息；其逻辑在 `crates/ferrocp-cli/src/main.rs` 中仍是 `TODO`
 - **已接收但未接入引擎的 CLI 选项**：`ferrocp copy` 的 `--threads`、`--compression-level`、`--zero-copy`
