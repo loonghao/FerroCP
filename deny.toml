@@ -16,9 +16,9 @@ version = 2
 # (`patched = []`), so the advisory fires on every version, including the 2.x
 # line we now use.
 #
-# Accepted risk, tracked for follow-up: migrating off bincode is a wire and
-# on-disk format change, so it needs an explicit owner decision and a protocol
-# version bump before it can be replaced.
+# Accepted risk, deferred: migrating off bincode is a wire and on-disk
+# format change, so it needs an explicit owner decision plus a protocol version
+# bump before it can be replaced.
 ignore = ["RUSTSEC-2025-0141"]
 
 [licenses]

@@ -5,9 +5,10 @@
 //! `PyCopyEngine::copy_file`, which drives `CopyEngine::execute()`. That call
 //! submits the task to the scheduler and then waits for completion, but the
 //! dispatch loop that would hand the task to the executor lives in
-//! `CopyEngine::start()` and is never run, so the task is never executed. The
-//! await then only resolves when the executor's 3600 second timeout fires,
-//! surfacing as `Err(Timeout waiting for task ...)` after an hour.
+//! `CopyEngine::start()` and is never run, so the submitted task stays
+//! `Pending` in the scheduler and is never executed. The await then only
+//! resolves when the executor's 3600 second timeout fires, surfacing as
+//! `Err(Timeout waiting for task ...)` after an hour.
 //!
 //! The defect is in `ferrocp-engine` (`scheduler.rs` / `engine.rs`), not in the
 //! Python bindings, so this test is ignored here and only documents the
