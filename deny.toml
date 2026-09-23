@@ -18,7 +18,7 @@ version = 2
 #
 # Accepted risk, tracked for follow-up: migrating off bincode is a wire and
 # on-disk format change, so it needs an explicit owner decision and a protocol
-# version bump. See the PR discussion on PIP-3199.
+# version bump before it can be replaced.
 ignore = ["RUSTSEC-2025-0141"]
 
 [licenses]
