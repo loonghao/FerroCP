@@ -146,6 +146,10 @@ The JSON output contains comprehensive information about the copy operation:
 - `message`: Result message
 - `performance_rating`: Performance rating derived from `performance_efficiency_percent`:
   `excellent` (>= 90), `good` (>= 70), `fair` (>= 50), `poor` (< 50)
+- `message`: `success` is reported first; when the copy succeeded the wording is taken
+  from `performance_rating`, so it can never disagree with the rating.
+  `excellent` and `good` are named in the message; `fair` and `poor` both report that
+  performance was lower than expected
 
 ## Use Cases
 
