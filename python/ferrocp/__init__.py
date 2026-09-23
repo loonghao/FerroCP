@@ -15,7 +15,7 @@ Basic Usage (shutil-compatible):
     >>> # Drop-in replacement for shutil
     >>> ferrocp.copy("source.txt", "destination.txt")  # Like shutil.copy
     >>> ferrocp.copytree("src_dir", "dest_dir")        # Like shutil.copytree
-    >>> ferrocp.move("old_path", "new_path")           # Like shutil.move
+    >>> # ferrocp.move() is not implemented yet and raises NotImplementedError
     >>>
     >>> # Or use the explicit API
     >>> ferrocp.copy_file("source.txt", "destination.txt")
@@ -239,7 +239,15 @@ def move(
     """
     Move a file or directory tree to another location.
 
-    This is similar to shutil.move() but uses FerroCP for better performance.
+    Not implemented: this always raises NotImplementedError.
+
+    A move must finish copying before it removes the source. The FerroCP copy
+    helpers are awaitables, and the engine behind them does not run its
+    scheduler dispatch loop, so awaiting one never returns (see
+    ``crates/ferrocp-python/tests/copy_completes.rs``). Awaiting here would
+    hang forever, and the previous implementation skipped the await, deleted
+    the source and silently lost data. Failing fast is the only safe behaviour
+    until the engine dispatch path is fixed.
 
     Args:
         src: Source path
@@ -248,29 +256,15 @@ def move(
 
     Returns:
         The destination path
+
+    Raises:
+        NotImplementedError: Always. Use shutil.move() in the meantime.
     """
-    src_path = Path(src)
-    dst_path = Path(dst)
-
-    # If destination is a directory, move source into it
-    if dst_path.is_dir():
-        dst_path = dst_path / src_path.name
-
-    # Copy the file/directory
-    if src_path.is_dir():
-        copy_directory(str(src_path), str(dst_path))
-    else:
-        copy_file(str(src_path), str(dst_path))
-
-    # Remove the source
-    if src_path.is_dir():
-        import shutil
-
-        shutil.rmtree(src_path)
-    else:
-        src_path.unlink()
-
-    return str(dst_path)
+    raise NotImplementedError(
+        "ferrocp.move() is not implemented and would otherwise lose data: "
+        "the FerroCP copy helpers never complete because the engine dispatch "
+        "loop is not started. Use shutil.move() instead."
+    )
 
 
 # Backward compatibility class for EACopy
