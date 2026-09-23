@@ -61,6 +61,7 @@ def test_cli_copy_directory():
     with runner.isolated_filesystem():
         # Create a test directory with a file
         import os
+
         os.makedirs("source_dir")
         with open("source_dir/test.txt", "w") as f:
             f.write("test content")
@@ -91,7 +92,9 @@ def test_cli_copy_with_server(mock_eacopy_class):
         with open("source.txt", "w") as f:
             f.write("test content")
 
-        result = runner.invoke(cli.cli, ["copy-with-server", "source.txt", "dest.txt", "--server", "server.example.com"])
+        result = runner.invoke(
+            cli.cli, ["copy-with-server", "source.txt", "dest.txt", "--server", "server.example.com"]
+        )
         assert result.exit_code == 0
         mock_eacopy.copy_with_server.assert_called_once_with("source.txt", "dest.txt", "server.example.com", 8080)
         assert "Network copy completed" in result.output
