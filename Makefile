@@ -19,7 +19,6 @@ help:
 	@echo "  benchmark-compare - Run comparison benchmarks vs standard tools"
 	@echo "  profile          - Run performance profiling"
 	@echo "  build            - Build project with maturin"
-	@echo "  build-pgo        - Build with Profile-Guided Optimization"
 	@echo "  build-wheels     - Build wheels for distribution"
 	@echo "  build-cross      - Cross-compile for all VFX Platform targets using zigbuild"
 	@echo "  build-cross-release - Cross-compile release builds using zigbuild"
@@ -111,10 +110,6 @@ bench-rust:
 # Build project with maturin
 build:
 	uv run nox -s build
-
-# Build with Profile-Guided Optimization
-build-pgo:
-	uv run nox -s build_pgo
 
 # Build wheels for distribution
 build-wheels:
