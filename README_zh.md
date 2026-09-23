@@ -30,8 +30,10 @@
 - **VFX 平台兼容**，遵循 [VFX Reference Platform](https://vfxplatform.com/) 标准
 
 ### ⚠️ **尚未实现（已按 `main` 分支代码逐条核对）**
-- **`move` 存在异步缺陷**：`python/ferrocp/__init__.py` 在调用异步的 `copy_file`/`copy_directory`
-  时没有 `await` 就删除源路径，会导致数据丢失，请勿使用。
+- **`move` 直接抛出 `NotImplementedError`**：`ferrocp.move()` 会显式拒绝执行，而不再假装可用。
+  移动操作必须先完成复制再删除源路径，但 FerroCP 的复制辅助函数永远不会完成——引擎的调度器分发循环没有启动。
+  此前的实现跳过 `await` 就删除源路径，导致静默数据丢失；改为等待则只会永久挂起。
+  在引擎分发路径修复之前，请改用 `shutil.move()`。
 - **`ferrocp sync`、`ferrocp verify`、`ferrocp config`** 可被解析，但只打印占位信息；其逻辑在 `crates/ferrocp-cli/src/main.rs` 中仍是 `TODO`
 - **已接收但未接入引擎的 CLI 选项**：`ferrocp copy` 的 `--threads`、`--compression-level`、`--zero-copy`
 - **可设置但被复制路径忽略的 `CopyOptions` 字段**：`mode`、`overwrite`、`buffer_size`、`num_threads`、`follow_symlinks`、`compression_level`（`crates/ferrocp-python/src/copy.rs` 只读取 `verify`、`preserve_timestamps`、`preserve_permissions` 和 `enable_compression`）

@@ -32,8 +32,11 @@
 - **VFX Platform compatibility** - follows [VFX Reference Platform](https://vfxplatform.com/) standards
 
 ### ⚠️ **Not implemented (verified against the code on `main`)**
-- **`move` is async-unsafe**: `python/ferrocp/__init__.py` calls the async `copy_file`/`copy_directory`
-  without `await` and then deletes the source, so it loses data. Do not use it.
+- **`move` raises `NotImplementedError`**: `ferrocp.move()` refuses to run instead of pretending to work.
+  A move must finish copying before removing the source, but the FerroCP copy helpers never complete
+  because the engine's scheduler dispatch loop is not started. The previous implementation skipped the
+  `await`, deleted the source and silently lost data; awaiting it would hang forever instead. Use
+  `shutil.move()` until the engine dispatch path is fixed.
 - **`ferrocp sync`**, **`ferrocp verify`** and **`ferrocp config`** are parsed but print a placeholder "completed" message; the underlying logic is still `TODO` in `crates/ferrocp-cli/src/main.rs`
 - **CLI options accepted but not wired to the engine**: `--threads`, `--compression-level` and `--zero-copy` on `ferrocp copy`
 - **`CopyOptions` fields accepted but ignored by the copy path**: `mode`, `overwrite`, `buffer_size`, `num_threads`, `follow_symlinks` and `compression_level` (only `verify`, `preserve_timestamps`, `preserve_permissions` and `enable_compression` are read in `crates/ferrocp-python/src/copy.rs`)

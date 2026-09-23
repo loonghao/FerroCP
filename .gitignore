@@ -69,6 +69,10 @@ performance-results/
 benchmark-artifacts/
 baseline-results/
 
+# `test_*.py` above only ignores scratch files at the repo root; real tests
+# live in tests/ and must stay tracked.
+!tests/test_*.py
+
 # Temporary test files and data
 temp-*
 tmp-*
