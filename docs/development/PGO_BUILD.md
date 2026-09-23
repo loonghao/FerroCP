@@ -20,26 +20,14 @@ PGO typically provides 5-15% performance improvements for CPU-intensive applicat
 
 ## Building with PGO
 
-### Automated PGO Build
-
-The easiest way to build with PGO is using the nox session:
-
-```bash
-# Build with PGO optimization (recommended)
-uv run nox -s build_pgo
-
-# Or using make
-make build-pgo
-```
-
-This will automatically:
-1. Build an instrumented version
-2. Run representative workloads to collect profile data
-3. Rebuild with optimizations based on the profile data
+> **Status: not available.** There is no automated PGO entry point. The
+> `build_pgo` nox session and the `make build-pgo` target were removed because
+> the profile-collection step cannot run: it drives `CopyEngine::copy_file`,
+> which never completes. See "Why there is no automated build" below.
 
 ### Manual PGO Build
 
-For more control over the PGO process:
+Until an automated build exists, PGO has to be driven by hand:
 
 ```bash
 # Step 1: Build with profile generation
@@ -48,32 +36,31 @@ RUSTFLAGS="-Cprofile-generate=./pgo-data" uv run maturin build --release
 # Step 2: Install and run workloads
 pip install target/wheels/*.whl --force-reinstall
 python -c "
-import ferrocp
+import subprocess
 import tempfile
 from pathlib import Path
 
-# Run representative file operations
+# Run representative file operations.
+# Drive the Rust CLI rather than the Python bindings: the CLI starts the
+# engine's dispatch loop, while CopyEngine::copy_file from Python never
+# returns, which would stall profile collection.
 with tempfile.TemporaryDirectory() as temp_dir:
     temp_path = Path(temp_dir)
     source_dir = temp_path / 'source'
     dest_dir = temp_path / 'dest'
     source_dir.mkdir()
     dest_dir.mkdir()
-    
+
     # Create test files
     for i in range(100):
         test_file = source_dir / f'test_{i}.txt'
         test_file.write_text(f'Test content {i}' * 1000)
-    
-    # Run copy operations
-    engine = ferrocp.CopyEngine()
-    options = ferrocp.CopyOptions()
-    for i in range(50):
-        engine.copy_file(
-            str(source_dir / f'test_{i}.txt'),
-            str(dest_dir / f'test_{i}.txt'),
-            options
-        )
+
+    subprocess.run(
+        ['cargo', 'run', '--release', '--bin', 'ferrocp', '--',
+         'copy', str(source_dir), str(dest_dir), '--json'],
+        check=True,
+    )
 "
 
 # Step 3: Merge profile data
@@ -85,27 +72,27 @@ RUSTFLAGS="-Cprofile-use=./merged.profdata" uv run maturin build --release
 
 ## PGO in CI/CD
 
-### GitHub Actions Integration
-
-PGO builds are automatically used in our CI/CD pipeline:
-
-```yaml
-# .github/workflows/codspeed.yml
-- name: Build PGO-optimized project
-  uses: ./.github/actions/build-pgo-wheel
-  with:
-    interpreter: python3.11
-    rust-toolchain: stable
-```
-
-### CodSpeed Integration
-
-Our CodSpeed benchmarks use PGO-optimized builds for accurate performance measurement:
+**No PGO build is wired into CI.** The workflow and the composite action shown
+previously do not exist in this repository, and the CodSpeed job builds without
+PGO. Treat the numbers below as what a working PGO build would be expected to
+produce, not as a measured result.
 
 ```bash
-# CodSpeed automatically uses PGO builds
+# Builds without PGO
 uv run nox -s codspeed
 ```
+
+### Why there is no automated build
+
+A PGO build has to exercise the code being optimized. For ferrocp that means
+running copy operations, and the Python bindings never start the engine's
+scheduler dispatch loop, so `CopyEngine::copy_file` does not return. The
+profile-collection step therefore never finishes, which is why the `build_pgo`
+nox session and the `make build-pgo` target were removed rather than left in
+the tree.
+
+Restoring an automated build needs the engine dispatch path fixed first; the
+Rust CLI is unaffected because it starts the engine explicitly.
 
 ## Performance Benefits
 
@@ -121,7 +108,7 @@ uv run nox -s codspeed
 ```bash
 # Compare PGO vs regular build
 uv run nox -s build        # Regular optimized build
-uv run nox -s build_pgo    # PGO optimized build
+# PGO build: follow the manual steps above; there is no nox session
 uv run nox -s benchmark    # Run benchmarks to compare
 ```
 
@@ -154,7 +141,7 @@ uv run nox -s benchmark    # Run benchmarks to compare
 Enable debug logging to troubleshoot PGO builds:
 
 ```bash
-RUST_LOG=debug uv run nox -s build_pgo
+RUST_LOG=debug uv run maturin build --release
 ```
 
 ## Best Practices
@@ -188,7 +175,7 @@ make dev-test           # Run tests and linting
 make dev-benchmark      # Quick performance check
 
 # Performance optimization cycle
-make build-pgo          # Build with PGO
+# (no `make build-pgo` target; build PGO manually as described above)
 make benchmark          # Full performance testing
 make verify-build       # Verify functionality
 ```
@@ -196,8 +183,10 @@ make verify-build       # Verify functionality
 ### Release Process
 
 1. **Development**: Use regular builds for fast iteration
-2. **Performance Testing**: Use PGO builds for accurate benchmarking
-3. **Release**: Create PGO-optimized wheels for distribution
+2. **Performance Testing**: Benchmark regular builds; PGO builds must be produced manually
+3. **Release**: Publish regularly optimized wheels (`uv run nox -s build_wheels`)
+
+No PGO-optimized wheel is produced by the release pipeline today.
 
 ## Advanced Configuration
 
