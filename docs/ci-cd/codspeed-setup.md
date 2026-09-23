@@ -65,7 +65,12 @@ These benchmarks are specifically optimized for CodSpeed:
 
 ### 4. CI Integration
 
-The CodSpeed workflow (`.github/workflows/codspeed.yml`) includes:
+> **Status**: the repository currently ships no CodSpeed workflow. `.github/workflows/codspeed.yml`
+> was removed together with the other legacy benchmark workflows, and `ci.yml` does not run CodSpeed.
+> The benchmarks live in `benchmarks/test_codspeed.py` and are executed on demand with
+> `uv run nox -s codspeed`. The job layout below is kept as a reference for re-enabling CodSpeed in CI.
+
+The CodSpeed workflow (`.github/workflows/codspeed.yml`) included:
 
 #### Main Job (`benchmarks`)
 - Runs on all PRs and main branch pushes

@@ -173,7 +173,10 @@ pytest benchmarks/ --benchmark-only --benchmark-autosave --benchmark-save-data
 
 ### CI Integration
 
-Benchmarks run automatically in CI to detect performance regressions:
+Benchmarks are **not** run automatically in CI today — no `benchmark.yml` workflow exists anymore and
+`ci.yml` does not invoke the benchmark suite. Run them locally to detect performance regressions
+(`uv run nox -s benchmark`), or use the snippet below as a starting point if you want to add a
+dedicated benchmark workflow:
 
 ```yaml
 # .github/workflows/benchmark.yml
