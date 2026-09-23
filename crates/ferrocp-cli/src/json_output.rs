@@ -193,12 +193,19 @@ impl CopyResultJson {
 
         let success = stats.errors == 0;
         let message = if success {
-            if efficiency >= 90.0 {
-                "Copy completed successfully with excellent performance".to_string()
-            } else if efficiency >= 60.0 {
-                "Copy completed successfully with good performance".to_string()
-            } else {
-                "Copy completed successfully but performance was lower than expected".to_string()
+            // Derived from the rating rather than re-testing `efficiency`, so
+            // the prose and the rating can never disagree again.
+            match performance_rating {
+                PerformanceRating::Excellent => {
+                    "Copy completed successfully with excellent performance".to_string()
+                }
+                PerformanceRating::Good => {
+                    "Copy completed successfully with good performance".to_string()
+                }
+                PerformanceRating::Fair | PerformanceRating::Poor => {
+                    "Copy completed successfully but performance was lower than expected"
+                        .to_string()
+                }
             }
         } else {
             format!("Copy completed with {} errors", stats.errors)
@@ -302,5 +309,127 @@ impl CopyStatsJson {
             zerocopy_efficiency_percent: stats.zerocopy_efficiency() * 100.0,
             performance_efficiency_percent: efficiency,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ferrocp_device::Bottleneck;
+    use std::time::Duration;
+
+    fn device_info() -> DeviceInfo {
+        DeviceInfo {
+            device_type: DeviceType::SSD,
+            performance: ferrocp_device::DevicePerformance {
+                sequential_read_speed: 500.0,
+                sequential_write_speed: 450.0,
+                random_read_iops: 50_000.0,
+                random_write_iops: 40_000.0,
+                average_latency: 100.0,
+                optimal_io_size: 1024 * 1024,
+                supports_trim: true,
+                queue_depth: 32,
+            },
+            filesystem: "NTFS".to_string(),
+            total_space: 1_000_000,
+            available_space: 500_000,
+            optimal_buffer_size: 8 * 1024 * 1024,
+        }
+    }
+
+    /// Build a result whose efficiency is `efficiency_percent` of the expected speed.
+    fn result_for_efficiency(efficiency_percent: f64) -> CopyResultJson {
+        // 100 MB/s expected and duration of 1s, so `actual` maps 1:1 onto the
+        // efficiency percentage we want to exercise.
+        let mut stats = CopyStats::new();
+        stats.bytes_copied = (efficiency_percent * 1024.0 * 1024.0) as u64;
+        stats.duration = Duration::from_secs(1);
+
+        let comparison = DeviceComparison {
+            bottleneck: Bottleneck::Source,
+            expected_speed_mbps: 100.0,
+            source_info: device_info(),
+            destination_info: device_info(),
+        };
+
+        CopyResultJson::new(
+            "src".to_string(),
+            "dst".to_string(),
+            &device_info(),
+            &device_info(),
+            &comparison,
+            &stats,
+        )
+    }
+
+    #[test]
+    fn message_and_rating_use_the_same_thresholds() {
+        // The message used to call anything >= 60% "good" while the rating
+        // required >= 70%, so the two disagreed across the whole 60-70 band.
+        let cases = [
+            (95.0, PerformanceRating::Excellent, "excellent"),
+            (90.0, PerformanceRating::Excellent, "excellent"),
+            (89.9, PerformanceRating::Good, "good"),
+            (75.0, PerformanceRating::Good, "good"),
+            (70.0, PerformanceRating::Good, "good"),
+            (69.9, PerformanceRating::Fair, "lower than expected"),
+            (65.0, PerformanceRating::Fair, "lower than expected"),
+            (60.0, PerformanceRating::Fair, "lower than expected"),
+            (50.0, PerformanceRating::Fair, "lower than expected"),
+            (49.9, PerformanceRating::Poor, "lower than expected"),
+            (10.0, PerformanceRating::Poor, "lower than expected"),
+        ];
+
+        for (efficiency, expected_rating, expected_phrase) in cases {
+            let result = result_for_efficiency(efficiency);
+
+            // Compare through the serialized form so the assertion covers the
+            // value a consumer of `--json` actually sees.
+            let rating = serde_json::to_value(&result.result.performance_rating)
+                .expect("rating serializes")
+                .as_str()
+                .expect("rating is a string")
+                .to_string();
+            let expected_rating = serde_json::to_value(&expected_rating)
+                .expect("rating serializes")
+                .as_str()
+                .expect("rating is a string")
+                .to_string();
+
+            assert_eq!(rating, expected_rating, "rating mismatch at {efficiency}%");
+            assert!(
+                result.result.message.contains(expected_phrase),
+                "at {efficiency}% expected the message to mention {expected_phrase:?}, got {:?}",
+                result.result.message
+            );
+        }
+    }
+
+    #[test]
+    fn errors_take_precedence_over_performance_prose() {
+        let mut stats = CopyStats::new();
+        stats.bytes_copied = 95 * 1024 * 1024;
+        stats.duration = Duration::from_secs(1);
+        stats.errors = 3;
+
+        let comparison = DeviceComparison {
+            bottleneck: Bottleneck::Source,
+            expected_speed_mbps: 100.0,
+            source_info: device_info(),
+            destination_info: device_info(),
+        };
+
+        let result = CopyResultJson::new(
+            "src".to_string(),
+            "dst".to_string(),
+            &device_info(),
+            &device_info(),
+            &comparison,
+            &stats,
+        );
+
+        assert!(!result.result.success);
+        assert_eq!(result.result.message, "Copy completed with 3 errors");
     }
 }
