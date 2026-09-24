@@ -153,7 +153,7 @@ version = "0.4"
 version = "1.4"
 
 [workspace.dependencies.rstest]
-version = "0.25"
+version = "0.27"
 
 # Workspace-level configuration
 [workspace.lints.rust]
