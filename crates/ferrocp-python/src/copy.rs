@@ -474,7 +474,9 @@ pub fn quick_copy<'py>(
     source: String,
     destination: String,
 ) -> PyResult<Bound<'py, PyAny>> {
-    catch_panic("quick_copy", || copy_file(py, source, destination, None, None))?
+    catch_panic("quick_copy", || {
+        copy_file(py, source, destination, None, None)
+    })?
 }
 
 /// Copy with verification enabled

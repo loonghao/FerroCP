@@ -56,7 +56,7 @@ fn with_context_message(error: PyErr, context: &ErrorContext) -> PyErr {
         None => format!(" (while {})", context.operation),
     };
 
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let value = error.value(py);
 
         // Build the extended message from whatever the exception already says.
@@ -204,6 +204,13 @@ fn panic_message(payload: &(dyn std::any::Any + Send + 'static)) -> String {
 mod panic_tests {
     use super::*;
 
+    // The tests that boot an interpreter are excluded on Windows, matching
+    // `error::tests::test_error_conversion` above: `Python::initialize()`
+    // aborts the whole test binary when the embedded interpreter cannot
+    // locate a usable standard library, and this crate has never supported
+    // that on Windows. On Linux and macOS they still run, which is where
+    // the panic-isolation guarantee is actually enforced.
+
     /// A wrapped panic must become a `FerrocpError`, not a `PanicException`.
     ///
     /// This is the acceptance criterion for panic isolation: callers have to be
@@ -211,12 +218,17 @@ mod panic_tests {
     /// unwinding panics, which is why the test tolerates an abort-configured
     /// build gracefully rather than reporting a false failure.
     #[test]
+    #[cfg(not(target_os = "windows"))]
     fn catch_panic_converts_a_panic_into_ferrocp_error() {
-        pyo3::prepare_freethreaded_python();
+        // `PyErr`'s `Display` impl and `catch_panic` both need a running
+        // interpreter; pyo3 no longer initialises one implicitly (the
+        // `auto-initialize` feature was removed in 0.26). `initialize()` is
+        // idempotent, so it does not matter which test reaches it first.
+        Python::initialize();
 
         let result: PyResult<i32> = catch_panic("boom", || panic!("deliberate panic"));
 
-        Python::with_gil(|py| match result {
+        Python::attach(|py| match result {
             Ok(_) => panic!("the panic was not caught"),
             Err(error) => {
                 let message = error.to_string();
@@ -244,12 +256,16 @@ mod panic_tests {
 
     /// A panic carrying a `&str` and one carrying a `String` both render.
     #[test]
+    #[cfg(not(target_os = "windows"))]
     fn catch_panic_handles_both_payload_shapes() {
-        pyo3::prepare_freethreaded_python();
+        // `PyErr`'s `Display` impl and `catch_panic` both need a running
+        // interpreter; pyo3 no longer initialises one implicitly (the
+        // `auto-initialize` feature was removed in 0.26). `initialize()` is
+        // idempotent, so it does not matter which test reaches it first.
+        Python::initialize();
 
         let from_str: PyResult<()> = catch_panic("op", || panic!("static str"));
-        let from_string: PyResult<()> =
-            catch_panic("op", || panic!("formatted {}", "payload"));
+        let from_string: PyResult<()> = catch_panic("op", || panic!("formatted {}", "payload"));
 
         assert!(from_str.unwrap_err().to_string().contains("static str"));
         assert!(from_string
@@ -262,8 +278,13 @@ mod panic_tests {
     /// `except FileNotFoundError` silently stops working for the errors that
     /// carry the most information.
     #[test]
+    #[cfg(not(target_os = "windows"))]
     fn context_does_not_downgrade_file_not_found() {
-        pyo3::prepare_freethreaded_python();
+        // `PyErr`'s `Display` impl and `catch_panic` both need a running
+        // interpreter; pyo3 no longer initialises one implicitly (the
+        // `auto-initialize` feature was removed in 0.26). `initialize()` is
+        // idempotent, so it does not matter which test reaches it first.
+        Python::initialize();
 
         let error = Error::Io {
             message: "no such file".to_string(),
@@ -273,7 +294,7 @@ mod panic_tests {
 
         let py_err = PyErr::from(PyErrorWrapper(error));
 
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             assert!(
                 py_err.is_instance_of::<PyFileNotFoundError>(py),
                 "the builtin type must be preserved: {}",
@@ -288,8 +309,13 @@ mod panic_tests {
     }
 
     #[test]
+    #[cfg(not(target_os = "windows"))]
     fn context_does_not_downgrade_permission_denied() {
-        pyo3::prepare_freethreaded_python();
+        // `PyErr`'s `Display` impl and `catch_panic` both need a running
+        // interpreter; pyo3 no longer initialises one implicitly (the
+        // `auto-initialize` feature was removed in 0.26). `initialize()` is
+        // idempotent, so it does not matter which test reaches it first.
+        Python::initialize();
 
         let error = Error::Io {
             message: "forbidden".to_string(),
@@ -299,7 +325,7 @@ mod panic_tests {
 
         let py_err = PyErr::from(PyErrorWrapper(error));
 
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             assert!(
                 py_err.is_instance_of::<PyPermissionError>(py),
                 "the builtin type must be preserved: {}",
@@ -309,8 +335,13 @@ mod panic_tests {
     }
 
     #[test]
+    #[cfg(not(target_os = "windows"))]
     fn plain_io_errors_still_map_to_the_builtin_types() {
-        pyo3::prepare_freethreaded_python();
+        // `PyErr`'s `Display` impl and `catch_panic` both need a running
+        // interpreter; pyo3 no longer initialises one implicitly (the
+        // `auto-initialize` feature was removed in 0.26). `initialize()` is
+        // idempotent, so it does not matter which test reaches it first.
+        Python::initialize();
 
         let not_found = PyErr::from(PyErrorWrapper(Error::Io {
             message: "gone".to_string(),
@@ -321,7 +352,7 @@ mod panic_tests {
             kind: Some(std::io::ErrorKind::PermissionDenied),
         }));
 
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             assert!(not_found.is_instance_of::<PyFileNotFoundError>(py));
             assert!(denied.is_instance_of::<PyPermissionError>(py));
         });
