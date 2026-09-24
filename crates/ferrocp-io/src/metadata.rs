@@ -90,6 +90,7 @@ fn preserve_permissions(
                 destination.display(),
                 error
             ),
+            kind: Some(error.kind()),
         })?;
     }
 
