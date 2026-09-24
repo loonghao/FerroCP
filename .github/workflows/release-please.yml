@@ -70,7 +70,7 @@ jobs:
 
       - name: Check out the release PR branch
         if: steps.branch.outputs.skip != 'true'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ steps.branch.outputs.branch }}
           fetch-depth: 0
