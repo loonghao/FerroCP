@@ -606,7 +606,41 @@ mod tests {
             assert_eq!(result.bytes_copied, 1000);
             assert_eq!(result.files_copied, 5);
             assert_eq!(result.transfer_rate, 1000.0);
-            assert!(result.success);
+            // Statistics carry no task status, so they must not claim success:
+            // a copy that failed without per-file errors would otherwise look
+            // like it worked.
+            assert!(!result.success);
+            assert!(result.error_message.is_some());
+        }
+
+        /// The task status, not the statistics, decides `success`.
+        #[test]
+        fn test_copy_result_from_task_result_reports_the_status() {
+            let stats = CopyStats {
+                bytes_copied: 1000,
+                files_copied: 5,
+                duration: Duration::from_secs(1),
+                ..Default::default()
+            };
+
+            let completed = ferrocp_engine::task::CopyResult::success(
+                ferrocp_engine::task::TaskId::new(),
+                stats.clone(),
+                Duration::from_secs(1),
+            );
+            let from_completed = PyCopyResult::from(completed);
+            assert!(from_completed.success);
+            assert!(from_completed.error_message.is_none());
+            assert_eq!(from_completed.bytes_copied, 1000);
+
+            let failed = ferrocp_engine::task::CopyResult::failure(
+                ferrocp_engine::task::TaskId::new(),
+                "disk full".to_string(),
+                Duration::from_secs(1),
+            );
+            let from_failed = PyCopyResult::from(failed);
+            assert!(!from_failed.success);
+            assert_eq!(from_failed.error_message.as_deref(), Some("disk full"));
         }
 
         #[test]
