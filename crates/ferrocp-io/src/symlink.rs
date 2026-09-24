@@ -88,6 +88,7 @@ pub fn create_symlink(link: &Path, destination: &Path) -> Result<()> {
                 target.display(),
                 error
             ),
+            kind: Some(error.kind()),
         })?;
     }
 
