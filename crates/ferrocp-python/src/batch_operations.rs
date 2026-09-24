@@ -10,8 +10,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::config::PyCopyOptions;
-use crate::error::catch_panic;
 use crate::copy::PyCopyResult;
+use crate::error::catch_panic;
 use crate::gil_optimization::GilOptimizationManager;
 use crate::progress::{ProgressCallback, PyProgress};
 
