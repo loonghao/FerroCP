@@ -3,6 +3,8 @@
 //! This module provides a specialized copy engine for very small files,
 //! using zero-syscall optimization strategies and stack-allocated buffers to minimize overhead.
 
+use crate::metadata::preserve_metadata;
+use crate::policy::{apply_copy_contract, ContractOutcome};
 use crate::{CopyEngine, CopyOptions};
 use ferrocp_types::{CopyStats, DeviceType, Error, Result};
 use std::fs;
@@ -49,6 +51,12 @@ pub struct MicroFileCopyEngine {
     stats: MicroCopyStats,
     /// Optimization strategy to use
     strategy: MicroCopyStrategy,
+    /// Semantic options used for the current copy
+    ///
+    /// The micro engine ignores the performance-tuning knobs, but it must still
+    /// honour the contract: whether to preserve timestamps and permissions is
+    /// a correctness question, not a speed one.
+    options: CopyOptions,
 }
 
 impl Default for MicroFileCopyEngine {
@@ -86,6 +94,7 @@ impl MicroFileCopyEngine {
         Self {
             stats: MicroCopyStats::default(),
             strategy: MicroCopyStrategy::default(),
+            options: CopyOptions::default(),
         }
     }
 
@@ -94,6 +103,7 @@ impl MicroFileCopyEngine {
         Self {
             stats: MicroCopyStats::default(),
             strategy,
+            options: CopyOptions::default(),
         }
     }
 
@@ -121,6 +131,7 @@ impl MicroFileCopyEngine {
     pub async fn is_micro_file<P: AsRef<Path> + Send>(path: P) -> Result<bool> {
         let metadata = fs::metadata(path.as_ref()).map_err(|e| Error::Io {
             message: format!("Failed to get file metadata: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         Ok(metadata.len() <= MICRO_FILE_THRESHOLD)
@@ -153,6 +164,7 @@ impl MicroFileCopyEngine {
             // Quick metadata check for size only (no full stat)
             let metadata = fs::metadata(source_path).map_err(|e| Error::Io {
                 message: format!("Failed to read source metadata: {}", e),
+                kind: Some(e.kind()),
             })?;
 
             let file_size = metadata.len();
@@ -168,12 +180,14 @@ impl MicroFileCopyEngine {
             // Ultra-fast read operation
             fs::read(source_path).map_err(|e| Error::Io {
                 message: format!("Failed to read source file: {}", e),
+                kind: Some(e.kind()),
             })?
         };
 
         // Single fs::write operation
         fs::write(dest_path, &content).map_err(|e| Error::Io {
             message: format!("Failed to write destination file: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         let bytes_copied = content.len() as u64;
@@ -204,6 +218,7 @@ impl MicroFileCopyEngine {
             bytes_copied,
             files_skipped: 0,
             errors: 0,
+            symlinks_created: 0,
             duration: elapsed,
             zerocopy_operations: 0,
             zerocopy_bytes: 0,
@@ -235,6 +250,7 @@ impl MicroFileCopyEngine {
         // Hyper-optimized: Direct read/write with minimal checks
         let content = fs::read(source_path).map_err(|e| Error::Io {
             message: format!("Failed to read source file: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         // Quick size check (should be pre-verified)
@@ -251,6 +267,7 @@ impl MicroFileCopyEngine {
         // Direct write - no directory creation, no metadata preservation
         fs::write(dest_path, &content).map_err(|e| Error::Io {
             message: format!("Failed to write destination file: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         let bytes_copied = content.len() as u64;
@@ -274,6 +291,7 @@ impl MicroFileCopyEngine {
             bytes_copied,
             files_skipped: 0,
             errors: 0,
+            symlinks_created: 0,
             duration: elapsed,
             zerocopy_operations: 0,
             zerocopy_bytes: 0,
@@ -311,10 +329,12 @@ impl MicroFileCopyEngine {
             use std::io::Read;
             let mut source_file = fs::File::open(source_path).map_err(|e| Error::Io {
                 message: format!("Failed to open source file: {}", e),
+                kind: Some(e.kind()),
             })?;
 
             source_file.read(&mut stack_buffer).map_err(|e| Error::Io {
                 message: format!("Failed to read source file: {}", e),
+                kind: Some(e.kind()),
             })?
         };
 
@@ -333,12 +353,14 @@ impl MicroFileCopyEngine {
             use std::io::Write;
             let mut dest_file = fs::File::create(dest_path).map_err(|e| Error::Io {
                 message: format!("Failed to create destination file: {}", e),
+                kind: Some(e.kind()),
             })?;
 
             dest_file
                 .write_all(&stack_buffer[..bytes_read])
                 .map_err(|e| Error::Io {
                     message: format!("Failed to write destination file: {}", e),
+                    kind: Some(e.kind()),
                 })?;
         }
 
@@ -365,6 +387,7 @@ impl MicroFileCopyEngine {
             bytes_copied,
             files_skipped: 0,
             errors: 0,
+            symlinks_created: 0,
             duration: elapsed,
             zerocopy_operations: 0,
             zerocopy_bytes: 0,
@@ -402,10 +425,12 @@ impl MicroFileCopyEngine {
             use std::io::Read;
             let mut source_file = fs::File::open(source_path).map_err(|e| Error::Io {
                 message: format!("Failed to open source file: {}", e),
+                kind: Some(e.kind()),
             })?;
 
             source_file.read(&mut stack_buffer).map_err(|e| Error::Io {
                 message: format!("Failed to read source file: {}", e),
+                kind: Some(e.kind()),
             })?
         };
 
@@ -414,12 +439,14 @@ impl MicroFileCopyEngine {
             use std::io::Write;
             let mut dest_file = fs::File::create(dest_path).map_err(|e| Error::Io {
                 message: format!("Failed to create destination file: {}", e),
+                kind: Some(e.kind()),
             })?;
 
             dest_file
                 .write_all(&stack_buffer[..bytes_read])
                 .map_err(|e| Error::Io {
                     message: format!("Failed to write destination file: {}", e),
+                    kind: Some(e.kind()),
                 })?;
         }
 
@@ -446,6 +473,7 @@ impl MicroFileCopyEngine {
             bytes_copied,
             files_skipped: 0,
             errors: 0,
+            symlinks_created: 0,
             duration: elapsed,
             zerocopy_operations: 0,
             zerocopy_bytes: 0,
@@ -473,22 +501,25 @@ impl MicroFileCopyEngine {
             if !parent.exists() {
                 fs::create_dir_all(parent).map_err(|e| Error::Io {
                     message: format!("Failed to create destination directory: {}", e),
+                    kind: Some(e.kind()),
                 })?;
             }
         }
 
         // Ultra-optimized zero-allocation operation for micro files
-        let (bytes_copied, source_metadata) = {
+        let (bytes_copied, _source_metadata) = {
             use std::io::{Read, Write};
 
             // Open source file and get metadata in one operation
             let mut source_file = fs::File::open(source_path).map_err(|e| Error::Io {
                 message: format!("Failed to open source file: {}", e),
+                kind: Some(e.kind()),
             })?;
 
             // Get metadata from open file handle (more efficient)
             let source_metadata = source_file.metadata().map_err(|e| Error::Io {
                 message: format!("Failed to read source metadata: {}", e),
+                kind: Some(e.kind()),
             })?;
 
             let file_size = source_metadata.len();
@@ -508,6 +539,7 @@ impl MicroFileCopyEngine {
                 // Handle empty files efficiently - just create the file
                 fs::File::create(dest_path).map_err(|e| Error::Io {
                     message: format!("Failed to create destination file: {}", e),
+                    kind: Some(e.kind()),
                 })?;
                 0
             } else {
@@ -519,17 +551,20 @@ impl MicroFileCopyEngine {
                     .read(&mut stack_buffer[..file_size as usize])
                     .map_err(|e| Error::Io {
                         message: format!("Failed to read source file: {}", e),
+                        kind: Some(e.kind()),
                     })?;
 
                 // Optimized: Create and write in one operation
                 let mut dest_file = fs::File::create(dest_path).map_err(|e| Error::Io {
                     message: format!("Failed to create destination file: {}", e),
+                    kind: Some(e.kind()),
                 })?;
 
                 dest_file
                     .write_all(&stack_buffer[..bytes_read])
                     .map_err(|e| Error::Io {
                         message: format!("Failed to write destination file: {}", e),
+                        kind: Some(e.kind()),
                     })?;
 
                 // Optimized: Skip flush for micro files to improve performance
@@ -541,8 +576,10 @@ impl MicroFileCopyEngine {
             (bytes_copied, source_metadata)
         };
 
-        // Preserve metadata if the file system supports it (optimized)
-        if let Err(e) = self.preserve_metadata(source_path, dest_path, &source_metadata) {
+        // Preserve metadata according to the options. The shared helper honours
+        // both flags and implements the Windows branch, so the micro engine no
+        // longer preserves everything unconditionally.
+        if let Err(e) = preserve_metadata(source_path, dest_path, &self.options) {
             debug!("Failed to preserve metadata: {}", e);
             // Don't fail the copy operation for metadata errors
         }
@@ -568,67 +605,11 @@ impl MicroFileCopyEngine {
             bytes_copied,
             files_skipped: 0,
             errors: 0,
+            symlinks_created: 0,
             duration: elapsed,
             zerocopy_operations: 0,
             zerocopy_bytes: 0,
         })
-    }
-
-    /// Preserve file metadata (timestamps, permissions) - optimized version
-    ///
-    /// This version minimizes system calls and error handling overhead
-    #[allow(dead_code)]
-    fn preserve_metadata_optimized<P: AsRef<Path>>(
-        &self,
-        _source: P,
-        destination: P,
-        source_metadata: &fs::Metadata,
-    ) {
-        let dest_path = destination.as_ref();
-
-        // Optimized: Batch metadata operations and ignore errors for performance
-        // For micro files, metadata preservation is less critical than speed
-
-        // Preserve modification time (single operation)
-        if let Ok(modified) = source_metadata.modified() {
-            let _ = filetime::set_file_mtime(dest_path, filetime::FileTime::from(modified));
-        }
-
-        // Preserve permissions on Unix systems (single operation)
-        #[cfg(unix)]
-        {
-            let permissions = source_metadata.permissions();
-            let _ = fs::set_permissions(dest_path, permissions);
-        }
-    }
-
-    /// Preserve file metadata (timestamps, permissions) - original version
-    fn preserve_metadata<P: AsRef<Path>>(
-        &self,
-        _source: P,
-        destination: P,
-        source_metadata: &fs::Metadata,
-    ) -> Result<()> {
-        let dest_path = destination.as_ref();
-
-        // Preserve modification time
-        if let Ok(modified) = source_metadata.modified() {
-            if let Err(e) = filetime::set_file_mtime(dest_path, filetime::FileTime::from(modified))
-            {
-                debug!("Failed to set modification time: {}", e);
-            }
-        }
-
-        // Preserve permissions on Unix systems
-        #[cfg(unix)]
-        {
-            let permissions = source_metadata.permissions();
-            if let Err(e) = fs::set_permissions(dest_path, permissions) {
-                debug!("Failed to set permissions: {}", e);
-            }
-        }
-
-        Ok(())
     }
 
     /// Calculate average throughput in KiB/s
@@ -703,10 +684,24 @@ impl CopyEngine for MicroFileCopyEngine {
         &mut self,
         source: P,
         destination: P,
-        _options: CopyOptions,
+        options: CopyOptions,
     ) -> Result<CopyStats> {
-        // For micro files, options are largely ignored as we use optimized path
-        self.copy_file(source, destination).await
+        // Only the tuning knobs are ignored for micro files; the semantic
+        // contract (overwrite policy and symlink mode) is always honoured.
+        options.validate()?;
+
+        let source_path = source.as_ref();
+        let dest_path = destination.as_ref();
+
+        // Remember the options so the metadata step can honour them; the
+        // inner `copy_file` path has no way to pass them through.
+        self.options = options.clone();
+        let outcome = apply_copy_contract(source_path, dest_path, &options)?;
+
+        match outcome {
+            ContractOutcome::Proceed => self.copy_file(source, destination).await,
+            ContractOutcome::Done(finished) => Ok(finished),
+        }
     }
 
     async fn detect_device_type<P: AsRef<Path> + Send>(&self, _path: P) -> Result<DeviceType> {

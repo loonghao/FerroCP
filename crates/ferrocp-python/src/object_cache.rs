@@ -3,6 +3,7 @@
 //! This module provides intelligent caching for Python objects and string representations,
 //! reducing the overhead of repeated object creation and GIL acquisition.
 
+use crate::error::catch_panic;
 use once_cell::sync::Lazy;
 use pyo3::prelude::*;
 use std::collections::HashMap;
@@ -300,14 +301,17 @@ impl PythonCacheManager {
                 }
                 return Ok(entry.access().clone_ref(py));
             } else {
-                // Entry is expired, remove it
-                let removed_entry = self.object_cache.remove(&hash_key).unwrap();
-                if self.config.enable_stats {
-                    self.stats.expired_removals += 1;
-                    self.stats.memory_usage = self
-                        .stats
-                        .memory_usage
-                        .saturating_sub(removed_entry.estimated_size);
+                // Entry is expired, remove it. `if let` instead of `unwrap()`:
+                // the entry can disappear between the lookup and the removal,
+                // and that is not a panic.
+                if let Some(removed_entry) = self.object_cache.remove(&hash_key) {
+                    if self.config.enable_stats {
+                        self.stats.expired_removals += 1;
+                        self.stats.memory_usage = self
+                            .stats
+                            .memory_usage
+                            .saturating_sub(removed_entry.estimated_size);
+                    }
                 }
             }
         }
@@ -485,6 +489,29 @@ pub fn global_cache() -> Arc<RwLock<PythonCacheManager>> {
     GLOBAL_CACHE.clone()
 }
 
+/// Take a write lock, recovering from a poisoned lock
+///
+/// A panic while the lock is held used to poison it, and the `unwrap()` on the
+/// next access turned that into a second panic at the PyO3 boundary. A cache
+/// lock guards no invariants that a panic could have broken, so the data is
+/// still safe to use.
+fn write_cache(
+    binding: &Arc<RwLock<PythonCacheManager>>,
+) -> std::sync::RwLockWriteGuard<'_, PythonCacheManager> {
+    binding
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// Take a read lock, recovering from a poisoned lock
+fn read_cache(
+    binding: &Arc<RwLock<PythonCacheManager>>,
+) -> std::sync::RwLockReadGuard<'_, PythonCacheManager> {
+    binding
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Convenience function to get or insert a string in the global cache
 pub fn get_or_insert_string<K, F>(key: K, factory: F) -> String
 where
@@ -492,7 +519,7 @@ where
     F: FnOnce() -> String,
 {
     let binding = global_cache();
-    let mut cache = binding.write().unwrap();
+    let mut cache = write_cache(&binding);
     cache.get_or_insert_string(key, factory)
 }
 
@@ -502,15 +529,17 @@ where
     K: Hash,
     F: FnOnce(Python<'_>) -> PyResult<Py<PyAny>>,
 {
-    let binding = global_cache();
-    let mut cache = binding.write().unwrap();
-    cache.get_or_insert_object(py, key, factory)
+    catch_panic("get_or_insert_object", || {
+        let binding = global_cache();
+        let mut cache = write_cache(&binding);
+        cache.get_or_insert_object(py, key, factory)
+    })?
 }
 
 /// Get global cache statistics
 pub fn global_cache_stats() -> PythonCacheStats {
     let binding = global_cache();
-    let cache = binding.read().unwrap();
+    let cache = read_cache(&binding);
     cache.stats().clone()
 }
 
@@ -727,25 +756,29 @@ impl From<PyCacheConfig> for PythonCacheConfig {
 
 /// Python functions for cache management
 #[pyfunction]
-pub fn get_cache_stats() -> PyCacheStats {
-    global_cache_stats().into()
+pub fn get_cache_stats() -> PyResult<PyCacheStats> {
+    catch_panic("get_cache_stats", || global_cache_stats().into())
 }
 
 /// Clear all cache entries
 #[pyfunction]
-pub fn clear_cache() {
-    let binding = global_cache();
-    let mut cache = binding.write().unwrap();
-    cache.clear();
+pub fn clear_cache() -> PyResult<()> {
+    catch_panic("clear_cache", || {
+        let binding = global_cache();
+        let mut cache = write_cache(&binding);
+        cache.clear();
+    })
 }
 
 /// Configure the global cache with new settings
 #[pyfunction]
-pub fn configure_cache(config: PyCacheConfig) {
-    let rust_config = PythonCacheConfig::from(config);
-    let binding = global_cache();
-    let mut cache = binding.write().unwrap();
-    *cache = PythonCacheManager::with_config(rust_config);
+pub fn configure_cache(config: PyCacheConfig) -> PyResult<()> {
+    catch_panic("configure_cache", || {
+        let rust_config = PythonCacheConfig::from(config);
+        let binding = global_cache();
+        let mut cache = write_cache(&binding);
+        *cache = PythonCacheManager::with_config(rust_config);
+    })
 }
 
 #[cfg(test)]
@@ -813,6 +846,9 @@ mod tests {
         assert_eq!(stats.string_misses, 2);
         assert_eq!(stats.string_hits, 1);
         assert_eq!(stats.string_entries, 2);
+        // Compare with a tolerance: the exact value of `1.0 / 3.0 * 100.0`
+        // depends on floating-point rounding, so an exact comparison is a
+        // latent flake rather than an assertion.
         assert_approx_eq(stats.string_hit_rate(), 100.0 / 3.0); // 1/3 * 100
     }
 
@@ -883,6 +919,7 @@ mod tests {
         let py_stats = PyCacheStats::from(rust_stats);
         assert_eq!(py_stats.string_hits, 10);
         assert_eq!(py_stats.string_misses, 5);
+        // Tolerance comparison: see the note in `test_cache_stats`.
         assert_approx_eq(py_stats.string_hit_rate(), 1000.0 / 15.0); // 10/15 * 100
         assert_approx_eq(py_stats.object_hit_rate(), 80.0); // 8/10 * 100
         assert_approx_eq(py_stats.overall_hit_rate(), 72.0); // 18/25 * 100

@@ -485,13 +485,15 @@ impl EngineSelector {
             enable_progress: false,  // Disable progress for micro files
             progress_interval: Duration::from_millis(1000),
             verify_copy: false, // Skip verification for speed
-            preserve_metadata: true,
+            preserve_timestamps: true,
+            preserve_permissions: true,
             enable_zero_copy: false, // No zero-copy for micro files
             max_retries: 1,          // Minimal retries for speed
             enable_preread: false,   // No pre-read for micro files
             preread_strategy: None,
             enable_compression: false, // No compression for micro files
             compression_level: 1,      // Minimal compression level
+            ..CopyOptions::default()
         }
     }
 
@@ -508,13 +510,15 @@ impl EngineSelector {
             enable_progress: false, // Disable progress for small files
             progress_interval: Duration::from_millis(1000),
             verify_copy: false, // Skip verification for speed
-            preserve_metadata: true,
+            preserve_timestamps: true,
+            preserve_permissions: true,
             enable_zero_copy: false, // No zero-copy for small files
             max_retries: 2,
             enable_preread: false, // No pre-read for small files
             preread_strategy: None,
             enable_compression: false, // Disable compression for local copies
             compression_level: 3,      // Balanced compression level
+            ..CopyOptions::default()
         }
     }
 
@@ -531,13 +535,15 @@ impl EngineSelector {
             enable_progress: true,
             progress_interval: Duration::from_millis(50), // More frequent updates for parallel
             verify_copy: false,
-            preserve_metadata: true,
+            preserve_timestamps: true,
+            preserve_permissions: true,
             enable_zero_copy: false, // Parallel engine handles its own optimization
             max_retries: 3,
             enable_preread: false, // Parallel engine has its own pre-read logic
             preread_strategy: None,
             enable_compression: false, // Parallel engine doesn't use compression
             compression_level: 3,
+            ..CopyOptions::default()
         }
     }
 
@@ -560,13 +566,15 @@ impl EngineSelector {
             enable_progress: true,
             progress_interval: Duration::from_millis(100),
             verify_copy: false,
-            preserve_metadata: true,
+            preserve_timestamps: true,
+            preserve_permissions: true,
             enable_zero_copy: zerocopy_enabled,
             max_retries: 3,
             enable_preread: true,      // Enable pre-read for large files
             preread_strategy: None,    // Auto-detect based on device
             enable_compression: false, // Large files use zero-copy instead of compression
             compression_level: 1,      // Fast compression if needed
+            ..CopyOptions::default()
         }
     }
 
@@ -654,6 +662,7 @@ impl EngineSelector {
     async fn get_file_size(&self, path: &Path) -> Result<u64> {
         let metadata = fs::metadata(path).await.map_err(|e| Error::Io {
             message: format!("Failed to get file metadata for {}: {}", path.display(), e),
+            kind: None,
         })?;
         Ok(metadata.len())
     }

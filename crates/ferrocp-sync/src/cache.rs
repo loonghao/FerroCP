@@ -213,6 +213,7 @@ impl HashCache {
                     self.config.cache_file.display(),
                     e
                 ),
+                kind: None,
             })?;
 
         let entries: HashMap<PathBuf, CacheEntry> =
@@ -256,6 +257,7 @@ impl HashCache {
                     self.config.cache_file.display(),
                     e
                 ),
+                kind: None,
             })?;
 
         self.dirty = false;

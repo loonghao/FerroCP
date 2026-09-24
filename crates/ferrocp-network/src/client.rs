@@ -343,6 +343,7 @@ impl NetworkClient {
                 path.display(),
                 e
             ),
+            kind: None,
         })?;
 
         Ok(metadata.len())

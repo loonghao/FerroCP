@@ -297,12 +297,14 @@ impl SyncEngine {
         if !source.exists() {
             return Err(Error::Io {
                 message: format!("Source path does not exist: {}", source.display()),
+                kind: None,
             });
         }
 
         if !source.is_dir() {
             return Err(Error::Io {
                 message: format!("Source path is not a directory: {}", source.display()),
+                kind: None,
             });
         }
 
@@ -316,6 +318,7 @@ impl SyncEngine {
                         destination.display(),
                         e
                     ),
+                    kind: None,
                 })?;
         }
 
@@ -456,6 +459,7 @@ impl SyncEngine {
         if let Some(parent) = destination.parent() {
             fs::create_dir_all(parent).await.map_err(|e| Error::Io {
                 message: format!("Failed to create directory '{}': {}", parent.display(), e),
+                kind: None,
             })?;
         }
 
@@ -467,12 +471,14 @@ impl SyncEngine {
                 destination.display(),
                 e
             ),
+            kind: None,
         })?;
 
         // Preserve timestamps if requested
         if options.preserve_timestamps {
             let metadata = fs::metadata(source).await.map_err(|e| Error::Io {
                 message: format!("Failed to get metadata for '{}': {}", source.display(), e),
+                kind: None,
             })?;
 
             if let Ok(modified) = metadata.modified() {
@@ -486,6 +492,7 @@ impl SyncEngine {
                         destination.display(),
                         e
                     ),
+                    kind: None,
                 })?;
             }
         }
@@ -499,10 +506,12 @@ impl SyncEngine {
         if path.is_dir() {
             fs::remove_dir_all(path).await.map_err(|e| Error::Io {
                 message: format!("Failed to delete directory '{}': {}", path.display(), e),
+                kind: None,
             })?;
         } else {
             fs::remove_file(path).await.map_err(|e| Error::Io {
                 message: format!("Failed to delete file '{}': {}", path.display(), e),
+                kind: None,
             })?;
         }
 
@@ -516,6 +525,7 @@ impl SyncEngine {
         if let Some(parent) = destination.parent() {
             fs::create_dir_all(parent).await.map_err(|e| Error::Io {
                 message: format!("Failed to create directory '{}': {}", parent.display(), e),
+                kind: None,
             })?;
         }
 
@@ -528,6 +538,7 @@ impl SyncEngine {
                     destination.display(),
                     e
                 ),
+                kind: None,
             })?;
 
         debug!("Moved: {} -> {}", source.display(), destination.display());
@@ -544,6 +555,7 @@ impl SyncEngine {
         if options.preserve_timestamps {
             let metadata = fs::metadata(source).await.map_err(|e| Error::Io {
                 message: format!("Failed to get metadata for '{}': {}", source.display(), e),
+                kind: None,
             })?;
 
             if let Ok(modified) = metadata.modified() {
@@ -557,6 +569,7 @@ impl SyncEngine {
                         destination.display(),
                         e
                     ),
+                    kind: None,
                 })?;
             }
         }

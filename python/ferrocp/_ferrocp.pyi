@@ -14,7 +14,8 @@ class CopyOptions:
         self,
         *,
         mode: str = "auto",
-        overwrite: str = "prompt",
+        overwrite: str = "always",
+        overwrite_callback: Callable[[str, str], bool] | None = None,
         preserve_timestamps: bool = True,
         preserve_permissions: bool = True,
         follow_symlinks: bool = False,
@@ -64,6 +65,10 @@ class CopyOptions:
     def verify(self) -> bool: ...
     @verify.setter
     def verify(self, value: bool) -> None: ...
+    @property
+    def overwrite_callback(self) -> Callable[[str, str], bool] | None: ...
+    @overwrite_callback.setter
+    def overwrite_callback(self, value: Callable[[str, str], bool] | None) -> None: ...
 
 class CopyResult:
     """Result of a copy operation."""

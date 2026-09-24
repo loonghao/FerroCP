@@ -2,6 +2,7 @@
 
 use crate::async_support::{create_cancellable_task, report_progress, PyAsyncManager};
 use crate::config::PyCopyOptions;
+use crate::error::{catch_panic, PyErrorWrapper};
 use crate::gil_optimization::{GilFreeProgressReporter, GilOptimizationManager};
 use crate::progress::{call_progress_callback, ProgressCallback, PyProgress};
 use ferrocp_engine::{task::CopyRequest, CopyEngine};
@@ -12,6 +13,42 @@ use pyo3_async_runtimes::tokio::future_into_py;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+
+/// Build the Python exception for a copy task that reported failure
+///
+/// The engine returns a `CopyResult` rather than an `Err` when a task fails
+/// after it has started, so the failure has to be turned into an exception
+/// here instead of being returned as a successful-looking result object.
+fn copy_result_error(result: &ferrocp_engine::task::CopyResult) -> PyErr {
+    let message = result
+        .error
+        .clone()
+        .unwrap_or_else(|| "copy task failed without an error message".to_string());
+    PyErr::from(PyErrorWrapper(ferrocp_types::Error::other(message)))
+}
+
+/// Apply the Python-side `CopyOptions` to a `CopyRequest`
+///
+/// Every field of `PyCopyOptions` that describes copy semantics is honoured
+/// here. Invalid values raise `ValueError` instead of being ignored, so the
+/// Python API can never promise a behaviour it does not implement.
+fn apply_copy_options(request: &mut CopyRequest, options: &PyCopyOptions) -> PyResult<()> {
+    request.verify_copy = options.verify;
+    request.preserve_metadata = options.preserve_timestamps || options.preserve_permissions;
+    request.enable_compression = options.enable_compression;
+
+    let overwrite_policy = options.overwrite_policy()?;
+    let symlink_mode = options.symlink_mode()?;
+    let prompt = options.overwrite_prompt()?;
+
+    request.mode = options.copy_mode()?;
+    request.overwrite_policy = overwrite_policy;
+    request.symlink_mode = symlink_mode;
+    request.overwrite_prompt = prompt;
+
+    // TODO: Add exclude/include patterns to PyCopyOptions
+    Ok(())
+}
 
 /// Python wrapper for copy results
 #[pyclass(name = "CopyResult", from_py_object)]
@@ -111,9 +148,26 @@ impl From<CopyStats> for PyCopyResult {
             files_copied: stats.files_copied,
             duration_seconds,
             transfer_rate,
-            success: true,
-            error_message: None,
+            // Statistics alone cannot tell whether the operation succeeded.
+            // Callers must set `success`/`error_message` from the task status;
+            // a failed copy must never look like a successful one.
+            success: false,
+            error_message: Some(
+                "copy status unknown: the caller did not provide a task result".to_string(),
+            ),
         }
+    }
+}
+
+impl From<ferrocp_engine::task::CopyResult> for PyCopyResult {
+    fn from(result: ferrocp_engine::task::CopyResult) -> Self {
+        // Read the status before moving the stats out.
+        let success = result.is_success();
+        let error = result.error.clone();
+        let mut py_result = PyCopyResult::from(result.stats);
+        py_result.success = success;
+        py_result.error_message = error;
+        py_result
     }
 }
 
@@ -172,17 +226,7 @@ impl PyCopyEngine {
 
                     // Apply copy options if provided
                     if let Some(opts) = copy_options {
-                        if opts.verify {
-                            request.verify_copy = true;
-                        }
-                        if opts.preserve_timestamps || opts.preserve_permissions {
-                            request.preserve_metadata = true;
-                        }
-                        if opts.enable_compression {
-                            request.enable_compression = true;
-                        }
-                        // TODO: Add exclude/include patterns to PyCopyOptions
-                        // For now, we'll skip these fields
+                        apply_copy_options(&mut request, &opts)?;
                     }
 
                     // Report progress
@@ -196,15 +240,16 @@ impl PyCopyEngine {
 
                     match result {
                         Ok(copy_result) => {
-                            let stats = copy_result.stats;
-                            Ok(PyCopyResult::from(stats))
+                            // A task can fail without returning `Err`: for
+                            // example `--overwrite fail` aborts after the
+                            // policy check. Check the status too, otherwise
+                            // the failure is swallowed.
+                            if !copy_result.is_success() {
+                                return Err(copy_result_error(&copy_result));
+                            }
+                            Ok(PyCopyResult::from(copy_result))
                         }
-                        Err(e) => {
-                            let mut result = PyCopyResult::new();
-                            result.success = false;
-                            result.error_message = Some(e.to_string());
-                            Ok(result)
-                        }
+                        Err(e) => Err(PyErr::from(PyErrorWrapper::from(e))),
                     }
                 })
                 .await?;
@@ -254,17 +299,7 @@ impl PyCopyEngine {
 
                     // Apply copy options if provided
                     if let Some(opts) = copy_options {
-                        if opts.verify {
-                            request.verify_copy = true;
-                        }
-                        if opts.preserve_timestamps || opts.preserve_permissions {
-                            request.preserve_metadata = true;
-                        }
-                        if opts.enable_compression {
-                            request.enable_compression = true;
-                        }
-                        // TODO: Add exclude/include patterns to PyCopyOptions
-                        // For now, we'll skip these fields
+                        apply_copy_options(&mut request, &opts)?;
                     }
 
                     // Report progress
@@ -278,15 +313,16 @@ impl PyCopyEngine {
 
                     match result {
                         Ok(copy_result) => {
-                            let stats = copy_result.stats;
-                            Ok(PyCopyResult::from(stats))
+                            // A task can fail without returning `Err`: for
+                            // example `--overwrite fail` aborts after the
+                            // policy check. Check the status too, otherwise
+                            // the failure is swallowed.
+                            if !copy_result.is_success() {
+                                return Err(copy_result_error(&copy_result));
+                            }
+                            Ok(PyCopyResult::from(copy_result))
                         }
-                        Err(e) => {
-                            let mut result = PyCopyResult::new();
-                            result.success = false;
-                            result.error_message = Some(e.to_string());
-                            Ok(result)
-                        }
+                        Err(e) => Err(PyErr::from(PyErrorWrapper::from(e))),
                     }
                 })
                 .await?;
@@ -356,15 +392,7 @@ impl PyCopyEngine {
 
                     // Apply copy options if provided
                     if let Some(opts) = options {
-                        if opts.verify {
-                            request.verify_copy = true;
-                        }
-                        if opts.preserve_timestamps || opts.preserve_permissions {
-                            request.preserve_metadata = true;
-                        }
-                        if opts.enable_compression {
-                            request.enable_compression = true;
-                        }
+                        apply_copy_options(&mut request, &opts)?;
                     }
 
                     // Start the copy operation
@@ -375,15 +403,16 @@ impl PyCopyEngine {
 
                     match result {
                         Ok(copy_result) => {
-                            let stats = copy_result.stats;
-                            Ok(PyCopyResult::from(stats))
+                            // A task can fail without returning `Err`: for
+                            // example `--overwrite fail` aborts after the
+                            // policy check. Check the status too, otherwise
+                            // the failure is swallowed.
+                            if !copy_result.is_success() {
+                                return Err(copy_result_error(&copy_result));
+                            }
+                            Ok(PyCopyResult::from(copy_result))
                         }
-                        Err(e) => {
-                            let mut result = PyCopyResult::new();
-                            result.success = false;
-                            result.error_message = Some(e.to_string());
-                            Ok(result)
-                        }
+                        Err(e) => Err(PyErr::from(PyErrorWrapper::from(e))),
                     }
                 }
             })
@@ -409,8 +438,10 @@ pub fn copy_file<'py>(
     options: Option<PyCopyOptions>,
     progress_callback: Option<ProgressCallback>,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let engine = PyCopyEngine::new()?;
-    engine.copy_file(py, source, destination, options, progress_callback)
+    catch_panic("copy_file", || {
+        let engine = PyCopyEngine::new()?;
+        engine.copy_file(py, source, destination, options, progress_callback)
+    })?
 }
 
 /// Convenience function to copy a directory
@@ -423,8 +454,10 @@ pub fn copy_directory<'py>(
     options: Option<PyCopyOptions>,
     progress_callback: Option<ProgressCallback>,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let engine = PyCopyEngine::new()?;
-    engine.copy_directory(py, source, destination, options, progress_callback)
+    catch_panic("copy_directory", || {
+        let engine = PyCopyEngine::new()?;
+        engine.copy_directory(py, source, destination, options, progress_callback)
+    })?
 }
 
 /// Get FerroCP version
@@ -441,7 +474,9 @@ pub fn quick_copy<'py>(
     source: String,
     destination: String,
 ) -> PyResult<Bound<'py, PyAny>> {
-    copy_file(py, source, destination, None, None)
+    catch_panic("quick_copy", || {
+        copy_file(py, source, destination, None, None)
+    })?
 }
 
 /// Copy with verification enabled
@@ -453,9 +488,11 @@ pub fn copy_with_verification<'py>(
     destination: String,
     progress_callback: Option<ProgressCallback>,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let mut options = PyCopyOptions::default();
-    options.verify = true;
-    copy_file(py, source, destination, Some(options), progress_callback)
+    catch_panic("copy_with_verification", || {
+        let mut options = PyCopyOptions::default();
+        options.verify = true;
+        copy_file(py, source, destination, Some(options), progress_callback)
+    })?
 }
 
 /// Copy with compression enabled
@@ -467,9 +504,11 @@ pub fn copy_with_compression<'py>(
     destination: String,
     progress_callback: Option<ProgressCallback>,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let mut options = PyCopyOptions::default();
-    options.enable_compression = true;
-    copy_file(py, source, destination, Some(options), progress_callback)
+    catch_panic("copy_with_compression", || {
+        let mut options = PyCopyOptions::default();
+        options.enable_compression = true;
+        copy_file(py, source, destination, Some(options), progress_callback)
+    })?
 }
 
 /// Async copy function with cancellation support
@@ -481,14 +520,16 @@ pub fn copy_file_async<'py>(
     destination: String,
     options: Option<PyCopyOptions>,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let engine = PyCopyEngine::new()?;
-    engine.copy_file_async(py, source, destination, options)
+    catch_panic("copy_file_async", || {
+        let engine = PyCopyEngine::new()?;
+        engine.copy_file_async(py, source, destination, options)
+    })?
 }
 
 /// Create a new async manager
 #[pyfunction]
-pub fn create_async_manager() -> PyAsyncManager {
-    PyAsyncManager::new()
+pub fn create_async_manager() -> PyResult<PyAsyncManager> {
+    catch_panic("create_async_manager", PyAsyncManager::new)
 }
 
 /// Format bytes as human-readable string
@@ -565,7 +606,41 @@ mod tests {
             assert_eq!(result.bytes_copied, 1000);
             assert_eq!(result.files_copied, 5);
             assert_eq!(result.transfer_rate, 1000.0);
-            assert!(result.success);
+            // Statistics carry no task status, so they must not claim success:
+            // a copy that failed without per-file errors would otherwise look
+            // like it worked.
+            assert!(!result.success);
+            assert!(result.error_message.is_some());
+        }
+
+        /// The task status, not the statistics, decides `success`.
+        #[test]
+        fn test_copy_result_from_task_result_reports_the_status() {
+            let stats = CopyStats {
+                bytes_copied: 1000,
+                files_copied: 5,
+                duration: Duration::from_secs(1),
+                ..Default::default()
+            };
+
+            let completed = ferrocp_engine::task::CopyResult::success(
+                ferrocp_engine::task::TaskId::new(),
+                stats.clone(),
+                Duration::from_secs(1),
+            );
+            let from_completed = PyCopyResult::from(completed);
+            assert!(from_completed.success);
+            assert!(from_completed.error_message.is_none());
+            assert_eq!(from_completed.bytes_copied, 1000);
+
+            let failed = ferrocp_engine::task::CopyResult::failure(
+                ferrocp_engine::task::TaskId::new(),
+                "disk full".to_string(),
+                Duration::from_secs(1),
+            );
+            let from_failed = PyCopyResult::from(failed);
+            assert!(!from_failed.success);
+            assert_eq!(from_failed.error_message.as_deref(), Some("disk full"));
         }
 
         #[test]

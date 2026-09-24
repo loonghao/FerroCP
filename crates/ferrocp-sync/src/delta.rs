@@ -149,6 +149,7 @@ impl DeltaEngine {
                 source_path.display(),
                 e
             ),
+            kind: None,
         })?;
 
         let target_data = fs::read(target_path).await.map_err(|e| Error::Io {
@@ -157,6 +158,7 @@ impl DeltaEngine {
                 target_path.display(),
                 e
             ),
+            kind: None,
         })?;
 
         self.create_patch_from_data(&source_data, &target_data)
@@ -241,6 +243,7 @@ impl DeltaEngine {
                 source_path.display(),
                 e
             ),
+            kind: None,
         })?;
 
         // Verify source hash
@@ -271,6 +274,7 @@ impl DeltaEngine {
                     output_path.display(),
                     e
                 ),
+                kind: None,
             })?;
 
         info!("Applied delta patch successfully");

@@ -3,6 +3,8 @@
 //! This module implements a parallel copy engine that uses chunked processing
 //! and pipelined I/O to maximize throughput for large files (>10MB).
 
+use crate::metadata::preserve_metadata;
+use crate::policy::{apply_copy_contract, ContractOutcome};
 use crate::{AsyncFileReader, AsyncFileWriter, CopyEngine, CopyOptions};
 use ferrocp_types::{CopyStats, DeviceType, Error, Result};
 use std::path::Path;
@@ -257,6 +259,7 @@ impl ParallelCopyEngine {
             tokio::try_join!(reader_handle, processor_handle, writer_handle).map_err(|e| {
                 Error::Io {
                     message: format!("Parallel copy task failed: {}", e),
+                    kind: None,
                 }
             })?;
 
@@ -286,6 +289,7 @@ impl ParallelCopyEngine {
             bytes_copied: final_bytes_copied,
             files_skipped: 0,
             errors: 0,
+            symlinks_created: 0,
             duration: elapsed,
             zerocopy_operations: 0,
             zerocopy_bytes: 0,
@@ -320,6 +324,7 @@ impl ParallelCopyEngine {
                 // Acquire semaphore permit for memory control
                 let _permit = semaphore.acquire().await.map_err(|_| Error::Io {
                     message: "Failed to acquire semaphore permit".to_string(),
+                    kind: None,
                 })?;
 
                 // Check memory usage
@@ -521,34 +526,58 @@ impl CopyEngine for ParallelCopyEngine {
         &mut self,
         source: P,
         destination: P,
-        _options: CopyOptions,
+        options: CopyOptions,
     ) -> Result<CopyStats> {
         let source_path = source.as_ref();
         let dest_path = destination.as_ref();
+
+        options.validate()?;
+
+        // Enforce the full contract before the destination is opened for
+        // writing: the parallel writer truncates as soon as it starts.
+        match apply_copy_contract(source_path, dest_path, &options)? {
+            ContractOutcome::Proceed => {}
+            ContractOutcome::Done(finished) => return Ok(finished),
+        }
 
         // Get file size
         let metadata = tokio::fs::metadata(source_path)
             .await
             .map_err(|e| Error::Io {
                 message: format!("Failed to get file metadata: {}", e),
+                kind: Some(e.kind()),
             })?;
+
         let file_size = metadata.len();
 
         // Check if we should use parallel processing
         if !self.should_use_parallel(file_size) {
             debug!("File too small for parallel processing, falling back to sequential");
             // Fall back to a simple sequential copy
-            return self
+            let stats = self
                 .copy_file_sequential(source_path, dest_path, file_size)
-                .await;
+                .await?;
+            // Preserve metadata on this path too, so the engine does not depend
+            // on which strategy the size heuristic picked.
+            preserve_metadata(source_path, dest_path, &options)?;
+            return Ok(stats);
         }
 
         // Detect device type (simplified for now)
         let device_type = DeviceType::SSD; // TODO: Implement proper device detection
 
         // Perform parallel copy
-        self.copy_file_parallel(source_path, dest_path, file_size, device_type)
-            .await
+        let mut stats = self
+            .copy_file_parallel(source_path, dest_path, file_size, device_type)
+            .await?;
+
+        // Preserve metadata according to the options (shared with the other
+        // engines, so the parallel engine is no longer the one that silently
+        // drops timestamps and permissions).
+        preserve_metadata(source_path, dest_path, &options)?;
+        stats.duration = stats.duration.max(Duration::ZERO);
+
+        Ok(stats)
     }
 
     async fn detect_device_type<P: AsRef<Path> + Send>(&self, path: P) -> Result<DeviceType> {
@@ -581,6 +610,7 @@ impl ParallelCopyEngine {
             .await
             .map_err(|e| Error::Io {
                 message: format!("Sequential copy failed: {}", e),
+                kind: Some(e.kind()),
             })?;
 
         Ok(CopyStats {
@@ -589,6 +619,7 @@ impl ParallelCopyEngine {
             bytes_copied: file_size,
             files_skipped: 0,
             errors: 0,
+            symlinks_created: 0,
             duration: start_time.elapsed(),
             zerocopy_operations: 0,
             zerocopy_bytes: 0,
