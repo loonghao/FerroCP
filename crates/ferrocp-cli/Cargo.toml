@@ -22,6 +22,7 @@ path = "src/main.rs"
 [dependencies]
 ferrocp-types = { path = "../ferrocp-types" }
 ferrocp-engine = { path = "../ferrocp-engine" }
+ferrocp-io = { path = "../ferrocp-io" }
 ferrocp-device = { path = "../ferrocp-device" }
 
 # System info

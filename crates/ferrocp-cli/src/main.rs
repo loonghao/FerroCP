@@ -8,7 +8,8 @@ use clap::{Parser, Subcommand};
 use console::style;
 use ferrocp_device::PerformanceAnalyzer;
 use ferrocp_engine::{CopyEngine, CopyRequest};
-use ferrocp_types::CopyMode;
+use ferrocp_io::OverwritePrompt;
+use ferrocp_types::{CopyMode, OverwriteDecision, OverwritePolicy, SymlinkMode};
 use std::path::PathBuf;
 use tracing::info;
 
@@ -59,8 +60,22 @@ enum Commands {
         /// Destination path
         destination: PathBuf,
         /// Copy mode
+        ///
+        /// `mirror` is declared but not implemented and is rejected with an
+        /// error instead of silently behaving like `all`.
         #[arg(short, long, value_enum, default_value = "all")]
         mode: CopyModeArg,
+        /// What to do when the destination already exists
+        ///
+        /// Accepted values: always, never, if_newer, if_different, fail, prompt.
+        /// When omitted, the policy implied by `--mode` is used.
+        #[arg(long)]
+        overwrite: Option<String>,
+        /// How to treat symbolic links in the source
+        ///
+        /// Accepted values: preserve, follow, fail
+        #[arg(long, default_value = "preserve")]
+        symlinks: String,
         /// Number of threads to use
         #[arg(short, long)]
         threads: Option<usize>,
@@ -155,6 +170,8 @@ async fn main() -> Result<()> {
             source,
             destination,
             mode,
+            overwrite,
+            symlinks,
             threads,
             compress,
             compression_level,
@@ -169,10 +186,22 @@ async fn main() -> Result<()> {
             } else {
                 mode.into()
             };
+            // Parse the semantic flags before touching the filesystem so a
+            // typo produces a precise error instead of a silent default.
+            // `--overwrite` is optional: when it is omitted the policy implied
+            // by `--mode` stays in effect.
+            let overwrite_policy = overwrite
+                .as_deref()
+                .map(parse_overwrite_policy)
+                .transpose()?;
+            let symlink_mode = parse_symlink_mode(&symlinks)?;
+
             copy_command(CopyOptions {
                 source,
                 destination,
                 mode: copy_mode,
+                overwrite_policy,
+                symlink_mode,
                 _threads: threads,
                 compress,
                 _compression_level: compression_level,
@@ -233,6 +262,82 @@ fn init_logging(debug: bool, quiet: bool, verbose: bool) -> Result<()> {
     Ok(())
 }
 
+/// Parse `--overwrite`, listing the accepted values on failure
+fn parse_overwrite_policy(value: &str) -> Result<OverwritePolicy> {
+    OverwritePolicy::parse(value).ok_or_else(|| {
+        anyhow::anyhow!(
+            "invalid --overwrite value '{}'; accepted values: {}",
+            value,
+            OverwritePolicy::accepted_values().join(", ")
+        )
+    })
+}
+
+/// Parse `--symlinks`, listing the accepted values on failure
+fn parse_symlink_mode(value: &str) -> Result<SymlinkMode> {
+    SymlinkMode::parse(value).ok_or_else(|| {
+        anyhow::anyhow!(
+            "invalid --symlinks value '{}'; accepted values: {}",
+            value,
+            SymlinkMode::accepted_values().join(", ")
+        )
+    })
+}
+
+/// Build the overwrite policy actually used for this run
+///
+/// `--mode` rejects `mirror` up front; an explicit `--overwrite` then wins over
+/// the policy the mode implies.
+fn resolve_overwrite_policy(
+    mode: CopyMode,
+    explicit: Option<OverwritePolicy>,
+) -> Result<OverwritePolicy> {
+    // Surface the unimplemented mode before doing any work.
+    let implied = mode.overwrite_policy()?;
+    Ok(explicit.unwrap_or(implied))
+}
+
+/// Build the prompt handler used by `--overwrite prompt`
+///
+/// Asks on the terminal and fails when stdin is not a terminal, because an
+/// unanswered prompt must never be treated as "yes".
+fn build_overwrite_prompt() -> Result<OverwritePrompt> {
+    Ok(OverwritePrompt::new(|source, destination| {
+        let question = format!(
+            "Overwrite '{}' with '{}'?",
+            destination.display(),
+            source.display()
+        );
+
+        if !dialoguer::console::Term::stdout().is_term() {
+            // The callback cannot return an error, so refuse to overwrite and
+            // let the caller see the file was skipped.
+            eprintln!(
+                "warning: cannot prompt for '{}' because stdin is not a terminal; skipping",
+                destination.display()
+            );
+            return OverwriteDecision::Skip;
+        }
+
+        match dialoguer::Confirm::new()
+            .with_prompt(question)
+            .default(false)
+            .interact()
+        {
+            Ok(true) => OverwriteDecision::Proceed,
+            Ok(false) => OverwriteDecision::Skip,
+            Err(error) => {
+                eprintln!(
+                    "warning: failed to read the answer for '{}': {}",
+                    destination.display(),
+                    error
+                );
+                OverwriteDecision::Skip
+            }
+        }
+    }))
+}
+
 /// Everything the `copy` sub-command collected from the CLI.
 ///
 /// Grouped into a struct so the handler keeps a readable signature instead of
@@ -241,6 +346,8 @@ struct CopyOptions {
     source: PathBuf,
     destination: PathBuf,
     mode: CopyMode,
+    overwrite_policy: Option<OverwritePolicy>,
+    symlink_mode: SymlinkMode,
     // Accepted for CLI compatibility; the engine sizes its own thread pool.
     _threads: Option<usize>,
     compress: bool,
@@ -259,6 +366,8 @@ async fn copy_command(options: CopyOptions) -> Result<()> {
         source,
         destination,
         mode,
+        overwrite_policy,
+        symlink_mode,
         compress,
         exclude,
         include,
@@ -317,13 +426,24 @@ async fn copy_command(options: CopyOptions) -> Result<()> {
     let destination_path = destination.to_string_lossy().to_string();
 
     // Create copy request using builder pattern
-    let request = CopyRequest::new(source, destination)
+    let mut request = CopyRequest::new(source, destination)
         .with_mode(mode)
+        .with_symlink_mode(symlink_mode)
         .preserve_metadata(true)
         .verify_copy(false)
         .enable_compression(compress)
         .exclude_patterns(exclude)
         .include_patterns(include);
+
+    // `--overwrite prompt` needs a terminal handler; without one the copy would
+    // fall back to a guess, which is exactly what this flag must never do.
+    let overwrite_policy = resolve_overwrite_policy(mode, overwrite_policy)?;
+    if overwrite_policy == OverwritePolicy::Prompt {
+        let prompt = build_overwrite_prompt()?;
+        request = request.with_overwrite_semantics(overwrite_policy, Some(prompt));
+    } else {
+        request = request.with_overwrite_semantics(overwrite_policy, None);
+    }
 
     // Note: threads, compression_level, zero_copy are handled by the engine internally
     // These CLI options could be used to configure the engine in the future
@@ -361,6 +481,18 @@ async fn copy_command(options: CopyOptions) -> Result<()> {
         }
     };
 
+    // Surface a failed copy instead of reporting success with zero files: a
+    // task can fail without producing per-file errors (for example
+    // `--overwrite fail` on an existing destination).
+    let failure_reason =
+        if result.is_success() {
+            None
+        } else {
+            Some(result.error.clone().unwrap_or_else(|| {
+                "copy task reported a failure without an error message".to_string()
+            }))
+        };
+
     let stats = result.stats;
 
     // Stop the engine
@@ -379,11 +511,15 @@ async fn copy_command(options: CopyOptions) -> Result<()> {
             &dest_info,
             &comparison,
             &stats,
+            failure_reason.as_deref(),
         );
 
         let json_output = serde_json::to_string_pretty(&json_result)?;
         println!("{}", json_output);
     } else if !quiet {
+        if let Some(reason) = &failure_reason {
+            display_error(reason);
+        }
         display_enhanced_copy_stats(&stats, Some(&comparison));
 
         // Show final performance summary

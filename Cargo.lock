@@ -667,6 +667,7 @@ dependencies = [
  "eyre",
  "ferrocp-device",
  "ferrocp-engine",
+ "ferrocp-io",
  "ferrocp-types",
  "indicatif",
  "num_cpus",

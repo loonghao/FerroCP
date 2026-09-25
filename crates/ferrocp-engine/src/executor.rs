@@ -3,9 +3,12 @@
 use crate::selector::EngineSelector;
 use crate::task::{CopyResult, Task, TaskId};
 use ferrocp_config::Config;
-use ferrocp_io::{BufferedCopyEngine, CopyEngine as IoCopyEngine, CopyOptions};
-use ferrocp_types::{Error, Result};
-use std::collections::HashMap;
+use ferrocp_io::{
+    symlink as symlink_utils, BufferedCopyEngine, CopyEngine as IoCopyEngine, CopyOptions,
+};
+use ferrocp_types::{Error, OverwritePolicy, Result, SymlinkMode};
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, RwLock, Semaphore};
@@ -30,6 +33,16 @@ pub struct ExecutorConfig {
     pub max_retry_attempts: u32,
     /// Retry delay
     pub retry_delay: Duration,
+    /// How to treat a destination that already exists
+    pub overwrite_policy: OverwritePolicy,
+    /// Handler used when `overwrite_policy` is [`OverwritePolicy::Prompt`]
+    pub overwrite_prompt: Option<ferrocp_io::OverwritePrompt>,
+    /// How to treat symbolic links found in the source tree
+    pub symlink_mode: SymlinkMode,
+    /// Preserve modification and access times
+    pub preserve_timestamps: bool,
+    /// Preserve permission bits (full mode on Unix, read-only attribute on Windows)
+    pub preserve_permissions: bool,
 }
 
 impl ExecutorConfig {
@@ -44,6 +57,30 @@ impl ExecutorConfig {
             enable_retry: true,
             max_retry_attempts: 3,
             retry_delay: Duration::from_millis(1000),
+            ..Self::default()
+        }
+    }
+
+    /// Override the copy-semantics fields with those of a copy request
+    ///
+    /// The request is the caller-facing contract, so it always wins over the
+    /// engine-wide defaults.
+    #[must_use]
+    pub fn with_request_semantics(
+        &self,
+        overwrite_policy: OverwritePolicy,
+        symlink_mode: SymlinkMode,
+        overwrite_prompt: Option<ferrocp_io::OverwritePrompt>,
+        preserve_timestamps: bool,
+        preserve_permissions: bool,
+    ) -> Self {
+        Self {
+            overwrite_policy,
+            symlink_mode,
+            overwrite_prompt,
+            preserve_timestamps,
+            preserve_permissions,
+            ..self.clone()
         }
     }
 }
@@ -59,6 +96,13 @@ impl Default for ExecutorConfig {
             enable_retry: true,
             max_retry_attempts: 3,
             retry_delay: Duration::from_millis(1000),
+            // Defaults preserve FerroCP's historical behaviour: overwrite and
+            // recreate symlinks rather than dropping them.
+            overwrite_policy: OverwritePolicy::Always,
+            overwrite_prompt: None,
+            symlink_mode: SymlinkMode::Preserve,
+            preserve_timestamps: true,
+            preserve_permissions: true,
         }
     }
 }
@@ -177,8 +221,30 @@ impl TaskExecutor {
             task.request.destination.display()
         );
 
-        // Check if source is a file or directory
-        let source_metadata = match tokio::fs::metadata(&task.request.source).await {
+        // Validate the copy mode up front: `Mirror` is declared but not
+        // implemented, so it must fail before any I/O instead of degrading into
+        // `All`. The check runs even when the caller supplied an explicit
+        // overwrite policy, because the mode itself is unsupported.
+        if let Err(error) = task.request.mode.overwrite_policy() {
+            return CopyResult::failure(task_id, error.to_string(), start_time.elapsed());
+        }
+
+        let effective_config = config.with_request_semantics(
+            task.request.overwrite_policy,
+            task.request.symlink_mode,
+            task.request.overwrite_prompt.clone(),
+            task.request.preserve_metadata,
+            task.request.preserve_metadata,
+        );
+        let config = &effective_config;
+
+        // Classify the source without following links.
+        //
+        // Using `metadata` here would resolve the link and fail outright for a
+        // dangling one, so such a source could never reach the engine that
+        // implements `SymlinkMode::Preserve`. The engine re-resolves the target
+        // when the mode is `Follow`.
+        let source_metadata = match tokio::fs::symlink_metadata(&task.request.source).await {
             Ok(metadata) => metadata,
             Err(error) => {
                 return CopyResult::failure(
@@ -193,7 +259,9 @@ impl TaskExecutor {
             }
         };
 
-        if source_metadata.is_file() {
+        // A link is dispatched to the file path, which enforces the symlink
+        // mode. The engines resolve the target themselves when following.
+        if source_metadata.file_type().is_symlink() || source_metadata.is_file() {
             // Handle file copy
             Self::execute_file_copy(copy_engine, task, config, start_time).await
         } else if source_metadata.is_dir() {
@@ -226,7 +294,11 @@ impl TaskExecutor {
             enable_progress: config.enable_progress_reporting,
             progress_interval: config.progress_interval,
             verify_copy: config.enable_verification || task.request.verify_copy,
-            preserve_metadata: task.request.preserve_metadata,
+            preserve_timestamps: task.request.preserve_metadata,
+            preserve_permissions: task.request.preserve_metadata,
+            overwrite_policy: config.overwrite_policy,
+            overwrite_prompt: config.overwrite_prompt.clone(),
+            symlink_mode: config.symlink_mode,
             enable_zero_copy: true,
             max_retries: if config.enable_retry {
                 config.max_retry_attempts.max(task.request.max_retries)
@@ -297,7 +369,16 @@ impl TaskExecutor {
         let destination = &task.request.destination;
 
         // Use high-performance engines for directory copying
-        match Self::copy_directory_recursive(source, destination, engine_selector, config).await {
+        let mut visited_dirs = HashSet::new();
+        match Self::copy_directory_recursive(
+            source,
+            destination,
+            engine_selector,
+            config,
+            &mut visited_dirs,
+        )
+        .await
+        {
             Ok(mut stats) => {
                 // Update the duration to reflect the total time from task start
                 let total_duration = start_time.elapsed();
@@ -321,11 +402,18 @@ impl TaskExecutor {
     }
 
     /// Recursively copy a directory using high-performance engines
+    ///
+    /// Symbolic links are handled according to
+    /// [`ExecutorConfig::symlink_mode`] instead of being skipped silently.
+    /// `visited_dirs` carries the canonicalised directories already on the
+    /// current recursion stack, which is what stops a link cycle from turning
+    /// into infinite recursion.
     fn copy_directory_recursive<'a>(
         source: &'a std::path::Path,
         destination: &'a std::path::Path,
         engine_selector: Arc<EngineSelector>,
         config: &'a ExecutorConfig,
+        visited_dirs: &'a mut HashSet<PathBuf>,
     ) -> std::pin::Pin<
         Box<dyn std::future::Future<Output = Result<ferrocp_types::CopyStats>> + Send + 'a>,
     > {
@@ -339,12 +427,27 @@ impl TaskExecutor {
             let mut directories_created = 0;
             let mut bytes_copied = 0;
             let mut files_skipped = 0;
+            let mut symlinks_created = 0;
             let mut errors = 0;
             let mut zerocopy_operations = 0;
             let mut zerocopy_bytes = 0;
 
+            // Guard against directory cycles: in `Follow` mode a symlink can
+            // point at an ancestor directory, which would otherwise recurse
+            // forever.
+            let canonical_source =
+                std::fs::canonicalize(source).unwrap_or_else(|_| source.to_path_buf());
+            if !visited_dirs.insert(canonical_source.clone()) {
+                warn!(
+                    "Skipping '{}': directory already visited, refusing to follow a link cycle",
+                    source.display()
+                );
+                return Ok(CopyStats::skipped_one());
+            }
+
             // Create destination directory
             if let Err(e) = fs::create_dir_all(destination).await {
+                visited_dirs.remove(&canonical_source);
                 return Err(Error::other(format!(
                     "Failed to create destination directory '{}': {}",
                     destination.display(),
@@ -357,6 +460,7 @@ impl TaskExecutor {
             let mut entries = match fs::read_dir(source).await {
                 Ok(entries) => entries,
                 Err(e) => {
+                    visited_dirs.remove(&canonical_source);
                     return Err(Error::other(format!(
                         "Failed to read source directory '{}': {}",
                         source.display(),
@@ -380,6 +484,8 @@ impl TaskExecutor {
                 };
                 let dest_path = destination.join(file_name);
 
+                // `entry.metadata()` deliberately does not follow symlinks, so
+                // `file_type().is_symlink()` is the reliable symlink test.
                 let metadata = match entry.metadata().await {
                     Ok(metadata) => metadata,
                     Err(e) => {
@@ -393,8 +499,67 @@ impl TaskExecutor {
                     }
                 };
 
-                if metadata.is_file() {
-                    // Copy file using high-performance engines
+                // `Follow` must dispatch on the target's metadata rather than
+                // the link's, so resolve it here. `Preserve` and `Fail` never
+                // look at the target at all.
+                let mut resolved = None;
+                if metadata.file_type().is_symlink() {
+                    match config.symlink_mode {
+                        SymlinkMode::Preserve => {
+                            match symlink_utils::create_symlink(&source_path, &dest_path) {
+                                Ok(()) => {
+                                    symlinks_created += 1;
+                                    debug!(
+                                        "Recreated symlink: {} -> {}",
+                                        source_path.display(),
+                                        dest_path.display()
+                                    );
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        "Failed to recreate symlink '{}': {}",
+                                        source_path.display(),
+                                        e
+                                    );
+                                    errors += 1;
+                                }
+                            }
+                            continue;
+                        }
+                        SymlinkMode::Follow => match std::fs::metadata(&source_path) {
+                            Ok(target_metadata) => {
+                                resolved = Some(target_metadata);
+                            }
+                            Err(e) => {
+                                // Dangling links are reported, never dropped.
+                                warn!(
+                                    "Cannot follow symlink '{}' (dangling link?): {}",
+                                    source_path.display(),
+                                    e
+                                );
+                                errors += 1;
+                                continue;
+                            }
+                        },
+                        SymlinkMode::Fail => {
+                            warn!(
+                                "Symbolic link '{}' found but the symlink mode is 'fail'",
+                                source_path.display()
+                            );
+                            errors += 1;
+                            continue;
+                        }
+                    }
+                }
+
+                // The dispatch metadata: the link target when following, the
+                // entry itself otherwise.
+                let entry_type = resolved.as_ref().unwrap_or(&metadata);
+
+                if entry_type.is_file() {
+                    // Copy file using high-performance engines. The engines
+                    // resolve the source themselves, so in `Follow` mode this
+                    // copies the link target's content.
                     match Self::copy_single_file_with_engine(
                         &source_path,
                         &dest_path,
@@ -406,6 +571,8 @@ impl TaskExecutor {
                         Ok(stats) => {
                             files_copied += stats.files_copied;
                             bytes_copied += stats.bytes_copied;
+                            files_skipped += stats.files_skipped;
+                            symlinks_created += stats.symlinks_created;
                             zerocopy_operations += stats.zerocopy_operations;
                             zerocopy_bytes += stats.zerocopy_bytes;
                             debug!(
@@ -420,13 +587,15 @@ impl TaskExecutor {
                             errors += 1;
                         }
                     }
-                } else if metadata.is_dir() {
-                    // Recursively copy subdirectory
+                } else if entry_type.is_dir() {
+                    // Recursively copy subdirectory (or a link to one in
+                    // `Follow` mode - the cycle guard lives at the top).
                     match Self::copy_directory_recursive(
                         &source_path,
                         &dest_path,
                         Arc::clone(&engine_selector),
                         config,
+                        visited_dirs,
                     )
                     .await
                     {
@@ -435,6 +604,7 @@ impl TaskExecutor {
                             directories_created += sub_stats.directories_created;
                             bytes_copied += sub_stats.bytes_copied;
                             files_skipped += sub_stats.files_skipped;
+                            symlinks_created += sub_stats.symlinks_created;
                             errors += sub_stats.errors;
                             zerocopy_operations += sub_stats.zerocopy_operations;
                             zerocopy_bytes += sub_stats.zerocopy_bytes;
@@ -449,16 +619,23 @@ impl TaskExecutor {
                         }
                     }
                 } else {
-                    // Skip special files (symlinks, etc.)
+                    // Non-regular entries (sockets, FIFOs, device nodes) are not
+                    // reproducible across platforms. Report them instead of
+                    // pretending they were copied.
+                    warn!(
+                        "Skipping unsupported special file '{}'",
+                        source_path.display()
+                    );
                     files_skipped += 1;
                 }
             }
 
             let total_duration = start_time.elapsed();
+            visited_dirs.remove(&canonical_source);
 
             debug!(
-                "Directory copy completed: {} files, {} dirs, {} bytes in {:?}",
-                files_copied, directories_created, bytes_copied, total_duration
+                "Directory copy completed: {} files, {} dirs, {} symlinks, {} bytes in {:?}",
+                files_copied, directories_created, symlinks_created, bytes_copied, total_duration
             );
 
             Ok(CopyStats {
@@ -466,6 +643,7 @@ impl TaskExecutor {
                 directories_created,
                 bytes_copied,
                 files_skipped,
+                symlinks_created,
                 errors,
                 duration: total_duration,
                 zerocopy_operations,
@@ -515,17 +693,21 @@ impl TaskExecutor {
     }
 
     /// Copy a single file using the optimal engine selected by EngineSelector
+    ///
+    /// The selector picks the engine for performance reasons; the copy
+    /// semantics come from the request, so they are applied on top of whatever
+    /// the selector chose.
     async fn copy_single_file_with_engine(
         source: &std::path::Path,
         destination: &std::path::Path,
         engine_selector: &EngineSelector,
-        _config: &ExecutorConfig,
+        config: &ExecutorConfig,
     ) -> Result<ferrocp_types::CopyStats> {
         use crate::selector::EngineType;
         use ferrocp_io::CopyEngine as IoCopyEngine;
 
         // Select the optimal engine for this file
-        let selection = engine_selector
+        let mut selection = engine_selector
             .select_optimal_engine(source, destination)
             .await?;
 
@@ -536,6 +718,14 @@ impl TaskExecutor {
             destination.display(),
             selection.reasoning
         );
+
+        // The request owns the contract: overwrite policy and symlink handling
+        // always override the selector's tuning defaults.
+        selection.copy_options.overwrite_policy = config.overwrite_policy;
+        selection.copy_options.overwrite_prompt = config.overwrite_prompt.clone();
+        selection.copy_options.symlink_mode = config.symlink_mode;
+        selection.copy_options.preserve_timestamps = config.preserve_timestamps;
+        selection.copy_options.preserve_permissions = config.preserve_permissions;
 
         // Execute copy using the selected engine
         match selection.engine_type {
@@ -698,6 +888,7 @@ impl std::fmt::Debug for TaskExecutor {
 mod tests {
     use super::*;
     use crate::task::CopyRequest;
+    use ferrocp_types::CopyMode;
     use tempfile::TempDir;
 
     #[tokio::test]
@@ -805,5 +996,320 @@ mod tests {
         assert_eq!(stats.files_copied, 3);
         assert_eq!(stats.directories_created, 2); // source_dir + subdir
         assert!(stats.bytes_copied > 0);
+    }
+
+    /// Create a symbolic link, or report that this platform/process cannot
+    ///
+    /// Creating symlinks needs `SeCreateSymbolicLinkPrivilege` on Windows
+    /// (Developer Mode or an elevated process). Tests must degrade to a
+    /// documented skip there rather than fail or, worse, never run at all.
+    fn try_symlink(target: &std::path::Path, link: &std::path::Path) -> bool {
+        #[cfg(unix)]
+        let result = std::os::unix::fs::symlink(target, link);
+
+        #[cfg(windows)]
+        let result = {
+            let is_dir = std::fs::metadata(target)
+                .map(|metadata| metadata.is_dir())
+                .unwrap_or(false);
+            if is_dir {
+                std::os::windows::fs::symlink_dir(target, link)
+            } else {
+                std::os::windows::fs::symlink_file(target, link)
+            }
+        };
+
+        match result {
+            Ok(()) => true,
+            Err(error) => {
+                eprintln!(
+                    "skipping symlink test: cannot create '{}': {}",
+                    link.display(),
+                    error
+                );
+                false
+            }
+        }
+    }
+
+    /// Build a source tree with one file, one directory, a link to each and a
+    /// dangling link.
+    ///
+    /// Returns `false` when symlinks cannot be created, in which case the
+    /// caller skips its assertions.
+    fn build_symlink_tree(root: &std::path::Path) -> bool {
+        std::fs::create_dir_all(root.join("dir")).unwrap();
+        std::fs::write(root.join("file.txt"), b"file-content").unwrap();
+        std::fs::write(root.join("dir").join("inner.txt"), b"inner-content").unwrap();
+
+        let file_link = try_symlink(std::path::Path::new("file.txt"), &root.join("link_to_file"));
+        let dir_link = try_symlink(&root.join("dir"), &root.join("link_to_dir"));
+        let dangling_link =
+            try_symlink(std::path::Path::new("nowhere.txt"), &root.join("dangling"));
+
+        file_link && dir_link && dangling_link
+    }
+
+    #[tokio::test]
+    async fn test_directory_copy_preserves_symlinks_by_default() {
+        let temp_dir = TempDir::new().unwrap();
+        let source_dir = temp_dir.path().join("source");
+        let dest_dir = temp_dir.path().join("dest");
+        if !build_symlink_tree(&source_dir) {
+            return;
+        }
+
+        let executor = TaskExecutor::new(ExecutorConfig::default()).await.unwrap();
+        let task = crate::task::Task::new(CopyRequest::new(&source_dir, &dest_dir));
+        let task_id = task.id;
+        executor.execute_task(task).await.unwrap();
+        let result = executor.wait_for_completion(task_id).await.unwrap();
+
+        assert!(result.is_success(), "copy failed: {:?}", result.error);
+
+        // Links are recreated as links instead of being silently dropped.
+        let copied_link = dest_dir.join("link_to_file");
+        assert!(
+            std::fs::symlink_metadata(&copied_link)
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "link_to_file must be recreated as a symlink"
+        );
+        assert_eq!(
+            std::fs::read_link(&copied_link).unwrap().to_str(),
+            Some("file.txt")
+        );
+        assert_eq!(
+            std::fs::read_to_string(&copied_link).unwrap(),
+            "file-content"
+        );
+
+        assert!(
+            std::fs::symlink_metadata(dest_dir.join("link_to_dir"))
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "link_to_dir must be recreated as a symlink"
+        );
+
+        // A dangling link stays dangling instead of vanishing.
+        assert!(std::fs::symlink_metadata(dest_dir.join("dangling")).is_ok());
+        assert!(std::fs::metadata(dest_dir.join("dangling")).is_err());
+
+        let stats = &result.stats;
+        assert_eq!(stats.symlinks_created, 3, "all three links must be counted");
+        assert_eq!(stats.files_copied, 2);
+        assert_eq!(stats.errors, 0);
+    }
+
+    #[tokio::test]
+    async fn test_directory_copy_follow_mode_copies_link_targets() {
+        let temp_dir = TempDir::new().unwrap();
+        let source_dir = temp_dir.path().join("source");
+        let dest_dir = temp_dir.path().join("dest");
+        if !build_symlink_tree(&source_dir) {
+            return;
+        }
+
+        let config = ExecutorConfig {
+            symlink_mode: SymlinkMode::Follow,
+            ..ExecutorConfig::default()
+        };
+        let executor = TaskExecutor::new(config).await.unwrap();
+        let request =
+            CopyRequest::new(&source_dir, &dest_dir).with_symlink_mode(SymlinkMode::Follow);
+        let task = crate::task::Task::new(request);
+        let task_id = task.id;
+        executor.execute_task(task).await.unwrap();
+        let result = executor.wait_for_completion(task_id).await.unwrap();
+
+        let stats = result.stats.clone();
+
+        // No link survives: everything is materialised as real content.
+        assert_eq!(stats.symlinks_created, 0);
+        assert!(
+            !std::fs::symlink_metadata(dest_dir.join("link_to_file"))
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "link_to_file must be materialised as a regular file"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dest_dir.join("link_to_file")).unwrap(),
+            "file-content"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dest_dir.join("link_to_dir").join("inner.txt")).unwrap(),
+            "inner-content"
+        );
+
+        // The dangling link is reported, never silently skipped.
+        assert_eq!(stats.errors, 1, "the dangling link must be reported");
+    }
+
+    #[tokio::test]
+    async fn test_directory_copy_fail_mode_rejects_symlinks() {
+        let temp_dir = TempDir::new().unwrap();
+        let source_dir = temp_dir.path().join("source");
+        let dest_dir = temp_dir.path().join("dest");
+        if !build_symlink_tree(&source_dir) {
+            return;
+        }
+
+        let config = ExecutorConfig {
+            symlink_mode: SymlinkMode::Fail,
+            ..ExecutorConfig::default()
+        };
+        let executor = TaskExecutor::new(config).await.unwrap();
+        let request = CopyRequest::new(&source_dir, &dest_dir).with_symlink_mode(SymlinkMode::Fail);
+        let task = crate::task::Task::new(request);
+        let task_id = task.id;
+        executor.execute_task(task).await.unwrap();
+        let result = executor.wait_for_completion(task_id).await.unwrap();
+
+        let stats = result.stats.clone();
+        assert_eq!(stats.errors, 3, "every symlink must be reported");
+        assert_eq!(stats.symlinks_created, 0);
+        assert!(dest_dir.join("file.txt").exists());
+        assert!(!dest_dir.join("link_to_file").exists());
+    }
+
+    #[tokio::test]
+    async fn test_directory_copy_follow_mode_survives_link_cycle() {
+        let temp_dir = TempDir::new().unwrap();
+        let source_dir = temp_dir.path().join("source");
+        let dest_dir = temp_dir.path().join("dest");
+        std::fs::create_dir_all(source_dir.join("sub")).unwrap();
+        std::fs::write(source_dir.join("sub").join("payload.txt"), b"payload").unwrap();
+        // sub/back points at an ancestor: following it naively would recurse
+        // forever.
+        if !try_symlink(&source_dir, &source_dir.join("sub").join("back")) {
+            return;
+        }
+
+        let config = ExecutorConfig {
+            symlink_mode: SymlinkMode::Follow,
+            ..ExecutorConfig::default()
+        };
+        let executor = TaskExecutor::new(config).await.unwrap();
+        let request =
+            CopyRequest::new(&source_dir, &dest_dir).with_symlink_mode(SymlinkMode::Follow);
+        let task = crate::task::Task::new(request);
+        let task_id = task.id;
+
+        // Bound the wait: the cycle guard is what keeps this from hanging, and
+        // a hang would otherwise stall the whole test binary.
+        executor.execute_task(task).await.unwrap();
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            executor.wait_for_completion(task_id),
+        )
+        .await
+        .expect("copy must terminate instead of following the cycle forever")
+        .unwrap();
+
+        assert_eq!(result.stats.errors, 0);
+        assert!(dest_dir.join("sub").join("payload.txt").exists());
+    }
+
+    #[tokio::test]
+    async fn test_copy_mode_mirror_is_rejected_not_degraded() {
+        let temp_dir = TempDir::new().unwrap();
+        let source = temp_dir.path().join("source.txt");
+        let destination = temp_dir.path().join("dest.txt");
+        tokio::fs::write(&source, b"payload").await.unwrap();
+        tokio::fs::write(&destination, b"old").await.unwrap();
+
+        let executor = TaskExecutor::new(ExecutorConfig::default()).await.unwrap();
+        let request = CopyRequest::new(&source, &destination).with_mode(CopyMode::Mirror);
+        let task = crate::task::Task::new(request);
+        let task_id = task.id;
+        executor.execute_task(task).await.unwrap();
+        let result = executor.wait_for_completion(task_id).await.unwrap();
+
+        assert!(!result.is_success(), "mirror mode must not succeed");
+        let error = result.error.unwrap_or_default();
+        assert!(
+            error.contains("mirror"),
+            "error must name the mode: {error}"
+        );
+
+        // Crucially the destination is untouched: no silent degradation to `All`.
+        assert_eq!(
+            tokio::fs::read_to_string(&destination).await.unwrap(),
+            "old"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_overwrite_policy_never_keeps_existing_destination() {
+        let temp_dir = TempDir::new().unwrap();
+        let source = temp_dir.path().join("source.txt");
+        let destination = temp_dir.path().join("dest.txt");
+        tokio::fs::write(&source, b"new").await.unwrap();
+        tokio::fs::write(&destination, b"old").await.unwrap();
+
+        let executor = TaskExecutor::new(ExecutorConfig::default()).await.unwrap();
+        let request = CopyRequest::new(&source, &destination)
+            .with_overwrite_semantics(OverwritePolicy::Never, None);
+        let task = crate::task::Task::new(request);
+        let task_id = task.id;
+        executor.execute_task(task).await.unwrap();
+        let result = executor.wait_for_completion(task_id).await.unwrap();
+
+        assert!(result.is_success(), "skipping is not an error");
+        assert_eq!(result.stats.files_skipped, 1);
+        assert_eq!(result.stats.files_copied, 0);
+        assert_eq!(
+            tokio::fs::read_to_string(&destination).await.unwrap(),
+            "old"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_overwrite_policy_fail_aborts_on_existing_destination() {
+        let temp_dir = TempDir::new().unwrap();
+        let source = temp_dir.path().join("source.txt");
+        let destination = temp_dir.path().join("dest.txt");
+        tokio::fs::write(&source, b"new").await.unwrap();
+        tokio::fs::write(&destination, b"old").await.unwrap();
+
+        let config = ExecutorConfig {
+            // Keep the retry loop short: the policy is deterministic.
+            max_retry_attempts: 0,
+            enable_retry: false,
+            ..ExecutorConfig::default()
+        };
+        let executor = TaskExecutor::new(config).await.unwrap();
+        let request = CopyRequest::new(&source, &destination)
+            .with_overwrite_semantics(OverwritePolicy::Fail, None);
+        let task = crate::task::Task::new(request);
+        let task_id = task.id;
+        executor.execute_task(task).await.unwrap();
+        let result = executor.wait_for_completion(task_id).await.unwrap();
+
+        assert!(!result.is_success(), "`fail` must abort the copy");
+        assert_eq!(
+            tokio::fs::read_to_string(&destination).await.unwrap(),
+            "old",
+            "the destination must not be truncated"
+        );
+    }
+
+    #[test]
+    fn test_copy_mode_maps_to_overwrite_policy() {
+        assert_eq!(
+            CopyRequest::new("a", "b")
+                .with_mode(CopyMode::Newer)
+                .overwrite_policy,
+            OverwritePolicy::IfNewer
+        );
+        assert_eq!(
+            CopyRequest::new("a", "b")
+                .with_mode(CopyMode::All)
+                .overwrite_policy,
+            OverwritePolicy::Always
+        );
     }
 }

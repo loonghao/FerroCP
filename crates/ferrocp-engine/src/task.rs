@@ -1,6 +1,6 @@
 //! Task management and execution for the copy engine
 
-use ferrocp_types::{CopyMode, CopyStats, Priority};
+use ferrocp_types::{CopyMode, CopyStats, OverwritePolicy, Priority, SymlinkMode};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
@@ -70,7 +70,16 @@ pub struct CopyRequest {
     /// Destination path
     pub destination: PathBuf,
     /// Copy mode
+    ///
+    /// Translated into an `OverwritePolicy` before any I/O happens. `Mirror`
+    /// is rejected with an error because it is not implemented.
     pub mode: CopyMode,
+    /// Overwrite behaviour implied by `mode`, or set directly by the caller
+    pub overwrite_policy: OverwritePolicy,
+    /// Handler used when `overwrite_policy` is `OverwritePolicy::Prompt`
+    pub overwrite_prompt: Option<ferrocp_io::OverwritePrompt>,
+    /// How to treat symbolic links found in the source
+    pub symlink_mode: SymlinkMode,
     /// Task priority
     pub priority: Priority,
     /// Whether to preserve metadata
@@ -96,6 +105,9 @@ impl CopyRequest {
             source: source.into(),
             destination: destination.into(),
             mode: CopyMode::All,
+            overwrite_policy: OverwritePolicy::Always,
+            overwrite_prompt: None,
+            symlink_mode: SymlinkMode::Preserve,
             priority: Priority::Normal,
             preserve_metadata: true,
             verify_copy: false,
@@ -108,8 +120,31 @@ impl CopyRequest {
     }
 
     /// Set the copy mode
+    ///
+    /// Also updates [`CopyRequest::overwrite_policy`] to the policy the mode
+    /// implies, so the two can never disagree.
     pub fn with_mode(mut self, mode: CopyMode) -> Self {
         self.mode = mode;
+        if let Ok(policy) = mode.overwrite_policy() {
+            self.overwrite_policy = policy;
+        }
+        self
+    }
+
+    /// Set the overwrite policy explicitly, with its optional prompt handler
+    pub fn with_overwrite_semantics(
+        mut self,
+        overwrite_policy: OverwritePolicy,
+        overwrite_prompt: Option<ferrocp_io::OverwritePrompt>,
+    ) -> Self {
+        self.overwrite_policy = overwrite_policy;
+        self.overwrite_prompt = overwrite_prompt;
+        self
+    }
+
+    /// Set how symbolic links are treated
+    pub fn with_symlink_mode(mut self, symlink_mode: SymlinkMode) -> Self {
+        self.symlink_mode = symlink_mode;
         self
     }
 

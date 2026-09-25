@@ -132,6 +132,8 @@ pub struct CopyStatsJson {
     pub bytes_copied: u64,
     /// Number of files skipped
     pub files_skipped: u64,
+    /// Number of symbolic links recreated in the destination
+    pub symlinks_created: u64,
     /// Number of errors
     pub errors: u64,
     /// Duration in seconds
@@ -176,6 +178,7 @@ impl CopyResultJson {
         destination_device: &DeviceInfo,
         comparison: &DeviceComparison,
         stats: &CopyStats,
+        error: Option<&str>,
     ) -> Self {
         let actual_speed_mbps = stats.transfer_rate() / 1024.0 / 1024.0;
         let efficiency = if comparison.expected_speed_mbps > 0.0 {
@@ -191,24 +194,32 @@ impl CopyResultJson {
             _ => PerformanceRating::Poor,
         };
 
-        let success = stats.errors == 0;
-        let message = if success {
+        // A failed task must never be reported as a success: an aborted copy
+        // (for example `--overwrite fail` on an existing destination) produces
+        // no per-file errors, so `stats.errors` alone is not enough.
+        let (success, message) = match error {
+            Some(reason) => (false, format!("Copy failed: {reason}")),
+            None if stats.errors > 0 => (
+                false,
+                format!("Copy completed with {} errors", stats.errors),
+            ),
             // Derived from the rating rather than re-testing `efficiency`, so
             // the prose and the rating can never disagree again.
-            match performance_rating {
-                PerformanceRating::Excellent => {
-                    "Copy completed successfully with excellent performance".to_string()
-                }
-                PerformanceRating::Good => {
-                    "Copy completed successfully with good performance".to_string()
-                }
-                PerformanceRating::Fair | PerformanceRating::Poor => {
-                    "Copy completed successfully but performance was lower than expected"
-                        .to_string()
-                }
-            }
-        } else {
-            format!("Copy completed with {} errors", stats.errors)
+            None => (
+                true,
+                match performance_rating {
+                    PerformanceRating::Excellent => {
+                        "Copy completed successfully with excellent performance".to_string()
+                    }
+                    PerformanceRating::Good => {
+                        "Copy completed successfully with good performance".to_string()
+                    }
+                    PerformanceRating::Fair | PerformanceRating::Poor => {
+                        "Copy completed successfully but performance was lower than expected"
+                            .to_string()
+                    }
+                },
+            ),
         };
 
         Self {
@@ -302,6 +313,7 @@ impl CopyStatsJson {
             directories_created: stats.directories_created,
             bytes_copied: stats.bytes_copied,
             files_skipped: stats.files_skipped,
+            symlinks_created: stats.symlinks_created,
             errors: stats.errors,
             duration_seconds: stats.duration.as_secs_f64(),
             actual_transfer_rate_mbps: stats.transfer_rate() / 1024.0 / 1024.0,
@@ -360,6 +372,7 @@ mod tests {
             &device_info(),
             &comparison,
             &stats,
+            None,
         )
     }
 
@@ -427,9 +440,51 @@ mod tests {
             &device_info(),
             &comparison,
             &stats,
+            None,
         );
 
         assert!(!result.result.success);
         assert_eq!(result.result.message, "Copy completed with 3 errors");
+    }
+
+    /// A task can fail without producing a single per-file error -- an aborted
+    /// copy (`--overwrite fail` on an existing destination) is the canonical
+    /// case -- so the reported failure must come from the task error, not from
+    /// `stats.errors`. This is the regression test for that branch.
+    #[test]
+    fn a_task_error_fails_the_result_without_any_per_file_error() {
+        let mut stats = CopyStats::new();
+        stats.bytes_copied = 95 * 1024 * 1024;
+        stats.duration = Duration::from_secs(1);
+        // No per-file errors at all: only the task-level error proves failure.
+        stats.errors = 0;
+
+        let comparison = DeviceComparison {
+            bottleneck: Bottleneck::Source,
+            expected_speed_mbps: 100.0,
+            source_info: device_info(),
+            destination_info: device_info(),
+        };
+
+        let result = CopyResultJson::new(
+            "src".to_string(),
+            "dst".to_string(),
+            &device_info(),
+            &device_info(),
+            &comparison,
+            &stats,
+            Some("disk full"),
+        );
+
+        assert!(
+            !result.result.success,
+            "a failed task must not be reported as success just because no \
+             per-file error was recorded"
+        );
+        assert!(
+            result.result.message.contains("disk full"),
+            "the failure reason must reach the caller: {}",
+            result.result.message
+        );
     }
 }

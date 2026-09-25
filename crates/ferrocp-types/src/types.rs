@@ -34,6 +34,12 @@ pub struct CopyStats {
     pub files_skipped: u64,
     /// Number of errors encountered
     pub errors: u64,
+    /// Number of symbolic links recreated in the destination
+    ///
+    /// Only incremented when [`SymlinkMode::Preserve`] recreates a link. Links
+    /// copied as regular files ([`SymlinkMode::Follow`]) are counted in
+    /// `files_copied` instead, and skipped links are counted in `files_skipped`.
+    pub symlinks_created: u64,
     /// Total duration of the operation
     pub duration: Duration,
     /// Number of zero-copy operations used
@@ -46,6 +52,25 @@ impl CopyStats {
     /// Create a new empty statistics instance
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Create statistics describing a single skipped entry
+    ///
+    /// Returned when an overwrite policy (or a symlink policy) decides that an
+    /// entry must be left alone. Skipping is never an error.
+    pub fn skipped_one() -> Self {
+        Self {
+            files_skipped: 1,
+            ..Self::default()
+        }
+    }
+
+    /// Create statistics describing a single recreated symbolic link
+    pub fn symlink_created_one() -> Self {
+        Self {
+            symlinks_created: 1,
+            ..Self::default()
+        }
     }
 
     /// Calculate the overall transfer rate
@@ -74,6 +99,7 @@ impl CopyStats {
         self.bytes_copied += other.bytes_copied;
         self.files_skipped += other.files_skipped;
         self.errors += other.errors;
+        self.symlinks_created += other.symlinks_created;
         // Take the maximum duration instead of adding them to avoid cumulative time
         self.duration = self.duration.max(other.duration);
         self.zerocopy_operations += other.zerocopy_operations;
@@ -87,6 +113,7 @@ impl CopyStats {
         self.bytes_copied += other.bytes_copied;
         self.files_skipped += other.files_skipped;
         self.errors += other.errors;
+        self.symlinks_created += other.symlinks_created;
         self.duration = total_duration; // Use the actual total duration
         self.zerocopy_operations += other.zerocopy_operations;
         self.zerocopy_bytes += other.zerocopy_bytes;
@@ -209,6 +236,20 @@ pub enum FileOperation {
 }
 
 /// Copy mode
+///
+/// `CopyMode` is a coarse, task-level preset. It is translated into an
+/// [`OverwritePolicy`] before any I/O happens, so the two never disagree:
+///
+/// | `CopyMode`  | resulting [`OverwritePolicy`] |
+/// |-------------|-------------------------------|
+/// | `All`       | [`OverwritePolicy::Always`]   |
+/// | `Newer`     | [`OverwritePolicy::IfNewer`]  |
+/// | `Different` | [`OverwritePolicy::IfDifferent`] |
+/// | `Mirror`    | not implemented - rejected with an error |
+///
+/// `Mirror` is intentionally rejected instead of silently degrading to `All`:
+/// deleting destination entries that are absent from the source is a
+/// destructive operation and must not happen behind the user's back.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CopyMode {
@@ -220,6 +261,165 @@ pub enum CopyMode {
     Different,
     /// Mirror (delete extra files in destination)
     Mirror,
+}
+
+impl CopyMode {
+    /// Translate the mode into the overwrite policy it implies
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Config`](crate::Error::Config) for
+    /// [`CopyMode::Mirror`], which is declared but not implemented yet.
+    pub fn overwrite_policy(&self) -> Result<OverwritePolicy, crate::Error> {
+        match self {
+            Self::All => Ok(OverwritePolicy::Always),
+            Self::Newer => Ok(OverwritePolicy::IfNewer),
+            Self::Different => Ok(OverwritePolicy::IfDifferent),
+            Self::Mirror => Err(crate::Error::config(
+                "copy mode 'mirror' is declared but not implemented: refusing to run instead of \
+                 silently degrading to 'all' (it would delete destination entries absent from \
+                 the source)",
+            )),
+        }
+    }
+}
+
+/// What to do when the destination path already exists
+///
+/// This is the single source of truth for overwrite behaviour. Every engine
+/// consults the policy before it opens the destination for writing, so no
+/// engine can silently truncate a file the user asked to keep.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum OverwritePolicy {
+    /// Always overwrite the destination (truncate and rewrite).
+    ///
+    /// This is the default and preserves `FerroCP`'s historical behaviour.
+    #[default]
+    Always,
+    /// Never overwrite: keep the existing destination and skip the source.
+    ///
+    /// Skipped entries are reported through [`CopyStats::files_skipped`].
+    Never,
+    /// Overwrite only when the source modification time is newer than the
+    /// destination's.
+    IfNewer,
+    /// Overwrite only when size or modification time differ.
+    IfDifferent,
+    /// Abort with an error when the destination already exists.
+    Fail,
+    /// Ask the caller-provided prompt handler.
+    ///
+    /// The handler is supplied through `ferrocp_io::OverwritePrompt`. If no
+    /// handler is registered the copy fails with a configuration error instead
+    /// of falling back to a guess.
+    Prompt,
+}
+
+impl OverwritePolicy {
+    /// Canonical string form used by the CLI and the Python bindings
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Always => "always",
+            Self::Never => "never",
+            Self::IfNewer => "if_newer",
+            Self::IfDifferent => "if_different",
+            Self::Fail => "fail",
+            Self::Prompt => "prompt",
+        }
+    }
+
+    /// Parse the canonical string form, accepting a few common aliases
+    ///
+    /// Unknown values return `None` so callers can raise a precise error
+    /// instead of silently defaulting.
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "always" | "overwrite" | "auto" | "all" => Some(Self::Always),
+            "never" | "skip" => Some(Self::Never),
+            "if_newer" | "newer" | "if-newer" => Some(Self::IfNewer),
+            "if_different" | "different" | "if-different" => Some(Self::IfDifferent),
+            "fail" | "error" => Some(Self::Fail),
+            "prompt" | "ask" => Some(Self::Prompt),
+            _ => None,
+        }
+    }
+
+    /// All accepted spellings, for error messages and CLI help text
+    #[must_use]
+    pub const fn accepted_values() -> &'static [&'static str] {
+        &[
+            "always",
+            "never",
+            "if_newer",
+            "if_different",
+            "fail",
+            "prompt",
+        ]
+    }
+}
+
+/// What to do when the source tree contains a symbolic link
+///
+/// Historically FerroCP skipped symlinks silently, which loses data without
+/// any signal to the caller. Every mode below is observable in
+/// [`CopyStats`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum SymlinkMode {
+    /// Recreate the link itself in the destination.
+    ///
+    /// This is the default: it never loses data and reproduces the source tree
+    /// faithfully. Dangling links are recreated as dangling links.
+    #[default]
+    Preserve,
+    /// Copy the content the link points at.
+    ///
+    /// A link to a directory is copied as a directory (with loop detection); a
+    /// dangling link is reported as an error.
+    Follow,
+    /// Abort the copy when a symbolic link is encountered.
+    Fail,
+}
+
+impl SymlinkMode {
+    /// Canonical string form used by the CLI and the Python bindings
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Preserve => "preserve",
+            Self::Follow => "follow",
+            Self::Fail => "fail",
+        }
+    }
+
+    /// Parse the canonical string form, accepting a few common aliases
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "preserve" | "keep" | "copy" => Some(Self::Preserve),
+            "follow" | "dereference" => Some(Self::Follow),
+            "fail" | "error" => Some(Self::Fail),
+            _ => None,
+        }
+    }
+
+    /// All accepted spellings, for error messages and CLI help text
+    #[must_use]
+    pub const fn accepted_values() -> &'static [&'static str] {
+        &["preserve", "follow", "fail"]
+    }
+}
+
+/// The decision produced for a destination that already exists
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OverwriteDecision {
+    /// (Re)write the destination
+    Proceed,
+    /// Leave the destination untouched
+    Skip,
 }
 
 /// Compression algorithm
@@ -399,6 +599,7 @@ impl DeviceCacheStats {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ErrorKind;
     use proptest::prelude::*;
     use std::path::PathBuf;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -727,5 +928,106 @@ mod tests {
         assert!(!metadata.is_dir);
         assert!(!metadata.is_symlink);
         assert!(metadata.created.is_some());
+    }
+
+    #[test]
+    fn test_overwrite_policy_roundtrip() {
+        for policy in [
+            OverwritePolicy::Always,
+            OverwritePolicy::Never,
+            OverwritePolicy::IfNewer,
+            OverwritePolicy::IfDifferent,
+            OverwritePolicy::Fail,
+            OverwritePolicy::Prompt,
+        ] {
+            let parsed = OverwritePolicy::parse(policy.as_str());
+            assert_eq!(parsed, Some(policy), "round-trip failed for {policy:?}");
+        }
+    }
+
+    #[test]
+    fn test_overwrite_policy_aliases() {
+        assert_eq!(
+            OverwritePolicy::parse("overwrite"),
+            Some(OverwritePolicy::Always)
+        );
+        assert_eq!(OverwritePolicy::parse("skip"), Some(OverwritePolicy::Never));
+        assert_eq!(
+            OverwritePolicy::parse("newer"),
+            Some(OverwritePolicy::IfNewer)
+        );
+        assert_eq!(
+            OverwritePolicy::parse("IF_NEWER"),
+            Some(OverwritePolicy::IfNewer),
+            "parsing must be case-insensitive"
+        );
+    }
+
+    #[test]
+    fn test_overwrite_policy_rejects_unknown_values() {
+        // An unknown value must never silently degrade to the default.
+        assert_eq!(OverwritePolicy::parse("prompt-me-maybe"), None);
+        assert_eq!(OverwritePolicy::parse(""), None);
+        assert_eq!(OverwritePolicy::parse("random"), None);
+    }
+
+    #[test]
+    fn test_overwrite_policy_default_is_always() {
+        // The default must match FerroCP's historical truncate-and-overwrite
+        // behaviour, otherwise defaults would silently change semantics.
+        assert_eq!(OverwritePolicy::default(), OverwritePolicy::Always);
+    }
+
+    #[test]
+    fn test_symlink_mode_roundtrip() {
+        for mode in [
+            SymlinkMode::Preserve,
+            SymlinkMode::Follow,
+            SymlinkMode::Fail,
+        ] {
+            assert_eq!(SymlinkMode::parse(mode.as_str()), Some(mode));
+        }
+        assert_eq!(SymlinkMode::parse("nonsense"), None);
+        assert_eq!(SymlinkMode::default(), SymlinkMode::Preserve);
+    }
+
+    #[test]
+    fn test_copy_mode_maps_to_overwrite_policy() {
+        assert_eq!(
+            CopyMode::All.overwrite_policy().unwrap(),
+            OverwritePolicy::Always
+        );
+        assert_eq!(
+            CopyMode::Newer.overwrite_policy().unwrap(),
+            OverwritePolicy::IfNewer
+        );
+        assert_eq!(
+            CopyMode::Different.overwrite_policy().unwrap(),
+            OverwritePolicy::IfDifferent
+        );
+    }
+
+    #[test]
+    fn test_copy_mode_mirror_is_rejected_not_degraded() {
+        // Mirror must fail loudly instead of behaving like `All`.
+        let error = CopyMode::Mirror.overwrite_policy().unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::Config);
+        assert!(error.to_string().contains("mirror"));
+    }
+
+    #[test]
+    fn test_copy_stats_merge_includes_symlinks() {
+        let mut stats = CopyStats::new();
+        stats.merge(&CopyStats::symlink_created_one());
+        stats.merge_with_duration(&CopyStats::symlink_created_one(), Duration::from_secs(1));
+        assert_eq!(stats.symlinks_created, 2);
+    }
+
+    #[test]
+    fn test_copy_stats_skipped_helper() {
+        let stats = CopyStats::skipped_one();
+        assert_eq!(stats.files_skipped, 1);
+        assert_eq!(stats.files_copied, 0);
+        assert_eq!(stats.errors, 0);
     }
 }

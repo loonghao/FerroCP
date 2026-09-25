@@ -3,6 +3,8 @@
 //! This module provides a specialized copy engine for very small files,
 //! using zero-syscall optimization strategies and stack-allocated buffers to minimize overhead.
 
+use crate::metadata::preserve_metadata;
+use crate::policy::{apply_copy_contract, ContractOutcome};
 use crate::{CopyEngine, CopyOptions};
 use ferrocp_types::{CopyStats, DeviceType, Error, Result};
 use std::fs;
@@ -49,6 +51,12 @@ pub struct MicroFileCopyEngine {
     stats: MicroCopyStats,
     /// Optimization strategy to use
     strategy: MicroCopyStrategy,
+    /// Semantic options used for the current copy
+    ///
+    /// The micro engine ignores the performance-tuning knobs, but it must still
+    /// honour the contract: whether to preserve timestamps and permissions is
+    /// a correctness question, not a speed one.
+    options: CopyOptions,
 }
 
 impl Default for MicroFileCopyEngine {
@@ -86,6 +94,7 @@ impl MicroFileCopyEngine {
         Self {
             stats: MicroCopyStats::default(),
             strategy: MicroCopyStrategy::default(),
+            options: CopyOptions::default(),
         }
     }
 
@@ -94,6 +103,7 @@ impl MicroFileCopyEngine {
         Self {
             stats: MicroCopyStats::default(),
             strategy,
+            options: CopyOptions::default(),
         }
     }
 
@@ -204,6 +214,7 @@ impl MicroFileCopyEngine {
             bytes_copied,
             files_skipped: 0,
             errors: 0,
+            symlinks_created: 0,
             duration: elapsed,
             zerocopy_operations: 0,
             zerocopy_bytes: 0,
@@ -274,6 +285,7 @@ impl MicroFileCopyEngine {
             bytes_copied,
             files_skipped: 0,
             errors: 0,
+            symlinks_created: 0,
             duration: elapsed,
             zerocopy_operations: 0,
             zerocopy_bytes: 0,
@@ -365,6 +377,7 @@ impl MicroFileCopyEngine {
             bytes_copied,
             files_skipped: 0,
             errors: 0,
+            symlinks_created: 0,
             duration: elapsed,
             zerocopy_operations: 0,
             zerocopy_bytes: 0,
@@ -446,6 +459,7 @@ impl MicroFileCopyEngine {
             bytes_copied,
             files_skipped: 0,
             errors: 0,
+            symlinks_created: 0,
             duration: elapsed,
             zerocopy_operations: 0,
             zerocopy_bytes: 0,
@@ -478,7 +492,7 @@ impl MicroFileCopyEngine {
         }
 
         // Ultra-optimized zero-allocation operation for micro files
-        let (bytes_copied, source_metadata) = {
+        let (bytes_copied, _source_metadata) = {
             use std::io::{Read, Write};
 
             // Open source file and get metadata in one operation
@@ -541,8 +555,10 @@ impl MicroFileCopyEngine {
             (bytes_copied, source_metadata)
         };
 
-        // Preserve metadata if the file system supports it (optimized)
-        if let Err(e) = self.preserve_metadata(source_path, dest_path, &source_metadata) {
+        // Preserve metadata according to the options. The shared helper honours
+        // both flags and implements the Windows branch, so the micro engine no
+        // longer preserves everything unconditionally.
+        if let Err(e) = preserve_metadata(source_path, dest_path, &self.options) {
             debug!("Failed to preserve metadata: {}", e);
             // Don't fail the copy operation for metadata errors
         }
@@ -568,67 +584,11 @@ impl MicroFileCopyEngine {
             bytes_copied,
             files_skipped: 0,
             errors: 0,
+            symlinks_created: 0,
             duration: elapsed,
             zerocopy_operations: 0,
             zerocopy_bytes: 0,
         })
-    }
-
-    /// Preserve file metadata (timestamps, permissions) - optimized version
-    ///
-    /// This version minimizes system calls and error handling overhead
-    #[allow(dead_code)]
-    fn preserve_metadata_optimized<P: AsRef<Path>>(
-        &self,
-        _source: P,
-        destination: P,
-        source_metadata: &fs::Metadata,
-    ) {
-        let dest_path = destination.as_ref();
-
-        // Optimized: Batch metadata operations and ignore errors for performance
-        // For micro files, metadata preservation is less critical than speed
-
-        // Preserve modification time (single operation)
-        if let Ok(modified) = source_metadata.modified() {
-            let _ = filetime::set_file_mtime(dest_path, filetime::FileTime::from(modified));
-        }
-
-        // Preserve permissions on Unix systems (single operation)
-        #[cfg(unix)]
-        {
-            let permissions = source_metadata.permissions();
-            let _ = fs::set_permissions(dest_path, permissions);
-        }
-    }
-
-    /// Preserve file metadata (timestamps, permissions) - original version
-    fn preserve_metadata<P: AsRef<Path>>(
-        &self,
-        _source: P,
-        destination: P,
-        source_metadata: &fs::Metadata,
-    ) -> Result<()> {
-        let dest_path = destination.as_ref();
-
-        // Preserve modification time
-        if let Ok(modified) = source_metadata.modified() {
-            if let Err(e) = filetime::set_file_mtime(dest_path, filetime::FileTime::from(modified))
-            {
-                debug!("Failed to set modification time: {}", e);
-            }
-        }
-
-        // Preserve permissions on Unix systems
-        #[cfg(unix)]
-        {
-            let permissions = source_metadata.permissions();
-            if let Err(e) = fs::set_permissions(dest_path, permissions) {
-                debug!("Failed to set permissions: {}", e);
-            }
-        }
-
-        Ok(())
     }
 
     /// Calculate average throughput in KiB/s
@@ -703,10 +663,24 @@ impl CopyEngine for MicroFileCopyEngine {
         &mut self,
         source: P,
         destination: P,
-        _options: CopyOptions,
+        options: CopyOptions,
     ) -> Result<CopyStats> {
-        // For micro files, options are largely ignored as we use optimized path
-        self.copy_file(source, destination).await
+        // Only the tuning knobs are ignored for micro files; the semantic
+        // contract (overwrite policy and symlink mode) is always honoured.
+        options.validate()?;
+
+        let source_path = source.as_ref();
+        let dest_path = destination.as_ref();
+
+        // Remember the options so the metadata step can honour them; the
+        // inner `copy_file` path has no way to pass them through.
+        self.options = options.clone();
+        let outcome = apply_copy_contract(source_path, dest_path, &options)?;
+
+        match outcome {
+            ContractOutcome::Proceed => self.copy_file(source, destination).await,
+            ContractOutcome::Done(finished) => Ok(finished),
+        }
     }
 
     async fn detect_device_type<P: AsRef<Path> + Send>(&self, _path: P) -> Result<DeviceType> {

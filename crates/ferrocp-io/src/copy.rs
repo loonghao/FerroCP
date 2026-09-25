@@ -1,15 +1,23 @@
 //! High-performance file copying engine
 
+use crate::metadata::preserve_metadata;
+use crate::policy::{apply_copy_contract, ContractOutcome, OverwritePrompt};
 use crate::{
     AdaptiveBuffer, AsyncFileReader, AsyncFileWriter, BufferPool, PreReadBuffer, PreReadStrategy,
 };
-use ferrocp_types::{CopyStats, DeviceType, Error, ProgressInfo, Result};
+use ferrocp_types::{
+    CopyStats, DeviceType, Error, OverwritePolicy, ProgressInfo, Result, SymlinkMode,
+};
 use std::path::Path;
 use std::time::{Duration, Instant};
 use tokio::fs;
 use tracing::{debug, info};
 
 /// Copy options for customizing copy behavior
+///
+/// The `overwrite_policy`, `symlink_mode`, `preserve_timestamps` and
+/// `preserve_permissions` fields are part of FerroCP's public copy-semantics
+/// contract and are honoured by every engine. See `docs/COPY_SEMANTICS.md`.
 #[derive(Debug, Clone)]
 pub struct CopyOptions {
     /// Buffer size for I/O operations
@@ -20,8 +28,19 @@ pub struct CopyOptions {
     pub progress_interval: Duration,
     /// Enable verification after copy
     pub verify_copy: bool,
-    /// Preserve file metadata
-    pub preserve_metadata: bool,
+    /// Preserve file modification and access times
+    pub preserve_timestamps: bool,
+    /// Preserve file permission bits
+    ///
+    /// On Unix the full mode is preserved. On Windows only the read-only
+    /// attribute is preserved; ACLs and ownership are not.
+    pub preserve_permissions: bool,
+    /// How to treat a destination path that already exists
+    pub overwrite_policy: OverwritePolicy,
+    /// Handler used when `overwrite_policy` is [`OverwritePolicy::Prompt`]
+    pub overwrite_prompt: Option<OverwritePrompt>,
+    /// How to treat symbolic links in the source
+    pub symlink_mode: SymlinkMode,
     /// Enable zero-copy optimizations
     pub enable_zero_copy: bool,
     /// Maximum number of retry attempts
@@ -43,7 +62,12 @@ impl Default for CopyOptions {
             enable_progress: true,
             progress_interval: Duration::from_millis(100),
             verify_copy: false,
-            preserve_metadata: true,
+            preserve_timestamps: true,
+            preserve_permissions: true,
+            // Defaults reproduce FerroCP's historical behaviour.
+            overwrite_policy: OverwritePolicy::Always,
+            overwrite_prompt: None,
+            symlink_mode: SymlinkMode::Preserve,
             enable_zero_copy: true,
             max_retries: 3,
             enable_preread: true,   // Enable pre-read by default for large files
@@ -51,6 +75,26 @@ impl Default for CopyOptions {
             enable_compression: false, // Disabled by default
             compression_level: 3,   // Balanced compression level
         }
+    }
+}
+
+impl CopyOptions {
+    /// Validate the semantic options before any I/O happens
+    ///
+    /// Catches combinations that cannot be honoured, so they fail fast with a
+    /// precise message instead of degrading into a different behaviour.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Config`] when `overwrite_policy` is
+    /// [`OverwritePolicy::Prompt`] but no prompt handler is registered.
+    pub fn validate(&self) -> Result<()> {
+        if self.overwrite_policy == OverwritePolicy::Prompt && self.overwrite_prompt.is_none() {
+            return Err(Error::config(
+                "overwrite policy 'prompt' requires an overwrite prompt handler to be registered",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -127,8 +171,31 @@ impl BufferedCopyEngine {
             dest_path.display()
         );
 
+        // Reject impossible option combinations before touching the filesystem.
+        options.validate()?;
+
         let start_time = Instant::now();
         let mut stats = CopyStats::new();
+
+        // Enforce the full contract (overwrite policy and symlink mode) before
+        // the destination is opened for writing: once the writer exists the
+        // destination is already truncated. A preserved symlink is complete at
+        // this point, hence the early return.
+        match apply_copy_contract(source_path, dest_path, &options)? {
+            ContractOutcome::Proceed => {}
+            ContractOutcome::Done(finished) => {
+                debug!(
+                    "Short-circuited '{}' -> '{}' by the copy contract ({} copied, {} skipped, \
+                     {} links)",
+                    source_path.display(),
+                    dest_path.display(),
+                    finished.files_copied,
+                    finished.files_skipped,
+                    finished.symlinks_created
+                );
+                return Ok(finished);
+            }
+        }
 
         // Get source file metadata
         let source_metadata = fs::metadata(source_path).await.map_err(|e| Error::Io {
@@ -248,10 +315,8 @@ impl BufferedCopyEngine {
         // Ensure all data is written
         writer.flush().await?;
 
-        // Preserve metadata if requested
-        if options.preserve_metadata {
-            self.preserve_file_metadata(source_path, dest_path).await?;
-        }
+        // Preserve metadata according to the options (shared by every engine)
+        preserve_metadata(source_path, dest_path, &options)?;
 
         // Verify copy if requested
         if options.verify_copy {
@@ -307,47 +372,6 @@ impl BufferedCopyEngine {
         } else {
             base_size
         }
-    }
-
-    /// Preserve file metadata from source to destination
-    async fn preserve_file_metadata<P: AsRef<Path>>(
-        &self,
-        source: P,
-        destination: P,
-    ) -> Result<()> {
-        let source_metadata = fs::metadata(source.as_ref()).await.map_err(|e| Error::Io {
-            message: format!("Failed to read source metadata: {}", e),
-        })?;
-
-        // Set file times
-        let accessed = source_metadata
-            .accessed()
-            .unwrap_or_else(|_| std::time::SystemTime::now());
-        let modified = source_metadata
-            .modified()
-            .unwrap_or_else(|_| std::time::SystemTime::now());
-
-        filetime::set_file_times(
-            destination.as_ref(),
-            filetime::FileTime::from_system_time(accessed),
-            filetime::FileTime::from_system_time(modified),
-        )
-        .map_err(|e| Error::Io {
-            message: format!("Failed to set file times: {}", e),
-        })?;
-
-        // Set permissions on Unix systems
-        #[cfg(unix)]
-        {
-            let permissions = source_metadata.permissions();
-            fs::set_permissions(destination.as_ref(), permissions)
-                .await
-                .map_err(|e| Error::Io {
-                    message: format!("Failed to set permissions: {}", e),
-                })?;
-        }
-
-        Ok(())
     }
 
     /// Verify that the copy was successful

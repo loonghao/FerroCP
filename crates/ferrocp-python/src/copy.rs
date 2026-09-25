@@ -13,6 +13,29 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+/// Apply the Python-side `CopyOptions` to a `CopyRequest`
+///
+/// Every field of `PyCopyOptions` that describes copy semantics is honoured
+/// here. Invalid values raise `ValueError` instead of being ignored, so the
+/// Python API can never promise a behaviour it does not implement.
+fn apply_copy_options(request: &mut CopyRequest, options: &PyCopyOptions) -> PyResult<()> {
+    request.verify_copy = options.verify;
+    request.preserve_metadata = options.preserve_timestamps || options.preserve_permissions;
+    request.enable_compression = options.enable_compression;
+
+    let overwrite_policy = options.overwrite_policy()?;
+    let symlink_mode = options.symlink_mode()?;
+    let prompt = options.overwrite_prompt()?;
+
+    request.mode = options.copy_mode()?;
+    request.overwrite_policy = overwrite_policy;
+    request.symlink_mode = symlink_mode;
+    request.overwrite_prompt = prompt;
+
+    // TODO: Add exclude/include patterns to PyCopyOptions
+    Ok(())
+}
+
 /// Python wrapper for copy results
 #[pyclass(name = "CopyResult", from_py_object)]
 #[derive(Debug, Clone)]
@@ -172,17 +195,7 @@ impl PyCopyEngine {
 
                     // Apply copy options if provided
                     if let Some(opts) = copy_options {
-                        if opts.verify {
-                            request.verify_copy = true;
-                        }
-                        if opts.preserve_timestamps || opts.preserve_permissions {
-                            request.preserve_metadata = true;
-                        }
-                        if opts.enable_compression {
-                            request.enable_compression = true;
-                        }
-                        // TODO: Add exclude/include patterns to PyCopyOptions
-                        // For now, we'll skip these fields
+                        apply_copy_options(&mut request, &opts)?;
                     }
 
                     // Report progress
@@ -254,17 +267,7 @@ impl PyCopyEngine {
 
                     // Apply copy options if provided
                     if let Some(opts) = copy_options {
-                        if opts.verify {
-                            request.verify_copy = true;
-                        }
-                        if opts.preserve_timestamps || opts.preserve_permissions {
-                            request.preserve_metadata = true;
-                        }
-                        if opts.enable_compression {
-                            request.enable_compression = true;
-                        }
-                        // TODO: Add exclude/include patterns to PyCopyOptions
-                        // For now, we'll skip these fields
+                        apply_copy_options(&mut request, &opts)?;
                     }
 
                     // Report progress
@@ -356,15 +359,7 @@ impl PyCopyEngine {
 
                     // Apply copy options if provided
                     if let Some(opts) = options {
-                        if opts.verify {
-                            request.verify_copy = true;
-                        }
-                        if opts.preserve_timestamps || opts.preserve_permissions {
-                            request.preserve_metadata = true;
-                        }
-                        if opts.enable_compression {
-                            request.enable_compression = true;
-                        }
+                        apply_copy_options(&mut request, &opts)?;
                     }
 
                     // Start the copy operation
