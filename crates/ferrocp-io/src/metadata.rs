@@ -33,6 +33,7 @@ pub fn preserve_metadata(source: &Path, destination: &Path, options: &CopyOption
             source.display(),
             error
         ),
+        kind: None,
     })?;
 
     if options.preserve_timestamps {
@@ -66,6 +67,7 @@ fn preserve_timestamps(source_metadata: &std::fs::Metadata, destination: &Path) 
             destination.display(),
             error
         ),
+        kind: None,
     })
 }
 
@@ -88,6 +90,7 @@ fn preserve_permissions(
                 destination.display(),
                 error
             ),
+            kind: Some(error.kind()),
         })?;
     }
 
@@ -104,6 +107,7 @@ fn preserve_permissions(
                 destination.display(),
                 error
             ),
+            kind: None,
         })?;
 
         let mut permissions = dest_metadata.permissions();
@@ -116,6 +120,7 @@ fn preserve_permissions(
                     source.display(),
                     error
                 ),
+                kind: None,
             })?;
         }
     }

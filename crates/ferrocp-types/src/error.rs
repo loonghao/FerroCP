@@ -23,11 +23,17 @@ pub enum ErrorSeverity {
 }
 
 /// Error context providing additional information
+///
+/// Attached to an [`Error`] with [`Error::with_context`]. It is the machine
+/// readable half of the error: the message is for humans, the context is for
+/// code that has to react to the failure.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ErrorContext {
     /// Operation that was being performed
     pub operation: String,
+    /// Path the operation was acting on, when there is one
+    pub path: Option<PathBuf>,
     /// Additional context information
     pub details: std::collections::HashMap<String, String>,
     /// Timestamp when the error occurred
@@ -40,10 +46,17 @@ impl ErrorContext {
     pub fn new(operation: impl Into<String>) -> Self {
         Self {
             operation: operation.into(),
+            path: None,
             details: std::collections::HashMap::new(),
             #[cfg(feature = "std")]
             timestamp: std::time::SystemTime::now(),
         }
+    }
+
+    /// Attach the path the operation was acting on
+    pub fn with_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.path = Some(path.into());
+        self
     }
 
     /// Add a detail to the context
@@ -58,10 +71,20 @@ impl ErrorContext {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Error {
     /// I/O operation failed
+    ///
+    /// `kind` carries the originating [`std::io::ErrorKind`] so callers can
+    /// react to the failure without parsing the message.
     #[error("I/O error: {message}")]
     Io {
         /// Error message from the I/O operation
         message: String,
+        /// The originating I/O error kind, when the error came from `std::io`
+        ///
+        /// `None` means the error did not originate from a `std::io`
+        /// operation, so no kind exists to record. It is deliberately not
+        /// filled in by guessing.
+        #[cfg_attr(feature = "serde", serde(skip))]
+        kind: Option<std::io::ErrorKind>,
     },
 
     /// File not found
@@ -137,6 +160,20 @@ pub enum Error {
         /// Custom error message
         message: String,
     },
+
+    /// An error carrying structured context about the failed operation
+    ///
+    /// Produced by [`Error::with_context`]. The context is what makes an error
+    /// actionable, so it travels with the error instead of being logged and
+    /// dropped.
+    #[error("{error}")]
+    WithContext {
+        /// The underlying error
+        #[source]
+        error: Box<Self>,
+        /// What was being attempted when the error happened
+        context: ErrorContext,
+    },
 }
 
 /// Error kind for categorizing errors
@@ -168,6 +205,8 @@ impl Error {
     /// Get the error kind
     pub fn kind(&self) -> ErrorKind {
         match self {
+            // A context wrapper does not change what kind of error this is.
+            Self::WithContext { error, .. } => error.kind(),
             Self::Io { .. } => ErrorKind::Io,
             Self::FileNotFound { .. } | Self::PermissionDenied { .. } => ErrorKind::Io,
             Self::Config { .. } => ErrorKind::Config,
@@ -185,6 +224,7 @@ impl Error {
     /// Get the error severity level
     pub fn severity(&self) -> ErrorSeverity {
         match self {
+            Self::WithContext { error, .. } => error.severity(),
             Self::Io { .. } => ErrorSeverity::Medium,
             Self::FileNotFound { .. } | Self::PermissionDenied { .. } => ErrorSeverity::High,
             Self::Config { .. } => ErrorSeverity::High,
@@ -199,17 +239,87 @@ impl Error {
         }
     }
 
+    /// The underlying I/O error kind, when one is known
+    ///
+    /// This is the machine readable answer that callers used to get by
+    /// searching the message for English substrings.
+    pub fn io_kind(&self) -> Option<std::io::ErrorKind> {
+        match self {
+            Self::Io { kind, .. } => *kind,
+            Self::FileNotFound { .. } => Some(std::io::ErrorKind::NotFound),
+            Self::PermissionDenied { .. } => Some(std::io::ErrorKind::PermissionDenied),
+            _ => None,
+        }
+    }
+
+    /// Attach structured context describing the failed operation
+    ///
+    /// Repeated calls nest, so the innermost context describes the most
+    /// specific operation.
+    pub fn with_context(self, operation: impl Into<String>) -> Self {
+        let context = ErrorContext::new(operation);
+        match self {
+            // Collapse nested contexts for the same operation into one entry
+            // instead of building an ever deeper chain.
+            Self::WithContext { .. } => self,
+            error => Self::WithContext {
+                error: Box::new(error),
+                context,
+            },
+        }
+    }
+
+    /// Attach context that includes the path being operated on
+    pub fn with_path_context(self, operation: impl Into<String>, path: impl Into<PathBuf>) -> Self {
+        let context = ErrorContext::new(operation).with_path(path);
+        match self {
+            Self::WithContext { .. } => self,
+            error => Self::WithContext {
+                error: Box::new(error),
+                context,
+            },
+        }
+    }
+
+    /// The context attached to this error, if any
+    pub fn context(&self) -> Option<&ErrorContext> {
+        match self {
+            Self::WithContext { context, .. } => Some(context),
+            _ => None,
+        }
+    }
+
+    /// The innermost error, with all context wrappers removed
+    pub fn root_cause(&self) -> &Self {
+        match self {
+            Self::WithContext { error, .. } => error.root_cause(),
+            other => other,
+        }
+    }
+
+    /// The full cause chain, formatted as `context: cause: cause`
+    ///
+    /// Use this for logs and error messages: it shows what was being attempted
+    /// and why it failed, instead of only the innermost reason.
+    pub fn chain(&self) -> String {
+        let mut parts = Vec::new();
+        let mut current = self;
+        while let Self::WithContext { error, context } = current {
+            parts.push(context.operation.clone());
+            current = error;
+        }
+        parts.push(current.to_string());
+        parts.join(": ")
+    }
+
     /// Check if this error is recoverable
+    ///
+    /// Recoverability is decided by the [`std::io::ErrorKind`] when one is
+    /// known. Errors without a kind are treated as **not** recoverable: guessing
+    /// from the message text is not reliable across platforms or locales.
     pub fn is_recoverable(&self) -> bool {
         match self {
-            Self::Io { message } => {
-                // Check if the error message indicates a recoverable condition
-                message.contains("Interrupted")
-                    || message.contains("WouldBlock")
-                    || message.contains("would block")
-                    || message.contains("TimedOut")
-                    || message.contains("timed out")
-            }
+            Self::Io { kind, .. } => kind.is_some_and(is_recoverable_kind),
             Self::Network { .. }
             | Self::Timeout { .. }
             | Self::Compression { .. }
@@ -218,7 +328,13 @@ impl Error {
             Self::FileNotFound { .. } | Self::PermissionDenied { .. } | Self::Config { .. } => {
                 false
             }
-            Self::DeviceDetection { .. } | Self::Sync { .. } | Self::Other { .. } => true,
+            Self::DeviceDetection { .. } | Self::Sync { .. } => true,
+            // `Other` is the catch-all variant. Most of its uses are permanent
+            // conditions (a destination is a directory, a policy refused the
+            // copy, a platform does not support an operation), so claiming it
+            // is recoverable would retry something that cannot succeed.
+            Self::Other { .. } => false,
+            Self::WithContext { error, .. } => error.is_recoverable(),
         }
     }
 
@@ -273,6 +389,19 @@ impl Error {
     pub fn io<S: Into<String>>(message: S) -> Self {
         Self::Io {
             message: message.into(),
+            kind: None,
+        }
+    }
+
+    /// Create an I/O error from a failing `std::io` operation
+    ///
+    /// This is the constructor to reach for at I/O call sites: it keeps the
+    /// [`std::io::ErrorKind`], which is what recoverability and the Python
+    /// exception mapping are based on.
+    pub fn from_io<S: Into<String>>(message: S, error: &std::io::Error) -> Self {
+        Self::Io {
+            message: format!("{}: {}", message.into(), error),
+            kind: Some(error.kind()),
         }
     }
 
@@ -286,10 +415,29 @@ impl Error {
 
 impl From<std::io::Error> for Error {
     fn from(error: std::io::Error) -> Self {
+        // Preserve the kind instead of flattening everything into a string.
+        // Callers (and the Python bindings) use it to tell `NotFound` from
+        // `PermissionDenied` from a transient failure.
+        let kind = error.kind();
         Self::Io {
             message: error.to_string(),
+            kind: Some(kind),
         }
     }
+}
+
+/// I/O error kinds that are worth retrying
+///
+/// These are the transient conditions: the same operation can succeed if it is
+/// attempted again. Everything else (missing file, permission denied, invalid
+/// argument, full disk) will fail the same way on a retry.
+fn is_recoverable_kind(kind: std::io::ErrorKind) -> bool {
+    matches!(
+        kind,
+        std::io::ErrorKind::Interrupted
+            | std::io::ErrorKind::WouldBlock
+            | std::io::ErrorKind::TimedOut
+    )
 }
 
 #[cfg(test)]
@@ -306,7 +454,7 @@ mod tests {
         ) {
             // Test that all error variants have consistent severity mapping
             let errors = vec![
-                Error::Io { message: message.clone() },
+                Error::Io { message: message.clone(), kind: None },
                 Error::Config { message: message.clone() },
                 Error::Network { message: message.clone() },
                 Error::Compression { message: message.clone() },
@@ -344,7 +492,7 @@ mod tests {
         fn test_error_recoverability_logic(
             message in ".*"
         ) {
-            let error = Error::Io { message: message.clone() };
+            let error = Error::Io { message: message.clone(), kind: None };
             let is_recoverable = error.is_recoverable();
             let should_retry = error.should_retry();
 
@@ -470,39 +618,219 @@ mod tests {
     }
 
     #[test]
-    fn test_io_error_recoverability() {
-        // Test recoverable I/O errors
-        let recoverable_errors = vec![
-            Error::Io {
-                message: "Interrupted system call".to_string(),
-            },
-            Error::Io {
-                message: "Operation would block".to_string(),
-            },
-            Error::Io {
-                message: "Connection timed out".to_string(),
-            },
+    fn test_io_error_recoverability_uses_the_error_kind() {
+        // Recoverability is decided by the ErrorKind, not by searching the
+        // message text, so it does not depend on the OS phrasing.
+        let recoverable = [
+            std::io::ErrorKind::Interrupted,
+            std::io::ErrorKind::WouldBlock,
+            std::io::ErrorKind::TimedOut,
         ];
-
-        for error in recoverable_errors {
-            assert!(error.is_recoverable());
-            assert!(error.should_retry());
+        for kind in recoverable {
+            let error = Error::Io {
+                message: "some failure".to_string(),
+                kind: Some(kind),
+            };
+            assert!(error.is_recoverable(), "{kind:?} must be recoverable");
+            assert!(error.should_retry(), "{kind:?} must be retried");
         }
 
-        // Test non-recoverable I/O errors
-        let non_recoverable_errors = vec![
-            Error::Io {
-                message: "No space left on device".to_string(),
-            },
-            Error::Io {
-                message: "Invalid argument".to_string(),
-            },
+        let permanent = [
+            std::io::ErrorKind::NotFound,
+            std::io::ErrorKind::PermissionDenied,
+            std::io::ErrorKind::InvalidInput,
+            std::io::ErrorKind::StorageFull,
         ];
-
-        for error in non_recoverable_errors {
-            assert!(!error.is_recoverable());
-            assert!(!error.should_retry());
+        for kind in permanent {
+            let error = Error::Io {
+                message: "some failure".to_string(),
+                kind: Some(kind),
+            };
+            assert!(!error.is_recoverable(), "{kind:?} must not be recoverable");
+            assert!(!error.should_retry(), "{kind:?} must not be retried");
         }
+    }
+
+    #[test]
+    fn test_recoverability_does_not_depend_on_message_wording() {
+        // The same condition in two wordings: the old substring heuristic would
+        // have treated these differently.
+        let interrupted = Error::Io {
+            message: "L'appel système a été interrompu".to_string(),
+            kind: Some(std::io::ErrorKind::Interrupted),
+        };
+        assert!(interrupted.is_recoverable());
+
+        let not_found = Error::Io {
+            message: "Interrupted system call".to_string(),
+            kind: Some(std::io::ErrorKind::NotFound),
+        };
+        assert!(
+            !not_found.is_recoverable(),
+            "the message must not override the error kind"
+        );
+    }
+
+    #[test]
+    fn test_unknown_kind_is_not_recoverable() {
+        // Without a kind there is nothing to base a retry on, so the answer is
+        // "no" rather than a guess.
+        let error = Error::Io {
+            message: "Connection timed out".to_string(),
+            kind: None,
+        };
+        assert!(!error.is_recoverable());
+    }
+
+    #[test]
+    fn test_from_io_error_preserves_the_kind() {
+        let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "missing");
+        let error = Error::from(io_error);
+
+        assert_eq!(error.io_kind(), Some(std::io::ErrorKind::NotFound));
+        assert!(!error.is_recoverable());
+        assert!(error.to_string().contains("missing"));
+
+        let denied = Error::from(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "nope",
+        ));
+        assert_eq!(
+            denied.io_kind(),
+            Some(std::io::ErrorKind::PermissionDenied),
+            "callers must be able to tell permission errors apart"
+        );
+    }
+
+    #[test]
+    fn test_from_io_error_keeps_transient_kinds_recoverable() {
+        let error = Error::from(std::io::Error::new(
+            std::io::ErrorKind::Interrupted,
+            "try again",
+        ));
+        assert!(error.is_recoverable());
+    }
+
+    #[test]
+    fn test_file_not_found_and_permission_denied_expose_io_kinds() {
+        assert_eq!(
+            Error::FileNotFound {
+                path: PathBuf::from("/nope")
+            }
+            .io_kind(),
+            Some(std::io::ErrorKind::NotFound)
+        );
+        assert_eq!(
+            Error::PermissionDenied {
+                path: PathBuf::from("/nope")
+            }
+            .io_kind(),
+            Some(std::io::ErrorKind::PermissionDenied)
+        );
+    }
+
+    #[test]
+    fn test_error_context_carries_operation_and_path() {
+        let context = ErrorContext::new("copy_file").with_path("/tmp/src");
+        assert_eq!(context.operation, "copy_file");
+        assert_eq!(
+            context.path.as_deref(),
+            Some(std::path::Path::new("/tmp/src"))
+        );
+    }
+
+    #[test]
+    fn test_with_context_attaches_the_operation() {
+        let error = Error::other("disk on fire").with_context("copy_file");
+
+        let context = error.context().expect("context must be attached");
+        assert_eq!(context.operation, "copy_file");
+
+        // Wrapping must not change what kind of error this is.
+        assert_eq!(error.kind(), ErrorKind::Other);
+        assert_eq!(error.severity(), ErrorSeverity::Medium);
+        assert_eq!(error.root_cause().kind(), ErrorKind::Other);
+    }
+
+    #[test]
+    fn test_with_path_context_records_the_path() {
+        let error = Error::other("boom").with_path_context("copy_file", "/data/a.bin");
+        let context = error.context().unwrap();
+        assert_eq!(context.operation, "copy_file");
+        assert_eq!(
+            context.path.as_deref(),
+            Some(std::path::Path::new("/data/a.bin"))
+        );
+    }
+
+    #[test]
+    fn test_context_is_not_double_wrapped() {
+        // Repeated wrapping would produce a deep chain with no extra
+        // information, so the first context wins.
+        let error = Error::other("boom")
+            .with_context("copy_file")
+            .with_context("retry");
+        assert_eq!(error.context().unwrap().operation, "copy_file");
+    }
+
+    #[test]
+    fn test_chain_shows_operation_and_cause() {
+        let error = Error::other("permission denied").with_context("copy_file");
+        let chain = error.chain();
+        assert!(chain.contains("copy_file"), "chain was: {chain}");
+        assert!(chain.contains("permission denied"), "chain was: {chain}");
+    }
+
+    #[test]
+    fn test_recoverability_is_preserved_through_context() {
+        let error = Error::Io {
+            message: "interrupted".to_string(),
+            kind: Some(std::io::ErrorKind::Interrupted),
+        }
+        .with_context("copy_file");
+        assert!(error.is_recoverable());
+        assert_eq!(error.kind(), ErrorKind::Io);
+    }
+
+    #[test]
+    fn test_other_is_not_recoverable() {
+        // `Other` is the catch-all, and most call sites use it for permanent
+        // conditions (a destination is a directory, a policy refused the copy).
+        // Treating it as recoverable would retry something that cannot succeed.
+        let error = Error::other("destination is a directory");
+        assert!(!error.is_recoverable());
+        assert!(!error.should_retry());
+    }
+
+    #[test]
+    fn test_permanent_policy_errors_are_not_recoverable() {
+        // These are the errors the overwrite and symlink policies raise.
+        for error in [
+            Error::other("destination already exists and the overwrite policy is 'fail'"),
+            Error::other("symbolic link found but the symlink mode is 'fail'"),
+        ] {
+            assert!(
+                !error.is_recoverable(),
+                "policy refusals must not be retried: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_other_still_carries_its_message_and_kind() {
+        let error = Error::other("boom");
+        assert_eq!(error.kind(), ErrorKind::Other);
+        assert_eq!(error.severity(), ErrorSeverity::Medium);
+        assert!(error.to_string().contains("boom"));
+    }
+
+    #[test]
+    fn test_from_io_helper_captures_the_kind() {
+        let io_error = std::io::Error::new(std::io::ErrorKind::AlreadyExists, "exists");
+        let error = Error::from_io("failed to create destination", &io_error);
+
+        assert_eq!(error.io_kind(), Some(std::io::ErrorKind::AlreadyExists));
+        assert!(error.to_string().contains("failed to create destination"));
     }
 
     #[test]

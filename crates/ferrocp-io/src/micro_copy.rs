@@ -131,6 +131,7 @@ impl MicroFileCopyEngine {
     pub async fn is_micro_file<P: AsRef<Path> + Send>(path: P) -> Result<bool> {
         let metadata = fs::metadata(path.as_ref()).map_err(|e| Error::Io {
             message: format!("Failed to get file metadata: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         Ok(metadata.len() <= MICRO_FILE_THRESHOLD)
@@ -163,6 +164,7 @@ impl MicroFileCopyEngine {
             // Quick metadata check for size only (no full stat)
             let metadata = fs::metadata(source_path).map_err(|e| Error::Io {
                 message: format!("Failed to read source metadata: {}", e),
+                kind: Some(e.kind()),
             })?;
 
             let file_size = metadata.len();
@@ -178,12 +180,14 @@ impl MicroFileCopyEngine {
             // Ultra-fast read operation
             fs::read(source_path).map_err(|e| Error::Io {
                 message: format!("Failed to read source file: {}", e),
+                kind: Some(e.kind()),
             })?
         };
 
         // Single fs::write operation
         fs::write(dest_path, &content).map_err(|e| Error::Io {
             message: format!("Failed to write destination file: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         let bytes_copied = content.len() as u64;
@@ -246,6 +250,7 @@ impl MicroFileCopyEngine {
         // Hyper-optimized: Direct read/write with minimal checks
         let content = fs::read(source_path).map_err(|e| Error::Io {
             message: format!("Failed to read source file: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         // Quick size check (should be pre-verified)
@@ -262,6 +267,7 @@ impl MicroFileCopyEngine {
         // Direct write - no directory creation, no metadata preservation
         fs::write(dest_path, &content).map_err(|e| Error::Io {
             message: format!("Failed to write destination file: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         let bytes_copied = content.len() as u64;
@@ -323,10 +329,12 @@ impl MicroFileCopyEngine {
             use std::io::Read;
             let mut source_file = fs::File::open(source_path).map_err(|e| Error::Io {
                 message: format!("Failed to open source file: {}", e),
+                kind: Some(e.kind()),
             })?;
 
             source_file.read(&mut stack_buffer).map_err(|e| Error::Io {
                 message: format!("Failed to read source file: {}", e),
+                kind: Some(e.kind()),
             })?
         };
 
@@ -345,12 +353,14 @@ impl MicroFileCopyEngine {
             use std::io::Write;
             let mut dest_file = fs::File::create(dest_path).map_err(|e| Error::Io {
                 message: format!("Failed to create destination file: {}", e),
+                kind: Some(e.kind()),
             })?;
 
             dest_file
                 .write_all(&stack_buffer[..bytes_read])
                 .map_err(|e| Error::Io {
                     message: format!("Failed to write destination file: {}", e),
+                    kind: Some(e.kind()),
                 })?;
         }
 
@@ -415,10 +425,12 @@ impl MicroFileCopyEngine {
             use std::io::Read;
             let mut source_file = fs::File::open(source_path).map_err(|e| Error::Io {
                 message: format!("Failed to open source file: {}", e),
+                kind: Some(e.kind()),
             })?;
 
             source_file.read(&mut stack_buffer).map_err(|e| Error::Io {
                 message: format!("Failed to read source file: {}", e),
+                kind: Some(e.kind()),
             })?
         };
 
@@ -427,12 +439,14 @@ impl MicroFileCopyEngine {
             use std::io::Write;
             let mut dest_file = fs::File::create(dest_path).map_err(|e| Error::Io {
                 message: format!("Failed to create destination file: {}", e),
+                kind: Some(e.kind()),
             })?;
 
             dest_file
                 .write_all(&stack_buffer[..bytes_read])
                 .map_err(|e| Error::Io {
                     message: format!("Failed to write destination file: {}", e),
+                    kind: Some(e.kind()),
                 })?;
         }
 
@@ -487,6 +501,7 @@ impl MicroFileCopyEngine {
             if !parent.exists() {
                 fs::create_dir_all(parent).map_err(|e| Error::Io {
                     message: format!("Failed to create destination directory: {}", e),
+                    kind: Some(e.kind()),
                 })?;
             }
         }
@@ -498,11 +513,13 @@ impl MicroFileCopyEngine {
             // Open source file and get metadata in one operation
             let mut source_file = fs::File::open(source_path).map_err(|e| Error::Io {
                 message: format!("Failed to open source file: {}", e),
+                kind: Some(e.kind()),
             })?;
 
             // Get metadata from open file handle (more efficient)
             let source_metadata = source_file.metadata().map_err(|e| Error::Io {
                 message: format!("Failed to read source metadata: {}", e),
+                kind: Some(e.kind()),
             })?;
 
             let file_size = source_metadata.len();
@@ -522,6 +539,7 @@ impl MicroFileCopyEngine {
                 // Handle empty files efficiently - just create the file
                 fs::File::create(dest_path).map_err(|e| Error::Io {
                     message: format!("Failed to create destination file: {}", e),
+                    kind: Some(e.kind()),
                 })?;
                 0
             } else {
@@ -533,17 +551,20 @@ impl MicroFileCopyEngine {
                     .read(&mut stack_buffer[..file_size as usize])
                     .map_err(|e| Error::Io {
                         message: format!("Failed to read source file: {}", e),
+                        kind: Some(e.kind()),
                     })?;
 
                 // Optimized: Create and write in one operation
                 let mut dest_file = fs::File::create(dest_path).map_err(|e| Error::Io {
                     message: format!("Failed to create destination file: {}", e),
+                    kind: Some(e.kind()),
                 })?;
 
                 dest_file
                     .write_all(&stack_buffer[..bytes_read])
                     .map_err(|e| Error::Io {
                         message: format!("Failed to write destination file: {}", e),
+                        kind: Some(e.kind()),
                     })?;
 
                 // Optimized: Skip flush for micro files to improve performance

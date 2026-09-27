@@ -52,10 +52,12 @@ impl MemoryMappedFile {
         let path = path.as_ref();
         let file = File::open(path).map_err(|e| Error::Io {
             message: format!("Failed to open file '{}': {}", path.display(), e),
+            kind: None,
         })?;
 
         let metadata = file.metadata().map_err(|e| Error::Io {
             message: format!("Failed to read file metadata: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         let file_size = metadata.len();
@@ -93,6 +95,7 @@ impl MemoryMappedFile {
         let mmap = unsafe {
             mmap_options.map(&file).map_err(|e| Error::Io {
                 message: format!("Failed to create memory mapping: {}", e),
+                kind: Some(e.kind()),
             })?
         };
 
@@ -155,6 +158,7 @@ impl MemoryMappedFile {
 
         self.mmap.advise(mmap_advice).map_err(|e| Error::Io {
             message: format!("Failed to advise memory usage: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         debug!("Applied memory advice: {:?}", advice);
@@ -173,6 +177,7 @@ impl MemoryMappedFile {
     pub fn lock(&self) -> Result<()> {
         self.mmap.lock().map_err(|e| Error::Io {
             message: format!("Failed to lock memory: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         debug!("Locked memory mapping");
@@ -191,6 +196,7 @@ impl MemoryMappedFile {
     pub fn unlock(&self) -> Result<()> {
         self.mmap.unlock().map_err(|e| Error::Io {
             message: format!("Failed to unlock memory: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         debug!("Unlocked memory mapping");

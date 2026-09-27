@@ -158,6 +158,7 @@ impl NetworkServer {
                         config.cache_dir.display(),
                         e
                     ),
+                    kind: None,
                 })?;
         }
 

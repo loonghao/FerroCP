@@ -289,6 +289,7 @@ impl PreReadBuffer {
                 warn!("Pre-read operation failed: {}", e);
                 return Err(Error::Io {
                     message: format!("Pre-read failed: {}", e),
+                    kind: None,
                 });
             }
         }

@@ -130,6 +130,7 @@ impl FileInfo {
         let path = path.as_ref();
         let metadata = fs::metadata(path).await.map_err(|e| Error::Io {
             message: format!("Failed to get metadata for '{}': {}", path.display(), e),
+            kind: None,
         })?;
 
         Ok(Self {
@@ -216,10 +217,12 @@ impl DiffEngine {
                     current_path.display(),
                     e
                 ),
+                kind: None,
             })?;
 
             while let Some(entry) = entries.next_entry().await.map_err(|e| Error::Io {
                 message: format!("Failed to read directory entry: {}", e),
+                kind: Some(e.kind()),
             })? {
                 let entry_path = entry.path();
                 let relative_path = entry_path.strip_prefix(base_path).unwrap_or(&entry_path);
@@ -230,6 +233,7 @@ impl DiffEngine {
                         entry_path.display(),
                         e
                     ),
+                    kind: None,
                 })?;
 
                 // Skip symlinks if not following them
@@ -274,6 +278,7 @@ impl DiffEngine {
         let path = path.as_ref();
         let content = fs::read(path).await.map_err(|e| Error::Io {
             message: format!("Failed to read file '{}': {}", path.display(), e),
+            kind: None,
         })?;
 
         let hash = blake3::hash(&content);

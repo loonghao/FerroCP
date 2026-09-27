@@ -150,7 +150,20 @@ so no engine can bypass the policy or the symlink mode. Metadata preservation is
 likewise one shared helper (`metadata.rs`) used by all three engines, so it does
 not depend on which engine the size heuristic picked.
 
-## 7. Explicitly out of scope
+## 7. Errors raised by these operations
+
+How failures are classified and which Python exception each maps to is
+specified in [ERROR_MODEL.md](ERROR_MODEL.md). The short version:
+
+- `NotFound` becomes `FileNotFoundError`, `PermissionDenied` becomes
+  `PermissionError` — both derive from the builtins, so `except OSError` and
+  friends work as expected.
+- A dangling link in `follow` mode, and every link in `fail` mode, is reported
+  as an error and counted in `CopyStats::errors`.
+- An invalid `--overwrite` / `--symlinks` value, or `prompt` without a handler,
+  fails before any I/O happens.
+
+## 8. Explicitly out of scope
 
 These are **not** defined yet and may change. Do not rely on them:
 

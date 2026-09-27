@@ -21,10 +21,12 @@ impl AsyncFileReader {
         let path = path.as_ref();
         let file = File::open(path).await.map_err(|e| Error::Io {
             message: format!("Failed to open file '{}': {}", path.display(), e),
+            kind: None,
         })?;
 
         let metadata = file.metadata().await.map_err(|e| Error::Io {
             message: format!("Failed to read file metadata: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         let file_size = metadata.len();
@@ -57,6 +59,7 @@ impl AsyncFileReader {
             .await
             .map_err(|e| Error::Io {
                 message: format!("Failed to read from file: {}", e),
+                kind: Some(e.kind()),
             })?;
 
         self.bytes_read += bytes_read as u64;
@@ -72,6 +75,7 @@ impl AsyncFileReader {
     pub async fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
         self.reader.read_exact(buf).await.map_err(|e| Error::Io {
             message: format!("Failed to read exact amount: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         self.bytes_read += buf.len() as u64;
@@ -82,6 +86,7 @@ impl AsyncFileReader {
     pub async fn read_to_end(&mut self, buf: &mut Vec<u8>) -> Result<usize> {
         let bytes_read = self.reader.read_to_end(buf).await.map_err(|e| Error::Io {
             message: format!("Failed to read to end: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         self.bytes_read += bytes_read as u64;
@@ -127,10 +132,12 @@ impl FileReader {
         let path = path.as_ref();
         let file = std::fs::File::open(path).map_err(|e| Error::Io {
             message: format!("Failed to open file '{}': {}", path.display(), e),
+            kind: None,
         })?;
 
         let metadata = file.metadata().map_err(|e| Error::Io {
             message: format!("Failed to read file metadata: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         let file_size = metadata.len();
@@ -154,6 +161,7 @@ impl FileReader {
 
         let bytes_read = self.file.read(buf).map_err(|e| Error::Io {
             message: format!("Failed to read from file: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         self.bytes_read += bytes_read as u64;
@@ -166,6 +174,7 @@ impl FileReader {
 
         self.file.read_exact(buf).map_err(|e| Error::Io {
             message: format!("Failed to read exact amount: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         self.bytes_read += buf.len() as u64;
@@ -178,6 +187,7 @@ impl FileReader {
 
         let bytes_read = self.file.read_to_end(buf).map_err(|e| Error::Io {
             message: format!("Failed to read to end: {}", e),
+            kind: Some(e.kind()),
         })?;
 
         self.bytes_read += bytes_read as u64;
