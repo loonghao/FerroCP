@@ -283,12 +283,23 @@ class EACopy:
 
     def __init__(
         self,
-        thread_count: int = 4,
+        thread_count: int = 0,
         buffer_size: int = 64 * 1024,
         compression_level: int = 0,
         verify_integrity: bool = False,
     ) -> None:
-        """Initialize EACopy with configuration options."""
+        """Initialize EACopy with configuration options.
+
+        Args:
+            thread_count: Worker threads. `0` auto-detects and is the only
+                accepted value: the engine sizes its own pool, so any other
+                number would be ignored rather than applied.
+            buffer_size: Copy buffer in bytes. Honoured by the copy path; must
+                be a power of two between 4 KiB and 64 MiB.
+            compression_level: `0` is the only accepted value: compression is
+                not implemented by the I/O layer yet.
+            verify_integrity: Verify the copy after it completes.
+        """
         self.engine = CopyEngine()
         self.default_options = CopyOptions()
         self.default_options.num_threads = thread_count

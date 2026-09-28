@@ -665,6 +665,7 @@ dependencies = [
  "console 0.16.6",
  "dialoguer",
  "eyre",
+ "ferrocp-config",
  "ferrocp-device",
  "ferrocp-engine",
  "ferrocp-io",

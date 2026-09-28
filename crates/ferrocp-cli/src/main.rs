@@ -9,7 +9,9 @@ use console::style;
 use ferrocp_device::PerformanceAnalyzer;
 use ferrocp_engine::{CopyEngine, CopyRequest};
 use ferrocp_io::OverwritePrompt;
-use ferrocp_types::{CopyMode, OverwriteDecision, OverwritePolicy, SymlinkMode};
+use ferrocp_types::{
+    CompressionLevel, CopyMode, OverwriteDecision, OverwritePolicy, SymlinkMode, ThreadCount,
+};
 use std::path::PathBuf;
 use tracing::info;
 
@@ -76,17 +78,26 @@ enum Commands {
         /// Accepted values: preserve, follow, fail
         #[arg(long, default_value = "preserve")]
         symlinks: String,
-        /// Number of threads to use
+        /// Number of worker threads used for concurrent copies
+        ///
+        /// Accepted values are 1-256. When omitted the engine sizes its own
+        /// pool from the available parallelism.
         #[arg(short, long)]
         threads: Option<usize>,
         /// Enable compression
         #[arg(long)]
         compress: bool,
         /// Compression level (0-22)
-        #[arg(long, default_value = "6")]
-        compression_level: u8,
+        ///
+        /// Not implemented: the I/O layer has no compressor, so passing this
+        /// option exits with an error instead of being ignored.
+        #[arg(long)]
+        compression_level: Option<u8>,
         /// Enable zero-copy operations
-        #[arg(long, default_value = "true")]
+        ///
+        /// Not implemented: the I/O layer always uses a buffered copy, so
+        /// passing this flag exits with an error instead of being ignored.
+        #[arg(long)]
         zero_copy: bool,
         /// Mirror mode (equivalent to robocopy /MIR)
         #[arg(long)]
@@ -102,7 +113,10 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
-    /// Synchronize directories
+    /// Synchronize directories (not implemented yet)
+    ///
+    /// Parsed, but rejected at run time: the sync logic is still missing, and
+    /// reporting success without doing anything would be a lie.
     Sync {
         /// Source directory
         source: PathBuf,
@@ -115,7 +129,9 @@ enum Commands {
         #[arg(long)]
         delete: bool,
     },
-    /// Verify file integrity
+    /// Verify file integrity (not implemented yet)
+    ///
+    /// Parsed, but rejected at run time: no comparison is performed yet.
     Verify {
         /// Path to verify
         path: PathBuf,
@@ -129,8 +145,12 @@ enum Commands {
         path: PathBuf,
     },
     /// Show configuration
+    ///
+    /// Prints the effective configuration as JSON: the built-in defaults with
+    /// `--default`, otherwise the defaults overlaid with the first configuration
+    /// file found and the `FERROCP_` environment variables.
     Config {
-        /// Show default configuration
+        /// Show the built-in defaults instead of the effective configuration
         #[arg(long)]
         default: bool,
     },
@@ -195,6 +215,10 @@ async fn main() -> Result<()> {
                 .map(parse_overwrite_policy)
                 .transpose()?;
             let symlink_mode = parse_symlink_mode(&symlinks)?;
+            // Reject the tuning options the copy path cannot honour before
+            // touching the filesystem, so a run never claims an effect it does
+            // not have.
+            reject_unimplemented_tuning(compression_level, zero_copy)?;
 
             copy_command(CopyOptions {
                 source,
@@ -202,10 +226,8 @@ async fn main() -> Result<()> {
                 mode: copy_mode,
                 overwrite_policy,
                 symlink_mode,
-                _threads: threads,
+                engine_config: engine_config(threads)?,
                 compress,
-                _compression_level: compression_level,
-                _zero_copy: zero_copy,
                 exclude,
                 include,
                 quiet: cli.quiet,
@@ -228,8 +250,52 @@ async fn main() -> Result<()> {
             device_command(path).await?;
         }
         Commands::Config { default } => {
-            config_command(default).await?;
+            config_command(default, cli.config.as_deref()).await?;
         }
+    }
+
+    Ok(())
+}
+
+/// Build the engine configuration from the `copy` command's tuning options
+///
+/// `--threads` is honoured: it bounds how many copy tasks the engine runs
+/// concurrently. `ThreadCount` rejects out-of-range values, so the range in the
+/// error message is the one the engine actually accepts.
+fn engine_config(threads: Option<usize>) -> Result<ferrocp_config::Config> {
+    let mut config = ferrocp_config::Config::default();
+
+    if let Some(threads) = threads {
+        let thread_count = ThreadCount::new(threads)
+            .map_err(|error| anyhow::anyhow!("invalid --threads value {threads}: {error}"))?;
+        config.performance.thread_count = thread_count;
+    }
+
+    Ok(config)
+}
+
+/// Refuse the `copy` options that cannot change how the copy runs
+///
+/// FerroCP has no compressor and no zero-copy path in its I/O layer, so both
+/// options would be accepted and then ignored. Failing here keeps the promise
+/// the CLI makes: an option either changes the copy or is refused.
+fn reject_unimplemented_tuning(compression_level: Option<u8>, zero_copy: bool) -> Result<()> {
+    if let Some(level) = compression_level {
+        // Range first: a level above 22 is a typo, not an unsupported feature.
+        CompressionLevel::new(level).map_err(|error| {
+            anyhow::anyhow!("invalid --compression-level value {level}: {error}")
+        })?;
+        anyhow::bail!(
+            "--compression-level is not implemented: the I/O layer has no compressor, so the level \
+             is never applied. Drop the option to copy without compression."
+        );
+    }
+
+    if zero_copy {
+        anyhow::bail!(
+            "--zero-copy is not implemented: every copy goes through the buffered engine, so the \
+             flag has no effect. Drop the flag to copy with the buffered engine."
+        );
     }
 
     Ok(())
@@ -348,13 +414,9 @@ struct CopyOptions {
     mode: CopyMode,
     overwrite_policy: Option<OverwritePolicy>,
     symlink_mode: SymlinkMode,
-    // Accepted for CLI compatibility; the engine sizes its own thread pool.
-    _threads: Option<usize>,
+    /// Engine configuration derived from the tuning options (`--threads`)
+    engine_config: ferrocp_config::Config,
     compress: bool,
-    // Accepted for CLI compatibility; the compression level is engine-internal.
-    _compression_level: u8,
-    // Accepted for CLI compatibility; zero-copy is chosen by the engine.
-    _zero_copy: bool,
     exclude: Vec<String>,
     include: Vec<String>,
     quiet: bool,
@@ -368,12 +430,12 @@ async fn copy_command(options: CopyOptions) -> Result<()> {
         mode,
         overwrite_policy,
         symlink_mode,
+        engine_config,
         compress,
         exclude,
         include,
         quiet,
         json,
-        ..
     } = options;
 
     info!("Starting copy operation");
@@ -415,8 +477,8 @@ async fn copy_command(options: CopyOptions) -> Result<()> {
     // Create a progress bar for the actual copy (not in JSON mode)
     let pb = create_progress_bar(quiet || json);
 
-    // Create copy engine
-    let mut engine = CopyEngine::new().await?;
+    // Create copy engine with the configuration the tuning options asked for
+    let mut engine = CopyEngine::with_config(engine_config).await?;
 
     // Start the engine
     engine.start().await?;
@@ -444,9 +506,6 @@ async fn copy_command(options: CopyOptions) -> Result<()> {
     } else {
         request = request.with_overwrite_semantics(overwrite_policy, None);
     }
-
-    // Note: threads, compression_level, zero_copy are handled by the engine internally
-    // These CLI options could be used to configure the engine in the future
 
     if let Some(pb) = &pb {
         pb.set_message("Starting copy operation...");
@@ -540,43 +599,36 @@ async fn copy_command(options: CopyOptions) -> Result<()> {
     Ok(())
 }
 
-async fn sync_command(
-    source: PathBuf,
-    destination: PathBuf,
-    dry_run: bool,
-    _delete: bool,
-) -> Result<()> {
-    info!("Starting sync operation");
-    println!(
-        "{} Synchronizing {} with {}",
-        style("⟲").blue().bold(),
-        style(source.display()).cyan(),
-        style(destination.display()).cyan()
+/// Reject a sub-command whose logic does not exist yet
+///
+/// Printing "completed" for an operation that did nothing is worse than an
+/// error: a script cannot tell the difference, and the next step in a pipeline
+/// would read data that was never produced.
+fn unimplemented_command(command: &str, what: &str) -> Result<()> {
+    anyhow::bail!(
+        "`ferrocp {command}` is not implemented yet: {what}. The sub-command is parsed so scripts \
+         can be written against it, but it performs no work and exits with this error instead of \
+         reporting success."
     );
-
-    if dry_run {
-        println!(
-            "{} Dry run mode - no changes will be made",
-            style("ℹ").yellow()
-        );
-    }
-
-    // TODO: Implement actual sync logic
-    println!("{} Sync operation completed", style("✓").green());
-    Ok(())
 }
 
-async fn verify_command(path: PathBuf, _source: Option<PathBuf>) -> Result<()> {
-    info!("Starting verify operation");
-    println!(
-        "{} Verifying {}",
-        style("✓").green().bold(),
-        style(path.display()).cyan()
-    );
+async fn sync_command(
+    _source: PathBuf,
+    _destination: PathBuf,
+    _dry_run: bool,
+    _delete: bool,
+) -> Result<()> {
+    unimplemented_command(
+        "sync",
+        "no synchronization is performed, so the destination would be left untouched",
+    )
+}
 
-    // TODO: Implement actual verify logic
-    println!("{} Verification completed successfully", style("✓").green());
-    Ok(())
+async fn verify_command(_path: PathBuf, _source: Option<PathBuf>) -> Result<()> {
+    unimplemented_command(
+        "verify",
+        "no integrity check is performed, so nothing would be compared",
+    )
 }
 
 async fn device_command(path: PathBuf) -> Result<()> {
@@ -627,18 +679,120 @@ async fn device_command(path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-async fn config_command(default: bool) -> Result<()> {
+/// Print the configuration as JSON
+///
+/// `--default` prints the built-in defaults. Otherwise the effective
+/// configuration is loaded the same way the copy path loads it: defaults, then
+/// the first configuration file found (`--config <PATH>` when given), then the
+/// `FERROCP_` environment variables.
+async fn config_command(default: bool, config_path: Option<&std::path::Path>) -> Result<()> {
     if default {
+        let config = ferrocp_config::Config::default();
         println!("{} Default configuration:", style("⚙").blue().bold());
-        // TODO: Show actual default configuration
-        println!("threads: auto");
-        println!("buffer_size: 8MB");
-        println!("compression: false");
-        println!("zero_copy: true");
-    } else {
-        println!("{} Current configuration:", style("⚙").blue().bold());
-        // TODO: Show current configuration
-        println!("No configuration file found");
+        println!("{}", serde_json::to_string_pretty(&config)?);
+        return Ok(());
     }
+
+    let config = match config_path {
+        Some(path) => ferrocp_config::ConfigLoader::load_from_file(path).map_err(|error| {
+            anyhow::anyhow!(
+                "cannot load configuration from '{}': {error}",
+                path.display()
+            )
+        })?,
+        None => ferrocp_config::ConfigLoader::load_default()
+            .map_err(|error| anyhow::anyhow!("cannot load the default configuration: {error}"))?,
+    };
+
+    let origin = match config_path {
+        Some(path) => format!("'{}'", path.display()),
+        None => match ferrocp_config::ConfigLoader::config_exists() {
+            Some(path) => format!("'{}'", path.display()),
+            None => "no configuration file found".to_string(),
+        },
+    };
+
+    println!(
+        "{} Effective configuration ({} plus FERROCP_ environment variables):",
+        style("⚙").blue().bold(),
+        origin
+    );
+    println!("{}", serde_json::to_string_pretty(&config)?);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `--threads` must reach the engine configuration: it bounds how many
+    /// copies run concurrently.
+    #[test]
+    fn engine_config_applies_the_thread_count() {
+        let config = engine_config(Some(4)).expect("4 is a valid thread count");
+        assert_eq!(config.performance.thread_count.get(), 4);
+    }
+
+    /// Omitting `--threads` keeps the engine's own sizing.
+    #[test]
+    fn engine_config_without_threads_keeps_the_default() {
+        let config = engine_config(None).expect("the default configuration is valid");
+        assert_eq!(config.performance.thread_count, ThreadCount::default());
+    }
+
+    /// Out-of-range values are refused instead of being clamped, so the number
+    /// the user sees is the number the engine uses.
+    #[test]
+    fn engine_config_rejects_an_out_of_range_thread_count() {
+        let error = engine_config(Some(0)).expect_err("0 threads is below the minimum");
+        assert!(
+            error.to_string().contains("--threads"),
+            "the error must name the option: {error}"
+        );
+
+        let error = engine_config(Some(usize::MAX)).expect_err("the count is above the maximum");
+        assert!(error.to_string().contains("--threads"));
+    }
+
+    /// Neither option can change the copy, so both must fail rather than be
+    /// ignored.
+    #[test]
+    fn tuning_options_that_cannot_be_honoured_are_rejected() {
+        let error = reject_unimplemented_tuning(Some(6), false).expect_err("no compressor exists");
+        assert!(
+            error.to_string().contains("--compression-level"),
+            "the error must name the option: {error}"
+        );
+
+        let error = reject_unimplemented_tuning(None, true).expect_err("no zero-copy path exists");
+        assert!(
+            error.to_string().contains("--zero-copy"),
+            "the error must name the option: {error}"
+        );
+
+        assert!(reject_unimplemented_tuning(None, false).is_ok());
+    }
+
+    /// A level above the supported range is a typo, not a missing feature, and
+    /// must say so.
+    #[test]
+    fn compression_level_reports_an_out_of_range_value_as_invalid() {
+        let error = reject_unimplemented_tuning(Some(23), false).expect_err("23 is out of range");
+        assert!(
+            error.to_string().contains("invalid --compression-level"),
+            "the error must report the invalid value: {error}"
+        );
+    }
+
+    /// A sub-command with no logic must not report success.
+    #[test]
+    fn unimplemented_sub_commands_fail_instead_of_lying() {
+        let error =
+            unimplemented_command("sync", "no synchronization is performed").expect_err("no sync");
+        assert!(error.to_string().contains("not implemented"));
+
+        let error =
+            unimplemented_command("verify", "no check is performed").expect_err("no verify");
+        assert!(error.to_string().contains("not implemented"));
+    }
 }

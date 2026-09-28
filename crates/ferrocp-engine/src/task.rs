@@ -88,6 +88,12 @@ pub struct CopyRequest {
     pub verify_copy: bool,
     /// Whether to enable compression
     pub enable_compression: bool,
+    /// Buffer size override for this copy, in bytes
+    ///
+    /// `None` keeps the engine-wide [`crate::ExecutorConfig::default_buffer_size`].
+    /// Unlike the other tuning knobs this one is honoured: it reaches the I/O
+    /// layer, which sizes its copy buffers with it.
+    pub buffer_size: Option<usize>,
     /// Exclude patterns
     pub exclude_patterns: Vec<String>,
     /// Include patterns
@@ -112,6 +118,7 @@ impl CopyRequest {
             preserve_metadata: true,
             verify_copy: false,
             enable_compression: false,
+            buffer_size: None,
             exclude_patterns: Vec::new(),
             include_patterns: Vec::new(),
             max_retries: 3,
@@ -169,6 +176,12 @@ impl CopyRequest {
     /// Enable compression
     pub fn enable_compression(mut self, enable: bool) -> Self {
         self.enable_compression = enable;
+        self
+    }
+
+    /// Override the buffer size used by the I/O layer for this copy
+    pub fn with_buffer_size(mut self, buffer_size: Option<usize>) -> Self {
+        self.buffer_size = buffer_size;
         self
     }
 

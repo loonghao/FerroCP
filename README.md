@@ -28,7 +28,7 @@
 - **Shutil-compatible helpers**: `copy`, `copy2`, `copytree`
 - **Device-aware copy**: per-device analysis (type, filesystem, theoretical speeds, optimal buffer size)
 - **JSON output** for the `copy` subcommand (`--json`) for automation and benchmarking
-- **Options honoured by the copy path**: `verify`, `preserve_timestamps`, `preserve_permissions`, `enable_compression`
+- **Options honoured by the copy path**: `verify`, `preserve_timestamps`, `preserve_permissions`, `enable_compression`, `buffer_size`, and the CLI `--threads`
 - **VFX Platform compatibility** - follows [VFX Reference Platform](https://vfxplatform.com/) standards
 
 ### ⚠️ **Not implemented (verified against the code on `main`)**
@@ -38,9 +38,9 @@
   the executor's 3600 second timeout fires, so it blocks for an hour and then fails with
   `Timeout waiting for task`. The previous implementation skipped the `await`, deleted the source and
   silently lost data. Use `shutil.move()` until the engine dispatch path is fixed.
-- **`ferrocp sync`**, **`ferrocp verify`** and **`ferrocp config`** are parsed but print a placeholder "completed" message; the underlying logic is still `TODO` in `crates/ferrocp-cli/src/main.rs`
-- **CLI options accepted but not wired to the engine**: `--threads`, `--compression-level` and `--zero-copy` on `ferrocp copy`
-- **`CopyOptions` fields accepted but ignored by the copy path**: `mode`, `overwrite`, `buffer_size`, `num_threads`, `follow_symlinks` and `compression_level` (only `verify`, `preserve_timestamps`, `preserve_permissions` and `enable_compression` are read in `crates/ferrocp-python/src/copy.rs`)
+- **`ferrocp sync`** and **`ferrocp verify`** are parsed but have no logic; both exit with an error rather than printing a placeholder "completed" message. `ferrocp config` is implemented: it prints the effective configuration as JSON
+- **Options rejected instead of being ignored**: `--compression-level` and `--zero-copy` on `ferrocp copy`, and the `CopyOptions` fields `num_threads` and `compression_level` unless they are `0`. The I/O layer has no compressor and no zero-copy path, and the engine sizes its own thread pool, so these knobs have nothing to act on
+- **Compression is not applied**: `enable_compression` / `--compress` are forwarded to the I/O layer, which does not compress yet
 - **Exclude/include patterns** exist on the CLI, but `CopyOptions` exposes no pattern fields in the Python API
 - **`cargo install`** is not available: no crate has been published to crates.io
 
@@ -103,10 +103,11 @@ asyncio.run(main())
 `CopyOptions` exposes exactly these keyword arguments (defaults in parentheses):
 `mode` (`"auto"`), `overwrite` (`"prompt"`), `preserve_timestamps` (`True`),
 `preserve_permissions` (`True`), `follow_symlinks` (`False`), `enable_compression` (`False`),
-`compression_level` (`6`), `buffer_size` (`65536`), `num_threads` (`0`) and `verify` (`False`).
+`compression_level` (`0`), `buffer_size` (`65536`), `num_threads` (`0`) and `verify` (`False`).
 
-Only `verify`, `preserve_timestamps`, `preserve_permissions` and `enable_compression`
-currently change the copy behaviour; the other fields are accepted but ignored.
+`buffer_size` is honoured by the copy path. `num_threads` must stay `0` and
+`compression_level` must stay `0`: the engine sizes its own pool and the I/O layer has no
+compressor, so any other value is rejected instead of being ignored.
 
 ```python
 import asyncio
@@ -184,16 +185,16 @@ ferrocp copy --help
 | Option | Description |
 |--------|-------------|
 | `-m, --mode <MODE>` | `all` (default), `newer`, `different`, `mirror` |
-| `-t, --threads <THREADS>` | Accepted, but not wired to the engine yet |
-| `--compress` | Enable compression |
-| `--compression-level <LEVEL>` | 0-22, default `6`; accepted, but not wired to the engine yet |
-| `--zero-copy` | Enable zero-copy operations; accepted, but not wired to the engine yet |
+| `-t, --threads <THREADS>` | Concurrent copy tasks, `1-256`. Omitted auto-detects |
+| `--compress` | Enable compression (forwarded to the I/O layer, which does not compress yet) |
+| `--compression-level <LEVEL>` | Not implemented: rejected with an error |
+| `--zero-copy` | Not implemented: rejected with an error |
 | `--mirror` | Mirror mode; overrides `--mode` |
 | `--exclude <PATTERN>` / `--include <PATTERN>` | Repeatable patterns |
 | `--json` | Emit the JSON result document |
 
-> `sync`, `verify` and `config` are parsed but currently only print a placeholder message;
-> the real logic is still unimplemented in `crates/ferrocp-cli/src/main.rs`.
+> `sync` and `verify` are parsed but exit with an error: their logic is still unimplemented in
+> `crates/ferrocp-cli/src/main.rs`. `config` prints the effective configuration as JSON.
 
 ### Python CLI
 

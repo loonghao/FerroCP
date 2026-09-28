@@ -32,10 +32,22 @@ fn copy_result_error(result: &ferrocp_engine::task::CopyResult) -> PyErr {
 /// Every field of `PyCopyOptions` that describes copy semantics is honoured
 /// here. Invalid values raise `ValueError` instead of being ignored, so the
 /// Python API can never promise a behaviour it does not implement.
+///
+/// The tuning fields follow the same rule:
+///
+/// - `buffer_size` is honoured: it reaches the I/O layer, which sizes its copy
+///   buffers with it.
+/// - `num_threads` and `compression_level` are rejected unless they ask for the
+///   behaviour that actually happens (`0`, meaning "auto" and "no
+///   compression"). The engine sizes its own pool and the I/O layer has no
+///   compressor, so any other value would be a promise the copy cannot keep.
 fn apply_copy_options(request: &mut CopyRequest, options: &PyCopyOptions) -> PyResult<()> {
     request.verify_copy = options.verify;
     request.preserve_metadata = options.preserve_timestamps || options.preserve_permissions;
     request.enable_compression = options.enable_compression;
+    request.buffer_size = Some(options.buffer_size()?);
+
+    options.reject_unimplemented_tuning()?;
 
     let overwrite_policy = options.overwrite_policy()?;
     let symlink_mode = options.symlink_mode()?;

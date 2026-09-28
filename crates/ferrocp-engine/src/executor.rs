@@ -43,6 +43,12 @@ pub struct ExecutorConfig {
     pub preserve_timestamps: bool,
     /// Preserve permission bits (full mode on Unix, read-only attribute on Windows)
     pub preserve_permissions: bool,
+    /// Per-request buffer size override
+    ///
+    /// `None` falls back to [`ExecutorConfig::default_buffer_size`]. A request
+    /// wins over the engine-wide default because it is the caller-facing
+    /// contract.
+    pub buffer_size: Option<usize>,
 }
 
 impl ExecutorConfig {
@@ -57,6 +63,7 @@ impl ExecutorConfig {
             enable_retry: true,
             max_retry_attempts: 3,
             retry_delay: Duration::from_millis(1000),
+            buffer_size: None,
             ..Self::default()
         }
     }
@@ -73,6 +80,7 @@ impl ExecutorConfig {
         overwrite_prompt: Option<ferrocp_io::OverwritePrompt>,
         preserve_timestamps: bool,
         preserve_permissions: bool,
+        buffer_size: Option<usize>,
     ) -> Self {
         Self {
             overwrite_policy,
@@ -80,8 +88,16 @@ impl ExecutorConfig {
             overwrite_prompt,
             preserve_timestamps,
             preserve_permissions,
+            buffer_size,
             ..self.clone()
         }
+    }
+
+    /// The buffer size a copy should use: the request override when set,
+    /// otherwise the engine-wide default.
+    #[must_use]
+    pub fn buffer_size(&self) -> usize {
+        self.buffer_size.unwrap_or(self.default_buffer_size)
     }
 }
 
@@ -103,6 +119,7 @@ impl Default for ExecutorConfig {
             symlink_mode: SymlinkMode::Preserve,
             preserve_timestamps: true,
             preserve_permissions: true,
+            buffer_size: None,
         }
     }
 }
@@ -235,6 +252,7 @@ impl TaskExecutor {
             task.request.overwrite_prompt.clone(),
             task.request.preserve_metadata,
             task.request.preserve_metadata,
+            task.request.buffer_size,
         );
         let config = &effective_config;
 
@@ -290,7 +308,7 @@ impl TaskExecutor {
 
         // Create copy options from task request
         let copy_options = CopyOptions {
-            buffer_size: Some(config.default_buffer_size),
+            buffer_size: Some(config.buffer_size()),
             enable_progress: config.enable_progress_reporting,
             progress_interval: config.progress_interval,
             verify_copy: config.enable_verification || task.request.verify_copy,
@@ -726,6 +744,10 @@ impl TaskExecutor {
         selection.copy_options.symlink_mode = config.symlink_mode;
         selection.copy_options.preserve_timestamps = config.preserve_timestamps;
         selection.copy_options.preserve_permissions = config.preserve_permissions;
+        // A request-level buffer size overrides the selector's size heuristic.
+        if let Some(buffer_size) = config.buffer_size {
+            selection.copy_options.buffer_size = Some(buffer_size);
+        }
 
         // Execute copy using the selected engine
         match selection.engine_type {
@@ -1295,6 +1317,54 @@ mod tests {
             "old",
             "the destination must not be truncated"
         );
+    }
+
+    /// A request-level buffer size is what the I/O layer copies with; without
+    /// one the engine-wide default stays in effect.
+    #[test]
+    fn request_buffer_size_overrides_the_engine_default() {
+        let config = ExecutorConfig::default();
+
+        let overridden = config.with_request_semantics(
+            OverwritePolicy::Always,
+            SymlinkMode::Preserve,
+            None,
+            true,
+            true,
+            Some(4096),
+        );
+        assert_eq!(overridden.buffer_size(), 4096);
+
+        let inherited = config.with_request_semantics(
+            OverwritePolicy::Always,
+            SymlinkMode::Preserve,
+            None,
+            true,
+            true,
+            None,
+        );
+        assert_eq!(
+            inherited.buffer_size(),
+            config.default_buffer_size,
+            "an unset buffer size must keep the engine default"
+        );
+    }
+
+    /// End-to-end proof that `CopyRequest::buffer_size` reaches the engine: the
+    /// executor derives its effective buffer size from the request.
+    #[tokio::test]
+    async fn copy_request_buffer_size_reaches_the_executor_config() {
+        let request = CopyRequest::new("source.txt", "dest.txt").with_buffer_size(Some(4096));
+        let config = ExecutorConfig::default().with_request_semantics(
+            request.overwrite_policy,
+            request.symlink_mode,
+            None,
+            request.preserve_metadata,
+            request.preserve_metadata,
+            request.buffer_size,
+        );
+
+        assert_eq!(config.buffer_size(), 4096);
     }
 
     #[test]
