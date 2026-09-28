@@ -1,6 +1,9 @@
 //! Configuration for Python bindings
 
-use ferrocp_types::{CopyMode, NetworkProtocol, OverwriteDecision, OverwritePolicy, SymlinkMode};
+use ferrocp_types::{
+    BufferSize, CompressionLevel, CopyMode, NetworkProtocol, OverwriteDecision, OverwritePolicy,
+    SymlinkMode,
+};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::IntoPyObjectExt;
@@ -52,13 +55,22 @@ pub struct PyCopyOptions {
     /// Whether to enable compression
     #[pyo3(get, set)]
     pub enable_compression: bool,
-    /// Compression level (0-9)
+    /// Compression level
+    ///
+    /// `0` is the only accepted value: compression is not implemented by the
+    /// I/O layer yet, so any other level would be ignored rather than applied.
     #[pyo3(get, set)]
     pub compression_level: u8,
     /// Buffer size in bytes
+    ///
+    /// Honoured by the copy path. Must be a power of two between
+    /// 4 KiB and 64 MiB, which [`BufferSize`] validates.
     #[pyo3(get, set)]
     pub buffer_size: usize,
     /// Number of worker threads
+    ///
+    /// `0` (auto) is the only accepted value: the engine sizes its own pool,
+    /// so any other value would be ignored rather than applied.
     #[pyo3(get, set)]
     pub num_threads: usize,
     /// Whether to verify copied files
@@ -107,7 +119,7 @@ impl PyCopyOptions {
         preserve_permissions = true,
         follow_symlinks = false,
         enable_compression = false,
-        compression_level = 6,
+        compression_level = 0,
         buffer_size = 64 * 1024,
         num_threads = 0,
         verify = false
@@ -157,7 +169,7 @@ impl PyCopyOptions {
             preserve_permissions: false,
             follow_symlinks: false,
             enable_compression: false,
-            compression_level: 1,
+            compression_level: 0,
             buffer_size: 1024 * 1024, // 1MB
             num_threads: 0,           // Auto-detect
             verify: false,
@@ -179,14 +191,17 @@ impl PyCopyOptions {
             preserve_permissions: true,
             follow_symlinks: false,
             enable_compression: false,
-            compression_level: 6,
+            compression_level: 0,
             buffer_size: 64 * 1024, // 64KB
-            num_threads: 1,
+            num_threads: 0,
             verify: true,
         }
     }
 
     /// Create options optimized for compression
+    ///
+    /// `compression_level` stays `0` because the I/O layer does not apply
+    /// compression yet; a non-zero level would be rejected at copy time.
     #[staticmethod]
     pub fn for_compression() -> Self {
         Self {
@@ -197,7 +212,7 @@ impl PyCopyOptions {
             preserve_permissions: true,
             follow_symlinks: false,
             enable_compression: true,
-            compression_level: 6,
+            compression_level: 0,
             buffer_size: 256 * 1024, // 256KB
             num_threads: 0,          // Auto-detect
             verify: false,
@@ -286,7 +301,7 @@ impl Default for PyCopyOptions {
             preserve_permissions: true,
             follow_symlinks: false,
             enable_compression: false,
-            compression_level: 6,
+            compression_level: 0,
             buffer_size: 64 * 1024,
             num_threads: 0,
             verify: false,
@@ -303,6 +318,55 @@ fn invalid_value(option: &str, value: &str, accepted: &[&str]) -> PyErr {
 }
 
 impl PyCopyOptions {
+    /// Validate `buffer_size` and return it
+    ///
+    /// `BufferSize` enforces the range the I/O layer can allocate: a power of
+    /// two between 4 KiB and 64 MiB.
+    pub fn buffer_size(&self) -> PyResult<usize> {
+        BufferSize::new(self.buffer_size)
+            .map(BufferSize::get)
+            .map_err(|error| {
+                PyValueError::new_err(format!(
+                    "invalid buffer_size value {}: {error}",
+                    self.buffer_size
+                ))
+            })
+    }
+
+    /// Reject the tuning fields the copy path cannot honour
+    ///
+    /// Both fields keep a value that means "do what you would do anyway"
+    /// (`num_threads = 0` for auto-detection, `compression_level = 0` for no
+    /// compression). Anything else asks for behaviour that does not exist, so
+    /// it raises `ValueError` instead of being ignored.
+    pub fn reject_unimplemented_tuning(&self) -> PyResult<()> {
+        if self.num_threads != 0 {
+            return Err(PyValueError::new_err(format!(
+                "num_threads={} is not implemented: the copy engine sizes its own thread pool, so \
+                 only 0 (auto-detect) is accepted",
+                self.num_threads
+            )));
+        }
+
+        if self.compression_level != 0 {
+            // `CompressionLevel` accepts 0-22; anything above that is a typo
+            // rather than an unsupported feature, so report it separately.
+            CompressionLevel::new(self.compression_level).map_err(|error| {
+                PyValueError::new_err(format!(
+                    "invalid compression_level value {}: {error}",
+                    self.compression_level
+                ))
+            })?;
+            return Err(PyValueError::new_err(format!(
+                "compression_level={} is not implemented: the I/O layer has no compressor, so \
+                 only 0 (no compression) is accepted",
+                self.compression_level
+            )));
+        }
+
+        Ok(())
+    }
+
     /// Convert to Rust `CopyMode`
     ///
     /// Raises `ValueError` for unknown values. `mirror` is rejected explicitly
@@ -596,6 +660,98 @@ mod tests {
             };
             let error = options.copy_mode().unwrap_err();
             assert!(error.to_string().contains("not implemented"));
+        }
+
+        /// `buffer_size` is honoured by the copy path, so it is validated
+        /// against the range the I/O layer can allocate.
+        #[test]
+        fn test_buffer_size_is_validated() {
+            with_interpreter();
+            let options = PyCopyOptions {
+                buffer_size: 64 * 1024,
+                ..PyCopyOptions::default()
+            };
+            assert_eq!(options.buffer_size().unwrap(), 64 * 1024);
+
+            let options = PyCopyOptions {
+                buffer_size: 1000,
+                ..PyCopyOptions::default()
+            };
+            let error = options.buffer_size().unwrap_err();
+            assert!(error.to_string().contains("invalid buffer_size"));
+        }
+
+        /// Only the values that describe what actually happens are accepted.
+        #[test]
+        fn test_unimplemented_tuning_values_are_rejected() {
+            with_interpreter();
+            let options = PyCopyOptions {
+                num_threads: 4,
+                ..PyCopyOptions::default()
+            };
+            let error = options.reject_unimplemented_tuning().unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("num_threads=4 is not implemented"),
+                "the error must name the option and its value: {error}"
+            );
+
+            let options = PyCopyOptions {
+                compression_level: 3,
+                ..PyCopyOptions::default()
+            };
+            let error = options.reject_unimplemented_tuning().unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("compression_level=3 is not implemented"),
+                "the error must name the option and its value: {error}"
+            );
+        }
+
+        /// A level outside 0-22 is a typo rather than a missing feature.
+        #[test]
+        fn test_compression_level_out_of_range_is_reported_as_invalid() {
+            with_interpreter();
+            let options = PyCopyOptions {
+                compression_level: 23,
+                ..PyCopyOptions::default()
+            };
+            let error = options.reject_unimplemented_tuning().unwrap_err();
+            assert!(error
+                .to_string()
+                .contains("invalid compression_level value 23"));
+        }
+
+        /// The defaults ask for the behaviour that happens, so they must pass.
+        #[test]
+        fn test_default_tuning_values_are_accepted() {
+            with_interpreter();
+            PyCopyOptions::default()
+                .reject_unimplemented_tuning()
+                .expect("the defaults must be accepted");
+            PyCopyOptions::default()
+                .buffer_size()
+                .expect("the default buffer size must be valid");
+        }
+
+        /// Every preset must be usable, not only constructible.
+        #[test]
+        fn test_presets_pass_tuning_validation() {
+            with_interpreter();
+            for options in [
+                PyCopyOptions::for_speed(),
+                PyCopyOptions::for_safety(),
+                PyCopyOptions::for_compression(),
+            ] {
+                options
+                    .reject_unimplemented_tuning()
+                    .expect("presets must not request unimplemented behaviour");
+                options
+                    .buffer_size()
+                    .expect("presets must use a valid buffer size");
+            }
         }
 
         #[test]

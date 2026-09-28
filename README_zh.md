@@ -26,7 +26,7 @@
 - **`shutil` 兼容辅助函数**：`copy`、`copy2`、`copytree`
 - **设备感知复制**：分析设备类型、文件系统、理论速度与最佳缓冲区大小
 - **`copy` 子命令支持 `--json`**，便于自动化和基准测试
-- **复制路径真正生效的选项**：`verify`、`preserve_timestamps`、`preserve_permissions`、`enable_compression`
+- **复制路径真正生效的选项**：`verify`、`preserve_timestamps`、`preserve_permissions`、`enable_compression`、`buffer_size`，以及 CLI 的 `--threads`
 - **VFX 平台兼容**，遵循 [VFX Reference Platform](https://vfxplatform.com/) 标准
 
 ### ⚠️ **尚未实现（已按 `main` 分支代码逐条核对）**
@@ -35,9 +35,9 @@
   该 await 只会在执行器 3600 秒超时触发时才返回，即阻塞一小时后以 `Timeout waiting for task` 失败。
   此前的实现跳过 `await` 就删除源路径，导致静默数据丢失。
   在引擎分发路径修复之前，请改用 `shutil.move()`。
-- **`ferrocp sync`、`ferrocp verify`、`ferrocp config`** 可被解析，但只打印占位信息；其逻辑在 `crates/ferrocp-cli/src/main.rs` 中仍是 `TODO`
-- **已接收但未接入引擎的 CLI 选项**：`ferrocp copy` 的 `--threads`、`--compression-level`、`--zero-copy`
-- **可设置但被复制路径忽略的 `CopyOptions` 字段**：`mode`、`overwrite`、`buffer_size`、`num_threads`、`follow_symlinks`、`compression_level`（`crates/ferrocp-python/src/copy.rs` 只读取 `verify`、`preserve_timestamps`、`preserve_permissions` 和 `enable_compression`）
+- **`ferrocp sync`、`ferrocp verify`** 可被解析但没有实际逻辑：两者都会以错误退出，而不再打印"已完成"的占位信息。`ferrocp config` 已实现，会输出 JSON 格式的生效配置
+- **不再静默忽略、改为显式拒绝的选项**：`ferrocp copy` 的 `--compression-level`、`--zero-copy`，以及 `CopyOptions` 中不为 `0` 的 `num_threads` 与 `compression_level`。I/O 层没有压缩器和零拷贝路径，引擎也自行管理线程池，这些开关没有可作用的对象
+- **压缩目前不会真正生效**：`enable_compression` / `--compress` 会被转发到 I/O 层，但 I/O 层尚未实现压缩
 - **排除/包含模式**只存在于 CLI，Python API 的 `CopyOptions` 没有提供对应字段
 - **`cargo install` 不可用**：没有 crate 发布到 crates.io
 
@@ -99,11 +99,11 @@ asyncio.run(main())
 
 `CopyOptions` 提供以下关键字参数（括号中为默认值）：`mode`（`"auto"`）、
 `overwrite`（`"prompt"`）、`preserve_timestamps`（`True`）、`preserve_permissions`（`True`）、
-`follow_symlinks`（`False`）、`enable_compression`（`False`）、`compression_level`（`6`）、
+`follow_symlinks`（`False`）、`enable_compression`（`False`）、`compression_level`（`0`）、
 `buffer_size`（`65536`）、`num_threads`（`0`）和 `verify`（`False`）。
 
-其中只有 `verify`、`preserve_timestamps`、`preserve_permissions` 和 `enable_compression`
-会真正改变复制行为，其余字段可设置但会被忽略。
+`buffer_size` 会被复制路径真正使用。`num_threads` 必须保持 `0`、`compression_level` 必须保持 `0`：
+引擎自行管理线程池、I/O 层没有压缩器，其他取值会被显式拒绝而不是被忽略。
 
 ```python
 import asyncio
@@ -180,16 +180,16 @@ ferrocp copy --help
 | 选项 | 说明 |
 |------|------|
 | `-m, --mode <MODE>` | `all`（默认）、`newer`、`different`、`mirror` |
-| `-t, --threads <THREADS>` | 可接收，但尚未接入引擎 |
-| `--compress` | 启用压缩 |
-| `--compression-level <LEVEL>` | 0-22，默认 `6`；可接收，但尚未接入引擎 |
-| `--zero-copy` | 启用零拷贝操作；可接收，但尚未接入引擎 |
+| `-t, --threads <THREADS>` | 并发复制任务数，`1-256`；省略时自动探测 |
+| `--compress` | 启用压缩（会转发到 I/O 层，但 I/O 层尚未实现压缩） |
+| `--compression-level <LEVEL>` | 尚未实现：传入即报错退出 |
+| `--zero-copy` | 尚未实现：传入即报错退出 |
 | `--mirror` | 镜像模式，覆盖 `--mode` |
 | `--exclude <PATTERN>` / `--include <PATTERN>` | 可重复的模式参数 |
 | `--json` | 输出 JSON 结果文档 |
 
-> `sync`、`verify` 和 `config` 可被解析，但目前只打印占位信息；其真实逻辑在
-> `crates/ferrocp-cli/src/main.rs` 中尚未实现。
+> `sync`、`verify` 可被解析，但会以错误退出：其真实逻辑在
+> `crates/ferrocp-cli/src/main.rs` 中尚未实现。`config` 会输出 JSON 格式的生效配置。
 
 ### Python CLI
 

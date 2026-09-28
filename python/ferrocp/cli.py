@@ -68,7 +68,13 @@ def cli(ctx: click.Context, verbose: bool) -> None:
 @cli.command()
 @click.argument("source", type=click.Path(exists=True, path_type=Path))
 @click.argument("destination", type=click.Path(path_type=Path))
-@click.option("--threads", "-t", type=int, default=4, help="Number of threads to use")
+@click.option(
+    "--threads",
+    "-t",
+    type=int,
+    default=0,
+    help="Number of threads to use (0 auto-detects; the engine sizes its own pool, so only 0 is accepted)",
+)
 @click.option(
     "--buffer-size",
     "-b",

@@ -163,7 +163,31 @@ specified in [ERROR_MODEL.md](ERROR_MODEL.md). The short version:
 - An invalid `--overwrite` / `--symlinks` value, or `prompt` without a handler,
   fails before any I/O happens.
 
-## 8. Explicitly out of scope
+## 8. Tuning options
+
+Rule 2 applies to performance tuning as well: a knob that cannot be honoured is
+rejected, never ignored.
+
+| Option | Where | Status |
+| ------ | ----- | ------ |
+| `--threads <N>` (CLI) | bounds concurrent copy tasks | **Honoured**. `1-256`; the engine uses `N` as its concurrency limit. Omitted means auto-detect. |
+| `buffer_size` (Python) | I/O buffer of the copy | **Honoured**. Power of two, 4 KiB to 64 MiB. Anything else raises `ValueError`. |
+| `num_threads` (Python) | worker threads | **Rejected** unless `0`. The engine sizes its own pool, so there is no per-call thread count to set. |
+| `--compression-level <N>` (CLI), `compression_level` (Python) | compression level | **Rejected** unless `0`. The I/O layer has no compressor, so no level can be applied. |
+| `--zero-copy` (CLI) | zero-copy I/O | **Rejected**. Every copy goes through the buffered engine; there is no zero-copy path to select. |
+
+`enable_compression` (Python) and `--compress` (CLI) are still accepted and
+forwarded to the I/O layer, which does not compress yet. They are a known gap
+and are tracked separately; do not rely on compression taking effect.
+
+## 9. Sub-commands
+
+`ferrocp sync` and `ferrocp verify` are parsed so scripts can be written against
+them, but they have no logic yet. Both exit with an error instead of printing
+"completed", because a caller cannot otherwise tell that no work happened.
+`ferrocp config` prints the effective configuration as JSON.
+
+## 10. Explicitly out of scope
 
 These are **not** defined yet and may change. Do not rely on them:
 
@@ -173,3 +197,5 @@ These are **not** defined yet and may change. Do not rely on them:
 - Atomicity and rollback: a failed copy leaves partially written destinations.
 - Ownership, ACLs and extended attributes.
 - `CopyMode::mirror`.
+- Compression and zero-copy I/O (see §9): accepted surfaces exist, but the I/O
+  layer performs neither.

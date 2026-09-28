@@ -20,7 +20,7 @@ class CopyOptions:
         preserve_permissions: bool = True,
         follow_symlinks: bool = False,
         enable_compression: bool = False,
-        compression_level: int = 6,
+        compression_level: int = 0,
         buffer_size: int = 65536,
         num_threads: int = 0,
         verify: bool = False,
@@ -49,14 +49,17 @@ class CopyOptions:
     def enable_compression(self) -> bool: ...
     @enable_compression.setter
     def enable_compression(self, value: bool) -> None: ...
+    # 0 is the only accepted value: compression is not implemented yet.
     @property
     def compression_level(self) -> int: ...
     @compression_level.setter
     def compression_level(self, value: int) -> None: ...
+    # Power of two, 4 KiB to 64 MiB; honoured by the copy path.
     @property
     def buffer_size(self) -> int: ...
     @buffer_size.setter
     def buffer_size(self, value: int) -> None: ...
+    # 0 (auto-detect) is the only accepted value: the engine sizes its own pool.
     @property
     def num_threads(self) -> int: ...
     @num_threads.setter

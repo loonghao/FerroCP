@@ -24,6 +24,7 @@ ferrocp-types = { path = "../ferrocp-types" }
 ferrocp-engine = { path = "../ferrocp-engine" }
 ferrocp-io = { path = "../ferrocp-io" }
 ferrocp-device = { path = "../ferrocp-device" }
+ferrocp-config = { path = "../ferrocp-config" }
 
 # System info
 num_cpus = "1.16"
