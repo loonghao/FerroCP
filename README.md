@@ -162,6 +162,12 @@ Two different `ferrocp` commands exist:
 Global options (must come **before** the subcommand): `-d/--debug`, `-q/--quiet`,
 `-v/--verbose`, `-c/--config <PATH>`, `-V/--version`.
 
+`copy` and `config` read the configuration file: with `-c/--config` the given path is
+used, otherwise the first `ferrocp.toml` / `ferrocp.yaml` found in the working directory,
+the user configuration directory or `/etc/ferrocp/`. `FERROCP__*` environment variables
+are layered on top (`__` separates nesting levels). `--threads` overrides whatever the
+configuration file sets.
+
 ```bash
 # Copy a file
 ferrocp copy source.txt destination.txt

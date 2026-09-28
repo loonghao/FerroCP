@@ -216,7 +216,9 @@ def copy_with_server(
         # Use EACopy for server-based copying
         from . import EACopy
 
-        eacopy = EACopy(thread_count=4, buffer_size=64 * 1024)
+        # thread_count stays 0: the engine sizes its own pool, so any other
+        # value would now be rejected by CopyOptions.
+        eacopy = EACopy(thread_count=0, buffer_size=64 * 1024)
         stats = eacopy.copy_with_server(str(source), str(destination), server, port)
         click.echo(f"✓ Network copy completed! Copied {stats.bytes_copied:,} bytes")
     except Exception as e:

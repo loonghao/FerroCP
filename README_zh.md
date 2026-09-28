@@ -157,6 +157,10 @@ asyncio.run(main())
 全局选项（必须位于子命令**之前**）：`-d/--debug`、`-q/--quiet`、`-v/--verbose`、
 `-c/--config <PATH>`、`-V/--version`。
 
+`copy` 与 `config` 都会读取配置文件：给定 `-c/--config` 时使用该路径，否则依次查找工作目录、
+用户配置目录、`/etc/ferrocp/` 中首个 `ferrocp.toml` / `ferrocp.yaml`。`FERROCP__*` 环境变量
+叠加在其上（`__` 分隔层级）。`--threads` 会覆盖配置文件中的同名设置。
+
 ```bash
 # 复制文件
 ferrocp copy source.txt destination.txt
