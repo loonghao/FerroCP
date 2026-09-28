@@ -46,6 +46,9 @@ struct Cli {
     verbose: bool,
 
     /// Configuration file path
+    ///
+    /// Read by `copy` (it overrides the configuration file that would
+    /// otherwise be discovered) and by `config` (it is the file printed).
     #[arg(short, long)]
     config: Option<PathBuf>,
 
@@ -85,6 +88,9 @@ enum Commands {
         #[arg(short, long)]
         threads: Option<usize>,
         /// Enable compression
+        ///
+        /// Forwarded to the I/O layer, which does not compress yet: the flag
+        /// changes the request but not the bytes that are written.
         #[arg(long)]
         compress: bool,
         /// Compression level (0-22)
@@ -226,7 +232,7 @@ async fn main() -> Result<()> {
                 mode: copy_mode,
                 overwrite_policy,
                 symlink_mode,
-                engine_config: engine_config(threads)?,
+                engine_config: engine_config(cli.config.as_deref(), threads)?,
                 compress,
                 exclude,
                 include,
@@ -257,13 +263,31 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-/// Build the engine configuration from the `copy` command's tuning options
+/// Build the engine configuration the copy path runs with
 ///
-/// `--threads` is honoured: it bounds how many copy tasks the engine runs
-/// concurrently. `ThreadCount` rejects out-of-range values, so the range in the
-/// error message is the one the engine actually accepts.
-fn engine_config(threads: Option<usize>) -> Result<ferrocp_config::Config> {
-    let mut config = ferrocp_config::Config::default();
+/// The starting point is the configuration the rest of FerroCP reads: the
+/// built-in defaults, then the configuration file (`--config <PATH>` when
+/// given, otherwise the first one found) and the `FERROCP__` environment
+/// variables. Building it from `Config::default()` would silently drop a user's
+/// `ferrocp.toml` and environment overrides for every copy.
+///
+/// `--threads` is then honoured on top: it bounds how many copy tasks the
+/// engine runs concurrently. `ThreadCount` rejects out-of-range values, so the
+/// range in the error message is the one the engine actually accepts.
+fn engine_config(
+    config_path: Option<&std::path::Path>,
+    threads: Option<usize>,
+) -> Result<ferrocp_config::Config> {
+    let mut config = match config_path {
+        Some(path) => ferrocp_config::ConfigLoader::load_from_file(path).map_err(|error| {
+            anyhow::anyhow!(
+                "cannot load configuration from '{}': {error}",
+                path.display()
+            )
+        })?,
+        None => ferrocp_config::ConfigLoader::load_default()
+            .map_err(|error| anyhow::anyhow!("cannot load the default configuration: {error}"))?,
+    };
 
     if let Some(threads) = threads {
         let thread_count = ThreadCount::new(threads)
@@ -729,14 +753,14 @@ mod tests {
     /// copies run concurrently.
     #[test]
     fn engine_config_applies_the_thread_count() {
-        let config = engine_config(Some(4)).expect("4 is a valid thread count");
+        let config = engine_config(None, Some(4)).expect("4 is a valid thread count");
         assert_eq!(config.performance.thread_count.get(), 4);
     }
 
     /// Omitting `--threads` keeps the engine's own sizing.
     #[test]
     fn engine_config_without_threads_keeps_the_default() {
-        let config = engine_config(None).expect("the default configuration is valid");
+        let config = engine_config(None, None).expect("the default configuration is valid");
         assert_eq!(config.performance.thread_count, ThreadCount::default());
     }
 
@@ -744,14 +768,55 @@ mod tests {
     /// the user sees is the number the engine uses.
     #[test]
     fn engine_config_rejects_an_out_of_range_thread_count() {
-        let error = engine_config(Some(0)).expect_err("0 threads is below the minimum");
+        let error = engine_config(None, Some(0)).expect_err("0 threads is below the minimum");
         assert!(
             error.to_string().contains("--threads"),
             "the error must name the option: {error}"
         );
 
-        let error = engine_config(Some(usize::MAX)).expect_err("the count is above the maximum");
+        let error =
+            engine_config(None, Some(usize::MAX)).expect_err("the count is above the maximum");
         assert!(error.to_string().contains("--threads"));
+    }
+
+    /// The copy path must read the configuration file a user wrote, not just
+    /// the built-in defaults. Regression guard: an earlier revision built the
+    /// engine from `Config::default()`, which silently dropped `ferrocp.toml`
+    /// and every `FERROCP__` override.
+    #[test]
+    fn engine_config_reads_the_configuration_file() {
+        let temp_dir = tempfile::tempdir().expect("a temporary directory");
+        let path = temp_dir.path().join("ferrocp.toml");
+        std::fs::write(
+            &path,
+            "[performance]\nbuffer_size = 131072\nthread_count = 3\n",
+        )
+        .expect("the configuration file is writable");
+
+        let config = engine_config(Some(&path), None).expect("the configuration file is valid");
+        assert_eq!(
+            config.performance.buffer_size.get(),
+            131072,
+            "the buffer size from the file must reach the engine"
+        );
+        assert_eq!(config.performance.thread_count.get(), 3);
+
+        // `--threads` still wins over the file: it is the more specific request.
+        let config = engine_config(Some(&path), Some(8)).expect("8 is a valid thread count");
+        assert_eq!(config.performance.thread_count.get(), 8);
+        assert_eq!(config.performance.buffer_size.get(), 131072);
+    }
+
+    /// A `--config` path that does not exist is an error, not a silent fallback
+    /// to the defaults.
+    #[test]
+    fn engine_config_rejects_a_missing_configuration_file() {
+        let error = engine_config(Some(std::path::Path::new("does/not/exist.toml")), None)
+            .expect_err("a missing file must not be ignored");
+        assert!(
+            error.to_string().contains("cannot load configuration from"),
+            "the error must name the failing path: {error}"
+        );
     }
 
     /// Neither option can change the copy, so both must fail rather than be

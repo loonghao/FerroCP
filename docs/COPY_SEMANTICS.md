@@ -171,6 +171,7 @@ rejected, never ignored.
 | Option | Where | Status |
 | ------ | ----- | ------ |
 | `--threads <N>` (CLI) | bounds concurrent copy tasks | **Honoured**. `1-256`; the engine uses `N` as its concurrency limit. Omitted means auto-detect. |
+| `-c/--config <PATH>` (CLI) | configuration file used by `copy` and `config` | **Honoured**. Overrides the discovered `ferrocp.toml` / `ferrocp.yaml`; `FERROCP__*` environment variables are layered on top. A path that cannot be read is an error, not a fallback to defaults. |
 | `buffer_size` (Python) | I/O buffer of the copy | **Honoured**. Power of two, 4 KiB to 64 MiB. Anything else raises `ValueError`. |
 | `num_threads` (Python) | worker threads | **Rejected** unless `0`. The engine sizes its own pool, so there is no per-call thread count to set. |
 | `--compression-level <N>` (CLI), `compression_level` (Python) | compression level | **Rejected** unless `0`. The I/O layer has no compressor, so no level can be applied. |
