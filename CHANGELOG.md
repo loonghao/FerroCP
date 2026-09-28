@@ -10,6 +10,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial project structure
 - Basic repository setup
 
+## [1.0.0](https://github.com/loonghao/FerroCP/compare/v0.4.1...v1.0.0) (2026-09-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **copy:** CopyOptions::preserve_metadata is split into preserve_timestamps and preserve_permissions; CopyStats gains symlinks_created; CopyMode::Mirror now returns an error instead of behaving like All; Python CopyOptions.overwrite default changes from "prompt" to "always" (runtime behaviour is unchanged, the old default advertised protection that did not exist) and code passing overwrite="prompt" must now also pass overwrite_callback.
+
+### Features
+
+* **cli:** wire the options that had no effect and reject the rest ([945ed64](https://github.com/loonghao/FerroCP/commit/945ed64ff204c9da9f195cbcf3856ad0e5e002e3))
+* **copy:** define and enforce the copy semantics contract ([f74b110](https://github.com/loonghao/FerroCP/commit/f74b110ffdb05fa1cdefd257b0622f355b114c4e))
+
+
+### Bug Fixes
+
+* **ci:** clear the clippy and pyo3 test failures blocking the merge gate ([#106](https://github.com/loonghao/FerroCP/issues/106)) ([7fc6c2c](https://github.com/loonghao/FerroCP/commit/7fc6c2ce45dfbb4683336ac0bf2248a3a66035d8))
+* **ci:** supply a macOS SDK so darwin release targets link ([#98](https://github.com/loonghao/FerroCP/issues/98)) ([b0b6009](https://github.com/loonghao/FerroCP/commit/b0b6009b59023bf391c38de486f0f0ce11aa0b95))
+* **ci:** unblock the GoReleaser release pipeline ([ada3be0](https://github.com/loonghao/FerroCP/commit/ada3be0e0712f20430b204cf67b75747eb1e06b1))
+* **cli:** derive the result message from the performance rating ([#110](https://github.com/loonghao/FerroCP/issues/110)) ([4373b00](https://github.com/loonghao/FerroCP/commit/4373b000756343ae5238b0593f482bdb0d99a29d))
+* **cli:** load the configuration file and environment for copy ([75a02cf](https://github.com/loonghao/FerroCP/commit/75a02cf9be9efad3c12387d1760bd0842c4cb914))
+* **deps:** pin bincode to 2.x and commit Cargo.lock ([#92](https://github.com/loonghao/FerroCP/issues/92)) ([7767c08](https://github.com/loonghao/FerroCP/commit/7767c0809fb316a698906f845b791b767119027f))
+* **errors:** unify the error model and contain panics at the PyO3 boundary ([471a6c5](https://github.com/loonghao/FerroCP/commit/471a6c5a2acf2d46f3a0a8da3d9d7a2f76bee02b))
+* **python:** build the ferrocp-python bindings and add them to the workspace ([f66db9c](https://github.com/loonghao/FerroCP/commit/f66db9c3139bb43fccccb83662fc50189885f93e))
+* **python:** make move() fail fast instead of losing data ([#108](https://github.com/loonghao/FerroCP/issues/108)) ([6fe6b97](https://github.com/loonghao/FerroCP/commit/6fe6b97310ea201eb15ee75e940106ffcdfc01fa))
+* **zerocopy:** build the macOS backend against current libc ([27e99be](https://github.com/loonghao/FerroCP/commit/27e99beda5034fd74a43603552a08cf214c5dcca))
+
 ## v0.4.1 (2026-04-11)
 
 ### Fix
