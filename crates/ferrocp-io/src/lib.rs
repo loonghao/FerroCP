@@ -45,6 +45,9 @@ pub mod writer;
 // mod property_tests;
 
 #[cfg(test)]
+mod boundary_tests;
+
+#[cfg(test)]
 mod copy_contract_tests;
 
 #[cfg(test)]
