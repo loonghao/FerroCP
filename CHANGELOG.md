@@ -10,6 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial project structure
 - Basic repository setup
 
+## [1.0.1](https://github.com/loonghao/FerroCP/compare/v1.0.0...v1.0.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* **ci:** stop .gitignore from swallowing the nested e2e test modules ([d0343c5](https://github.com/loonghao/FerroCP/commit/d0343c5ff2edf26bed530ca46f8df920966977a6))
+* **cli:** send log output to stderr so --json stays parseable ([64925a7](https://github.com/loonghao/FerroCP/commit/64925a7d26bfeb6b23c5f06b92df9484907acbd8))
+* **device:** analyse a destination that does not exist yet ([7aae7c7](https://github.com/loonghao/FerroCP/commit/7aae7c7613ba90f1ecb00d0fbdba40ed7e5b84ce))
+* **device:** do not fail a copy when there is no mount table ([16beaf6](https://github.com/loonghao/FerroCP/commit/16beaf6cc5b86fcf3d15e475a24773b4bfda23f4))
+* **engine:** dispatch submitted tasks when the engine was not started ([5947564](https://github.com/loonghao/FerroCP/commit/59475648a23c90be7f0c840f59ba3078172b60a1))
+* **test:** the cross-device note was not valid Rust ([b6e9496](https://github.com/loonghao/FerroCP/commit/b6e9496722490fdfb3241a7d9bfe82ab172f44e0))
+* **test:** the mount-table assertion was not valid Rust ([4e9a75e](https://github.com/loonghao/FerroCP/commit/4e9a75e1cc7430824b52bf45af71d4bc8bbaf242))
+
 ## [1.0.0](https://github.com/loonghao/FerroCP/compare/v0.4.1...v1.0.0) (2026-09-28)
 
 
