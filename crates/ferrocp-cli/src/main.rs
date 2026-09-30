@@ -325,6 +325,14 @@ fn reject_unimplemented_tuning(compression_level: Option<u8>, zero_copy: bool) -
     Ok(())
 }
 
+/// Send log output to stderr
+///
+/// `tracing_subscriber::fmt` writes to stdout by default, which puts every
+/// warning in front of the report the caller asked for. `--json` promises a
+/// parseable document on stdout, and one diagnostic line ahead of it makes that
+/// promise false - a script reading the output gets a JSON decoder error instead
+/// of the statistics. Diagnostics are not the requested output, so they go to
+/// stderr, where they are still visible in a terminal and in a CI log.
 fn init_logging(debug: bool, quiet: bool, verbose: bool) -> Result<()> {
     use tracing_subscriber::{fmt, EnvFilter};
 
@@ -347,6 +355,7 @@ fn init_logging(debug: bool, quiet: bool, verbose: bool) -> Result<()> {
         .with_target(false)
         .with_thread_ids(false)
         .with_thread_names(false)
+        .with_writer(std::io::stderr)
         .init();
 
     Ok(())

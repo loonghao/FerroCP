@@ -107,7 +107,8 @@ class CliResult:
             return json.loads(self.stdout)  # type: ignore[no-any-return]
         except json.JSONDecodeError as error:
             raise AssertionError(
-                f"--json did not emit parseable JSON: {error}\n--- stdout ---\n{self.stdout}"
+                f"--json did not emit parseable JSON: {error}\n"
+                f"--- stdout ---\n{self.stdout}\n--- stderr ---\n{self.stderr}"
             ) from error
 
 
