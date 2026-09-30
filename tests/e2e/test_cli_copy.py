@@ -210,6 +210,25 @@ def test_json_output_describes_a_successful_copy(run_cli, workspace: Path) -> No
     assert payload["copy_stats"]["files_copied"] >= 1
 
 
+def test_json_output_is_the_only_thing_on_stdout(run_cli, workspace: Path) -> None:
+    """`--json` promises a parseable document, so nothing may precede it.
+
+    A warning printed to stdout ahead of the document breaks that promise: a
+    script reading the output gets a JSON decoder error instead of the
+    statistics. Diagnostics belong on stderr.
+    """
+    source = workspace / "source.txt"
+    destination = workspace / "destination.txt"
+    source.write_text("json payload")
+
+    result = run_cli("copy", str(source), str(destination), "--json")
+
+    assert result.returncode == 0, result.output
+    assert result.stdout.lstrip().startswith("{"), (
+        f"stdout does not start with the JSON document: {result.stdout[:200]!r}"
+    )
+
+
 def test_json_output_reports_a_failure(run_cli, workspace: Path) -> None:
     """A failed copy still emits a document, with the reason recorded."""
     result = run_cli("copy", str(workspace / "nope.txt"), str(workspace / "out.txt"), "--json")
