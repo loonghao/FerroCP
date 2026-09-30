@@ -284,9 +284,9 @@ async fn cross_device_copy_produces_identical_content() {
         // Printed rather than swallowed: a reader of the CI log should be able
         // to see that this case went unverified on this machine.
         eprintln!(
-            "note: no second filesystem is mounted here, so a genuine cross-device copy was NOT "
-            "exercised (the source is on device {source_dev}); mount a tmpfs other than the one "
-            "holding {} to cover it",
+            "note: no second filesystem is mounted here, so a genuine cross-device copy was NOT \\
+             exercised (the source is on device {source_dev}); mount a tmpfs other than the \\
+             one holding {} to cover it",
             dir.path().display()
         );
         return;
