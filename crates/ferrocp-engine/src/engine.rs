@@ -8,9 +8,118 @@ use crate::{
 };
 use ferrocp_config::{Config, ConfigLoader};
 use ferrocp_types::Result;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
+
+/// How often the dispatch loop looks for queued tasks
+const DISPATCH_POLL_INTERVAL: Duration = Duration::from_millis(10);
+
+/// Shared state of the scheduler to executor dispatch loop
+///
+/// `CopyEngine::execute` submits a task to the scheduler and then waits for the
+/// executor to finish it. The loop that moves tasks from one to the other used
+/// to be spawned only by `CopyEngine::start`, which neither the Python bindings
+/// nor the FFI ever call, so a copy driven through them stayed `Pending` in the
+/// scheduler until the executor's one hour timeout fired.
+///
+/// The loop is now started on demand by `execute` and shut down when the engine
+/// is explicitly stopped or dropped, so every caller gets its task dispatched
+/// whether or not it called `start` first. The state lives behind an `Arc`
+/// because `CopyEngine` is `Clone`: clones share one loop, and the loop stops
+/// only once the last clone is gone.
+#[derive(Debug)]
+struct DispatchLoop {
+    /// Shutdown channel of the running loop, `None` while no loop is running.
+    shutdown_tx: Mutex<Option<mpsc::Sender<()>>>,
+}
+
+impl DispatchLoop {
+    /// Create dispatch state with no loop running
+    fn new() -> Self {
+        Self {
+            shutdown_tx: Mutex::new(None),
+        }
+    }
+
+    /// Start the dispatch loop unless one is already running
+    ///
+    /// Callers must be inside a Tokio runtime; `execute` and `start` both are.
+    /// The lock is held across `tokio::spawn` on purpose so two concurrent
+    /// callers cannot each decide that they are the one that has to spawn.
+    fn ensure_started(&self, scheduler: &Arc<TaskScheduler>, executor: &Arc<TaskExecutor>) {
+        let mut slot = self.shutdown_tx.lock().unwrap_or_else(|e| e.into_inner());
+        if slot.is_some() {
+            return;
+        }
+
+        let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
+        *slot = Some(shutdown_tx);
+        spawn_dispatch_loop(Arc::clone(scheduler), Arc::clone(executor), shutdown_rx);
+    }
+
+    /// Stop the dispatch loop, if one is running
+    fn stop(&self) {
+        let mut slot = self.shutdown_tx.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(shutdown_tx) = slot.take() {
+            // `try_send` never blocks and the channel is never full: this is the
+            // only sender and it sends exactly once.
+            let _ = shutdown_tx.try_send(());
+        }
+    }
+}
+
+impl Drop for DispatchLoop {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+/// Move queued tasks from the scheduler to the executor until shut down
+///
+/// Runs as a background task. Shutting it down is best effort: a task already
+/// handed to the executor keeps running to completion.
+fn spawn_dispatch_loop(
+    scheduler: Arc<TaskScheduler>,
+    executor: Arc<TaskExecutor>,
+    mut shutdown_rx: mpsc::Receiver<()>,
+) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(DISPATCH_POLL_INTERVAL);
+
+        loop {
+            tokio::select! {
+                _ = shutdown_rx.recv() => {
+                    debug!("Copy engine dispatch loop stopped");
+                    return;
+                }
+                _ = interval.tick() => {
+                    // Drain the queue: concurrent callers can leave several
+                    // tasks waiting behind a single tick.
+                    while let Some(task) = scheduler.get_next_task().await {
+                        debug!("Processing task {} from scheduler", task.id);
+
+                        // Mark task as started in scheduler
+                        if let Err(e) = scheduler.mark_task_started(task.clone()).await {
+                            warn!("Failed to mark task as started: {}", e);
+                            continue;
+                        }
+
+                        // Execute task
+                        if let Err(e) = executor.execute_task(task.clone()).await {
+                            warn!("Failed to execute task {}: {}", task.id, e);
+                            // Mark task as failed
+                            let _ = scheduler
+                                .mark_task_failed(task.id, e.to_string())
+                                .await;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
 
 /// Main copy engine that orchestrates all operations
 #[derive(Debug, Clone)]
@@ -20,7 +129,9 @@ pub struct CopyEngine {
     executor: Arc<TaskExecutor>,
     progress_monitor: Arc<ProgressMonitor>,
     statistics: Arc<StatisticsCollector>,
-    shutdown_tx: Option<mpsc::Sender<()>>,
+    /// Whether `start` was called and `stop` has not been called since
+    started: bool,
+    dispatch: Arc<DispatchLoop>,
 }
 
 impl CopyEngine {
@@ -52,61 +163,20 @@ impl CopyEngine {
             executor,
             progress_monitor,
             statistics,
-            shutdown_tx: None,
+            started: false,
+            dispatch: Arc::new(DispatchLoop::new()),
         })
     }
 
     /// Start the copy engine
+    ///
+    /// Optional: `execute` starts the dispatch loop on demand, so calling this
+    /// only matters for callers that want the loop running before the first
+    /// copy is submitted. An engine that was started must be stopped.
     pub async fn start(&mut self) -> Result<()> {
-        let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
-        self.shutdown_tx = Some(shutdown_tx);
-
-        // Start background tasks
-        let _scheduler = Arc::clone(&self.scheduler);
-        let _executor = Arc::clone(&self.executor);
-        let _progress_monitor = Arc::clone(&self.progress_monitor);
-        let _statistics = Arc::clone(&self.statistics);
-
-        // Start the main task processing loop
-        let scheduler_for_loop = Arc::clone(&self.scheduler);
-        let executor_for_loop = Arc::clone(&self.executor);
-
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
-
-            loop {
-                interval.tick().await;
-
-                // Get next task from scheduler
-                if let Some(task) = scheduler_for_loop.get_next_task().await {
-                    debug!("Processing task {} from scheduler", task.id);
-
-                    // Mark task as started in scheduler
-                    if let Err(e) = scheduler_for_loop.mark_task_started(task.clone()).await {
-                        warn!("Failed to mark task as started: {}", e);
-                        continue;
-                    }
-
-                    // Execute task
-                    if let Err(e) = executor_for_loop.execute_task(task.clone()).await {
-                        warn!("Failed to execute task {}: {}", task.id, e);
-                        // Mark task as failed
-                        let _ = scheduler_for_loop
-                            .mark_task_failed(task.id, e.to_string())
-                            .await;
-                    }
-                }
-            }
-        });
-
-        // For now, just start a simple background task to keep the engine alive
-        tokio::spawn(async move {
-            tokio::select! {
-                _ = shutdown_rx.recv() => {
-                    info!("Copy engine shutdown requested");
-                }
-            }
-        });
+        self.dispatch
+            .ensure_started(&self.scheduler, &self.executor);
+        self.started = true;
 
         info!("Copy engine started");
         Ok(())
@@ -114,9 +184,8 @@ impl CopyEngine {
 
     /// Stop the copy engine
     pub async fn stop(&mut self) -> Result<()> {
-        if let Some(shutdown_tx) = self.shutdown_tx.take() {
-            let _ = shutdown_tx.send(()).await;
-        }
+        self.dispatch.stop();
+        self.started = false;
 
         // Stop components
         self.scheduler.stop().await?;
@@ -129,6 +198,11 @@ impl CopyEngine {
     }
 
     /// Execute a copy request
+    ///
+    /// Runs the copy to completion without any other setup: the dispatch loop
+    /// that feeds the scheduler's queue to the executor is started here when
+    /// nothing else started it, so callers that never call `start` still get
+    /// their task executed instead of waiting for the executor's timeout.
     pub async fn execute(&self, request: CopyRequest) -> Result<CopyResult> {
         debug!("Executing copy request: {:?}", request);
 
@@ -137,6 +211,9 @@ impl CopyEngine {
 
         // Submit task to scheduler
         self.scheduler.submit(task).await?;
+
+        self.dispatch
+            .ensure_started(&self.scheduler, &self.executor);
 
         // Wait for completion
         self.wait_for_completion(task_id).await
@@ -224,7 +301,7 @@ impl CopyEngine {
 
 impl Drop for CopyEngine {
     fn drop(&mut self) {
-        if self.shutdown_tx.is_some() {
+        if self.started {
             warn!("Copy engine dropped without proper shutdown");
         }
     }
@@ -313,5 +390,134 @@ mod tests {
 
         let task_id = engine.submit(request).await.unwrap();
         assert!(!task_id.as_uuid().is_nil());
+    }
+
+    /// `execute` submits to the scheduler and then waits on the executor, so it
+    /// only terminates if the dispatch loop between the two is running. That
+    /// loop used to be started by `start()` alone, which the Python bindings
+    /// and the FFI never call, so their copies hung until the executor's one
+    /// hour timeout fired.
+    ///
+    /// The 15 second envelope is the assertion: a dispatched copy finishes in
+    /// milliseconds, a copy that never gets dispatched does not finish at all.
+    async fn execute_within_timeout(engine: &CopyEngine, request: CopyRequest) -> CopyResult {
+        let outcome =
+            tokio::time::timeout(std::time::Duration::from_secs(15), engine.execute(request)).await;
+        assert!(outcome.is_ok(), "copy was never dispatched by the engine");
+        outcome.unwrap().expect("copy failed")
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn test_execute_dispatches_without_start() {
+        let temp_dir = TempDir::new().unwrap();
+        let source = temp_dir.path().join("source.txt");
+        let destination = temp_dir.path().join("destination.txt");
+        let payload = b"payload".repeat(10_000);
+        tokio::fs::write(&source, &payload).await.unwrap();
+
+        let engine = CopyEngine::with_config(Config::default()).await.unwrap();
+        let result = execute_within_timeout(&engine, CopyRequest::new(&source, &destination)).await;
+
+        assert!(
+            result.is_success(),
+            "unexpected failure: {:?}",
+            result.error
+        );
+        assert!(destination.exists(), "destination was not created");
+        assert_eq!(std::fs::read(&destination).unwrap(), payload);
+        assert_eq!(result.stats.bytes_copied, payload.len() as u64);
+    }
+
+    /// An engine that *is* started must still work, and must not run two
+    /// dispatch loops: a task handed to the executor twice would be copied
+    /// twice.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn test_execute_dispatches_after_start() {
+        let temp_dir = TempDir::new().unwrap();
+        let source = temp_dir.path().join("source.txt");
+        let destination = temp_dir.path().join("destination.txt");
+        tokio::fs::write(&source, b"started engine payload")
+            .await
+            .unwrap();
+
+        let mut engine = CopyEngine::with_config(Config::default()).await.unwrap();
+        engine.start().await.unwrap();
+
+        let result = execute_within_timeout(&engine, CopyRequest::new(&source, &destination)).await;
+
+        assert!(
+            result.is_success(),
+            "unexpected failure: {:?}",
+            result.error
+        );
+        assert_eq!(
+            std::fs::read(&destination).unwrap(),
+            b"started engine payload"
+        );
+
+        engine.stop().await.unwrap();
+    }
+
+    /// Several concurrent `execute` calls share one dispatch loop. Every one of
+    /// them has to be dispatched, not just the first.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn test_concurrent_executes_are_all_dispatched() {
+        let temp_dir = TempDir::new().unwrap();
+        let engine = CopyEngine::with_config(Config::default()).await.unwrap();
+
+        let mut handles = Vec::new();
+        for index in 0..8u32 {
+            let source = temp_dir.path().join(format!("source-{index}.txt"));
+            let destination = temp_dir.path().join(format!("destination-{index}.txt"));
+            let payload = format!("payload {index}").into_bytes();
+            tokio::fs::write(&source, &payload).await.unwrap();
+
+            let engine = engine.clone();
+            handles.push(tokio::spawn(async move {
+                let result = engine
+                    .execute(CopyRequest::new(&source, &destination))
+                    .await;
+                (destination, payload, result)
+            }));
+        }
+
+        let outcome = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+            for handle in handles {
+                let (destination, payload, result) = handle.await.unwrap();
+                let result = result.expect("copy failed");
+                assert!(
+                    result.is_success(),
+                    "unexpected failure: {:?}",
+                    result.error
+                );
+                assert_eq!(std::fs::read(&destination).unwrap(), payload);
+            }
+        })
+        .await;
+
+        assert!(outcome.is_ok(), "a concurrent copy was never dispatched");
+    }
+
+    /// A copy that fails is reported as a failed result rather than hanging:
+    /// the dispatch loop has to hand the task over even when it cannot succeed.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn test_execute_reports_failure_without_hanging() {
+        let temp_dir = TempDir::new().unwrap();
+        let missing = temp_dir.path().join("does-not-exist.txt");
+        let destination = temp_dir.path().join("destination.txt");
+
+        let engine = CopyEngine::with_config(Config::default()).await.unwrap();
+
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(15),
+            engine.execute(CopyRequest::new(&missing, &destination)),
+        )
+        .await;
+
+        assert!(outcome.is_ok(), "a failing copy was never dispatched");
+        let result = outcome.unwrap().expect("copy should not return Err");
+        assert!(!result.is_success());
+        assert!(result.error.is_some(), "a failed copy must carry a message");
+        assert!(!destination.exists());
     }
 }

@@ -241,18 +241,17 @@ def move(
 
     Not implemented: this always raises NotImplementedError.
 
-    A move must finish copying before it removes the source, but the FerroCP
-    copy helpers cannot do that today. They are awaitables backed by an engine
-    that never starts its scheduler dispatch loop, so the submitted copy task
-    is never executed and the await only resolves when the executor's 3600
-    second timeout fires, returning ``Err(Timeout waiting for task ...)``
-    after an hour (see
-    ``crates/ferrocp-python/tests/copy_completes.rs``).
+    A move has to copy first and remove the source only once that copy is known
+    to be complete. FerroCP has no move primitive, so a move would have to be
+    assembled from an awaitable copy plus a delete, and the copy path offers no
+    atomicity or rollback guarantee: a copy that fails part way leaves a
+    partially written destination (see docs/COPY_SEMANTICS.md, "Explicitly out
+    of scope"). Deleting the source in that state loses data that existed in
+    exactly one place.
 
-    The previous implementation skipped the await, deleted the source and
-    silently lost data; awaiting it would instead block for an hour and then
-    fail. Failing fast is the only safe behaviour until the engine dispatch
-    path is fixed.
+    The previous implementation skipped the await, deleted the source and lost
+    data that way. Failing fast stays the behaviour until a verified move
+    primitive exists.
 
     Args:
         src: Source path
@@ -266,10 +265,10 @@ def move(
         NotImplementedError: Always. Use shutil.move() in the meantime.
     """
     raise NotImplementedError(
-        "ferrocp.move() is not implemented and would otherwise lose data: "
-        "the FerroCP copy helpers are backed by an engine whose dispatch loop "
-        "is never started, so a copy only ends when the executor's one-hour "
-        "timeout fires. Use shutil.move() instead."
+        "ferrocp.move() is not implemented: a move needs a copy that is known "
+        "to be complete before the source is removed, and the FerroCP copy "
+        "path provides no atomicity or rollback guarantee. Use "
+        "shutil.move() instead."
     )
 
 
