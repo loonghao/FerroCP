@@ -397,8 +397,8 @@ mod mount_table_tests {
         assert!(!info.is_ram_disk);
         assert!(
             info.device.is_empty(),
-            "an empty device keeps callers away from /sys/block, which is as "
-                "Linux-specific as the mount table"
+            "an empty device keeps callers away from /sys/block, which is as \
+                Linux-specific as the mount table"
         );
     }
 
