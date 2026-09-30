@@ -619,6 +619,20 @@ async fn copy_command(options: CopyOptions) -> Result<()> {
         }
     }
 
+    // A failed copy must not exit 0.
+    //
+    // Everything above has already been printed, including the JSON document
+    // with its `failure_reason`, so returning an error here only changes the
+    // exit status. Leaving it as `Ok(())` made a failed copy indistinguishable
+    // from a successful one for scripts: the stats print either way and the
+    // status code was the only signal a caller could act on.
+    //
+    // ERROR_MODEL.md principle 1 - never swallow an error - applies to the CLI
+    // as much as to the library.
+    if let Some(reason) = failure_reason {
+        return Err(anyhow::anyhow!("{reason}"));
+    }
+
     info!("Copy operation completed successfully");
     Ok(())
 }
