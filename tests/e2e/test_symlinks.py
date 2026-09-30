@@ -25,7 +25,7 @@ from .conftest import skip_if_no_symlink
 
 
 def make_linked_tree(root: Path) -> Path:
-    """A tree containing a file link, a directory link and a dangling link."""
+    """Build a tree holding a file link, a directory link and a dangling link."""
     root.mkdir(parents=True, exist_ok=True)
     target = root / "target.txt"
     target.write_text("target payload")
@@ -45,9 +45,7 @@ def make_linked_tree(root: Path) -> Path:
 # --------------------------------------------------------------------------- #
 
 
-def test_preserve_recreates_links(
-    run_cli, workspace: Path, symlink_supported: bool
-) -> None:
+def test_preserve_recreates_links(run_cli, workspace: Path, symlink_supported: bool) -> None:
     """`preserve` is the default: the link itself is recreated."""
     skip_if_no_symlink(symlink_supported)
 
@@ -57,15 +55,11 @@ def test_preserve_recreates_links(
     result = run_cli("copy", str(source), str(destination))
 
     assert result.returncode == 0, result.output
-    assert (destination / "file-link.txt").is_symlink(), (
-        "the file link was dereferenced instead of recreated"
-    )
+    assert (destination / "file-link.txt").is_symlink(), "the file link was dereferenced instead of recreated"
     assert (destination / "file-link.txt").read_text() == "target payload"
 
 
-def test_preserve_keeps_a_dangling_link_dangling(
-    run_cli, workspace: Path, symlink_supported: bool
-) -> None:
+def test_preserve_keeps_a_dangling_link_dangling(run_cli, workspace: Path, symlink_supported: bool) -> None:
     """A dangling link stays dangling - `preserve` never dereferences."""
     skip_if_no_symlink(symlink_supported)
 
@@ -80,9 +74,8 @@ def test_preserve_keeps_a_dangling_link_dangling(
     assert not link.exists(), "a dangling link must not be resolved into a file"
 
 
-def test_follow_mode_copies_the_link_content(
-    run_cli, workspace: Path, symlink_supported: bool
-) -> None:
+def test_follow_mode_copies_the_link_content(run_cli, workspace: Path, symlink_supported: bool) -> None:
+    """Dereference the link in follow mode and copy what it points at."""
     skip_if_no_symlink(symlink_supported)
 
     source = make_linked_tree(workspace / "source")
@@ -96,9 +89,8 @@ def test_follow_mode_copies_the_link_content(
     assert copied.read_text() == "target payload"
 
 
-def test_fail_mode_rejects_links(
-    run_cli, workspace: Path, symlink_supported: bool
-) -> None:
+def test_fail_mode_rejects_links(run_cli, workspace: Path, symlink_supported: bool) -> None:
+    """Report a link as an error in fail mode rather than skipping it."""
     skip_if_no_symlink(symlink_supported)
 
     source = workspace / "source"
@@ -118,9 +110,7 @@ def test_fail_mode_rejects_links(
 # --------------------------------------------------------------------------- #
 
 
-def test_symlink_creation_failure_is_reported_not_dropped(
-    run_cli, workspace: Path, symlink_supported: bool
-) -> None:
+def test_symlink_creation_failure_is_reported_not_dropped(run_cli, workspace: Path, symlink_supported: bool) -> None:
     """`docs/COPY_SEMANTICS.md` §5: a link that cannot be created is an error.
 
     "Creating a symlink without the required privilege is reported as an error
@@ -158,9 +148,7 @@ def test_symlink_creation_failure_is_reported_not_dropped(
     )
 
 
-def test_symlink_capability_is_reported(
-    symlink_supported: bool, record_property
-) -> None:
+def test_symlink_capability_is_reported(symlink_supported: bool, record_property) -> None:
     """Make the branch this machine took visible in the test report.
 
     A reader of a CI log should be able to see whether the symlink assertions

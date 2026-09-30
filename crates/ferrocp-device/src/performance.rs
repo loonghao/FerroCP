@@ -84,13 +84,32 @@ impl PerformanceAnalyzer {
         }
     }
 
-    /// Analyze device information for a given path
+    /// Analyse the device that will hold `path`
+    ///
+    /// A path that does not exist yet is resolved to its nearest existing
+    /// ancestor before the device is queried. Analysing the destination of a
+    /// copy is the normal case for this, and the destination usually does not
+    /// exist until the copy creates it: on Unix the underlying `statvfs` fails
+    /// with `ENOENT` for a missing path, so analysing it directly made every
+    /// copy to a new destination fail before it started. The device that will
+    /// hold the destination is the one holding its parent directory, which is
+    /// what this resolves to.
     pub async fn analyze_device<P: AsRef<Path> + Send + Sync>(
         &self,
         path: P,
     ) -> Result<DeviceInfo> {
         let path = path.as_ref();
-        debug!("Analyzing device for path: {}", path.display());
+        let probe = nearest_existing_ancestor(path);
+        if probe != path {
+            debug!(
+                "Analyzing device for path {} via its ancestor {}",
+                path.display(),
+                probe.display()
+            );
+        } else {
+            debug!("Analyzing device for path: {}", path.display());
+        }
+        let path = probe;
 
         // Detect device type
         let device_type = self.detector.detect_device_type_cached(path).await?;
@@ -223,4 +242,81 @@ pub enum Bottleneck {
     Source,
     /// Destination device (write speed) is the bottleneck
     Destination,
+}
+
+/// The nearest ancestor of `path` that exists, or `path` itself when it does
+///
+/// Device queries such as `statvfs` need an existing path. Walking up is the
+/// right resolution for the copy destination: the filesystem that will hold a
+/// file that does not exist yet is the one holding its parent directory.
+///
+/// The walk stops at the root, so a path whose every component is missing
+/// resolves to `/` (or the Windows equivalent) rather than looping.
+fn nearest_existing_ancestor(path: &Path) -> &Path {
+    let mut candidate = path;
+    while !candidate.exists() {
+        match candidate.parent() {
+            // `parent()` returns `None` only at the root, and `Some("")` for a
+            // relative single-component path, so both terminate the walk.
+            Some(parent) if !parent.as_os_str().is_empty() => candidate = parent,
+            _ => return Path::new(if cfg!(windows) { "\\" } else { "/" }),
+        }
+    }
+    candidate
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn an_existing_path_is_returned_unchanged() {
+        let dir = TempDir::new().unwrap();
+        assert_eq!(nearest_existing_ancestor(dir.path()), dir.path());
+    }
+
+    #[test]
+    fn a_missing_path_resolves_to_its_nearest_existing_ancestor() {
+        let dir = TempDir::new().unwrap();
+        let missing_file = dir.path().join("does-not-exist.txt");
+
+        assert_eq!(nearest_existing_ancestor(&missing_file), dir.path());
+    }
+
+    #[test]
+    fn a_missing_path_resolves_to_the_nearest_existing_ancestor_not_the_root() {
+        let dir = TempDir::new().unwrap();
+        let existing = dir.path().join("existing");
+        std::fs::create_dir(&existing).unwrap();
+        let missing = existing.join("a").join("b").join("c.txt");
+
+        assert_eq!(nearest_existing_ancestor(&missing), existing.as_path());
+    }
+
+    #[test]
+    fn a_wholly_missing_path_terminates() {
+        // Every component is missing, so the walk has to stop at the root
+        // instead of looping. The exact root depends on the platform.
+        let resolved = nearest_existing_ancestor(Path::new("/no/such/place/at/all/file.txt"));
+        assert!(
+            resolved.exists(),
+            "resolved path {} does not exist",
+            resolved.display()
+        );
+    }
+
+    #[tokio::test]
+    async fn analyzing_a_missing_destination_succeeds() {
+        let dir = TempDir::new().unwrap();
+        let destination = dir.path().join("will-be-created.txt");
+
+        let analyzer = PerformanceAnalyzer::new();
+        let info = analyzer
+            .analyze_device(&destination)
+            .await
+            .expect("analyzing a not-yet-created destination must succeed");
+
+        assert!(info.total_space > 0);
+    }
 }

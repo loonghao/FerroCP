@@ -16,7 +16,7 @@ import pytest
 
 
 def build_tree(root: Path) -> None:
-    """A small tree with enough structure to prove a copy reproduced it."""
+    """Build a small tree with enough structure to prove a copy reproduced it."""
     root.mkdir(parents=True, exist_ok=True)
     (root / "top.txt").write_text("top")
     (root / "nested").mkdir()
@@ -27,6 +27,7 @@ def build_tree(root: Path) -> None:
 
 
 def test_copy_a_single_file(run_cli, workspace: Path) -> None:
+    """Copy one file and verify its contents."""
     source = workspace / "source.txt"
     destination = workspace / "destination.txt"
     source.write_text("cli payload")
@@ -38,6 +39,7 @@ def test_copy_a_single_file(run_cli, workspace: Path) -> None:
 
 
 def test_copy_a_directory_tree(run_cli, workspace: Path) -> None:
+    """Copy a tree and verify every level was reproduced."""
     source = workspace / "source"
     destination = workspace / "destination"
     build_tree(source)
@@ -66,6 +68,7 @@ def test_copy_a_large_file(run_cli, workspace: Path) -> None:
 
 
 def test_copy_an_empty_file(run_cli, workspace: Path) -> None:
+    """Copy a zero-byte file and verify a destination is produced."""
     source = workspace / "empty.bin"
     destination = workspace / "empty-copy.bin"
     source.write_bytes(b"")
@@ -78,6 +81,7 @@ def test_copy_an_empty_file(run_cli, workspace: Path) -> None:
 
 
 def test_paths_with_spaces_and_non_ascii(run_cli, workspace: Path) -> None:
+    """Copy paths containing spaces, accents, CJK and Cyrillic."""
     source_dir = workspace / "源 directory"
     destination_dir = workspace / "целевая directory"
     source_dir.mkdir()
@@ -115,9 +119,7 @@ def test_a_missing_source_exits_non_zero(run_cli, workspace: Path) -> None:
     """A failed copy must not look like a successful one to a calling script."""
     result = run_cli("copy", str(workspace / "nope.txt"), str(workspace / "out.txt"))
 
-    assert result.returncode != 0, (
-        "a failed copy exited 0; a script cannot tell it apart from a success"
-    )
+    assert result.returncode != 0, "a failed copy exited 0; a script cannot tell it apart from a success"
     assert not (workspace / "out.txt").exists()
 
 
@@ -132,12 +134,11 @@ def test_a_failed_copy_names_the_path(run_cli, workspace: Path) -> None:
 
 
 def test_an_invalid_overwrite_value_is_rejected(run_cli, workspace: Path) -> None:
+    """Reject an unknown --overwrite value before any I/O happens."""
     source = workspace / "source.txt"
     source.write_text("payload")
 
-    result = run_cli(
-        "copy", str(source), str(workspace / "out.txt"), "--overwrite", "bogus"
-    )
+    result = run_cli("copy", str(source), str(workspace / "out.txt"), "--overwrite", "bogus")
 
     assert result.returncode != 0
     assert "overwrite" in result.output.lower(), result.output
@@ -145,12 +146,11 @@ def test_an_invalid_overwrite_value_is_rejected(run_cli, workspace: Path) -> Non
 
 
 def test_an_invalid_symlink_mode_is_rejected(run_cli, workspace: Path) -> None:
+    """Reject an unknown --symlinks value before any I/O happens."""
     source = workspace / "source.txt"
     source.write_text("payload")
 
-    result = run_cli(
-        "copy", str(source), str(workspace / "out.txt"), "--symlinks", "sideways"
-    )
+    result = run_cli("copy", str(source), str(workspace / "out.txt"), "--symlinks", "sideways")
 
     assert result.returncode != 0
     assert "symlink" in result.output.lower(), result.output
@@ -196,6 +196,7 @@ def test_unimplemented_subcommands_exit_non_zero(run_cli, workspace: Path) -> No
 
 
 def test_json_output_describes_a_successful_copy(run_cli, workspace: Path) -> None:
+    """Describe a successful copy in the --json document."""
     source = workspace / "source.txt"
     destination = workspace / "destination.txt"
     source.write_text("json payload")
@@ -211,18 +212,14 @@ def test_json_output_describes_a_successful_copy(run_cli, workspace: Path) -> No
 
 def test_json_output_reports_a_failure(run_cli, workspace: Path) -> None:
     """A failed copy still emits a document, with the reason recorded."""
-    result = run_cli(
-        "copy", str(workspace / "nope.txt"), str(workspace / "out.txt"), "--json"
-    )
+    result = run_cli("copy", str(workspace / "nope.txt"), str(workspace / "out.txt"), "--json")
 
     assert result.returncode != 0
     payload = result.json()
     # A script consuming --json must be able to see the failure without parsing
     # the human-readable output.
     assert payload["result"]["success"] is False
-    assert payload["result"]["message"], (
-        f"a failed copy emitted no message: {json.dumps(payload['result'])}"
-    )
+    assert payload["result"]["message"], f"a failed copy emitted no message: {json.dumps(payload['result'])}"
     assert payload["copy_stats"]["files_copied"] == 0
 
 
@@ -232,34 +229,33 @@ def test_json_output_reports_a_failure(run_cli, workspace: Path) -> None:
 
 
 def test_never_policy_leaves_the_destination_alone(run_cli, workspace: Path) -> None:
+    """Keep an existing destination under --overwrite never."""
     source = workspace / "source.txt"
     destination = workspace / "destination.txt"
     source.write_text("new content")
     destination.write_text("original content")
 
-    result = run_cli(
-        "copy", str(source), str(destination), "--overwrite", "never"
-    )
+    result = run_cli("copy", str(source), str(destination), "--overwrite", "never")
 
     assert result.returncode == 0, result.output
     assert destination.read_text() == "original content"
 
 
 def test_always_policy_replaces_the_destination(run_cli, workspace: Path) -> None:
+    """Replace an existing destination under --overwrite always."""
     source = workspace / "source.txt"
     destination = workspace / "destination.txt"
     source.write_text("new content")
     destination.write_text("original content")
 
-    result = run_cli(
-        "copy", str(source), str(destination), "--overwrite", "always"
-    )
+    result = run_cli("copy", str(source), str(destination), "--overwrite", "always")
 
     assert result.returncode == 0, result.output
     assert destination.read_text() == "new content"
 
 
 def test_fail_policy_refuses_an_existing_destination(run_cli, workspace: Path) -> None:
+    """Refuse to overwrite under --overwrite fail, leaving the file intact."""
     source = workspace / "source.txt"
     destination = workspace / "destination.txt"
     source.write_text("new content")
