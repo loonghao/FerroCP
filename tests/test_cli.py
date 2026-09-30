@@ -1,6 +1,7 @@
 """Test CLI functionality."""
 
 # Import built-in modules
+import os
 import sys
 from unittest import mock
 from click.testing import CliRunner
@@ -100,19 +101,23 @@ def test_cli_copy_with_server(mock_eacopy_class):
         assert "Network copy completed" in result.output
 
 
-@mock.patch("ferrocp.EACopy")
-def test_cli_error(mock_eacopy_class):
-    """Test CLI error handling."""
-    # Mock the EACopy instance to raise an exception
-    mock_eacopy = mock_eacopy_class.return_value
-    mock_eacopy.copy_file.side_effect = Exception("Test error")
+def test_cli_error():
+    """Test CLI error handling.
 
+    The failure is driven by a missing source rather than by mocking the engine:
+    the CLI copies through ``CopyEngine`` directly, so a mock of the legacy
+    ``EACopy`` wrapper no longer intercepts anything and the copy would simply
+    succeed.
+    """
     runner = CliRunner()
     with runner.isolated_filesystem():
-        # Create a test file
         with open("source.txt", "w") as f:
             f.write("test content")
 
-        result = runner.invoke(cli.cli, ["copy", "source.txt", "dest.txt"])
-        assert result.exit_code == 1
+        # A buffer size the I/O layer cannot use is rejected by the copy, which
+        # is the failure path that actually reaches the engine.
+        result = runner.invoke(cli.cli, ["copy", "source.txt", "dest.txt", "--buffer-size", "100000"])
+
+        assert result.exit_code == 1, result.output
         assert "Error" in result.output
+        assert not os.path.exists("dest.txt"), "a failed copy must not create a destination"
