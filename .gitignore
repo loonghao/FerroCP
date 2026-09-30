@@ -70,8 +70,10 @@ benchmark-artifacts/
 baseline-results/
 
 # `test_*.py` above only ignores scratch files at the repo root; real tests
-# live in tests/ and must stay tracked.
-!tests/test_*.py
+# live in tests/ and must stay tracked. The `**` form is required for nested
+# suites such as tests/e2e: `!tests/test_*.py` only un-ignores the top level,
+# and a later `test_*.py` pattern re-ignores anything below it.
+!tests/**/test_*.py
 
 # Temporary test files and data
 temp-*
