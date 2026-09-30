@@ -34,15 +34,38 @@ pub struct MountInfo {
 
 #[cfg(unix)]
 impl DeviceDetector {
+    /// The mount table, when this platform exposes one
+    ///
+    /// `/proc/mounts` is a Linux interface. macOS and the BSDs have no such
+    /// file, so reading it there fails with ENOENT. That used to abort the copy
+    /// before it started, even though mount information only feeds performance
+    /// hints and the `--json` report - never the correctness of a copy.
+    async fn read_mount_table() -> Option<String> {
+        match tokio::fs::read_to_string("/proc/mounts").await {
+            Ok(content) => Some(content),
+            Err(error) => {
+                warn!(
+                    "no mount table is available ({}); filesystem type detection is degraded",
+                    error
+                );
+                None
+            }
+        }
+    }
+
     /// Get mount information for a Unix path
+    ///
+    /// Returns a placeholder rather than an error when the mount table cannot be
+    /// read or holds no entry for `path`. Callers use this to classify the
+    /// filesystem, and an unknown filesystem is a usable answer: the copy still
+    /// runs, only the reported type and the block-device hints are less precise.
     pub async fn get_mount_info_unix<P: AsRef<Path>>(&self, path: P) -> Result<MountInfo> {
         let path = path.as_ref();
         debug!("Getting mount info for Unix path: {}", path.display());
 
-        // Read /proc/mounts to get mount information
-        let mounts_content = tokio::fs::read_to_string("/proc/mounts")
-            .await
-            .map_err(|e| Error::device_detection(format!("Failed to read /proc/mounts: {}", e)))?;
+        let Some(mounts_content) = Self::read_mount_table().await else {
+            return Ok(Self::unknown_mount_info(path));
+        };
 
         let mut best_match: Option<MountInfo> = None;
         let mut best_match_len = 0;
@@ -75,7 +98,31 @@ impl DeviceDetector {
             }
         }
 
-        best_match.ok_or_else(|| Error::device_detection("No mount point found for path"))
+        match best_match {
+            Some(mount_info) => Ok(mount_info),
+            None => {
+                warn!(
+                    "no mount point in the mount table covers {}; reporting an unknown filesystem",
+                    path.display()
+                );
+                Ok(Self::unknown_mount_info(path))
+            }
+        }
+    }
+
+    /// A mount entry for a path whose filesystem could not be determined
+    ///
+    /// `device` is deliberately empty so callers skip block-device detection,
+    /// which reads `/sys/block` and is as Linux-specific as the mount table.
+    fn unknown_mount_info(path: &Path) -> MountInfo {
+        MountInfo {
+            device: String::new(),
+            mount_point: path.display().to_string(),
+            fs_type: "unknown".to_string(),
+            options: Vec::new(),
+            is_network: false,
+            is_ram_disk: false,
+        }
     }
 
     /// Check if a filesystem type is network-based
@@ -325,5 +372,69 @@ mod tests {
                     | DeviceType::Unknown
             ));
         }
+    }
+}
+
+#[cfg(test)]
+mod mount_table_tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    /// A path whose filesystem cannot be determined must still be usable.
+    ///
+    /// `/proc/mounts` is Linux-only. On macOS and the BSDs reading it fails, and
+    /// that failure used to propagate out of device detection and abort every
+    /// copy before it started. Mount information is advisory - it feeds
+    /// performance hints and the `--json` report - so an unknown filesystem is a
+    /// valid answer, not an error.
+    #[test]
+    fn an_unknown_filesystem_is_reported_not_failed() {
+        let dir = TempDir::new().unwrap();
+        let info = DeviceDetector::unknown_mount_info(dir.path());
+
+        assert_eq!(info.fs_type, "unknown");
+        assert!(!info.is_network);
+        assert!(!info.is_ram_disk);
+        assert!(
+            info.device.is_empty(),
+            "an empty device keeps callers away from /sys/block, which is as "
+                "Linux-specific as the mount table"
+        );
+    }
+
+    /// Detection has to finish, not fail, for a path with no mount-table entry.
+    ///
+    /// This is the assertion that matters on macOS: whatever the mount table
+    /// situation, the caller gets a `DeviceType` back.
+    #[tokio::test]
+    async fn detection_completes_for_a_real_path() {
+        let dir = TempDir::new().unwrap();
+
+        let detector = DeviceDetector::new();
+        let result = detector.detect_storage_type_unix(dir.path()).await;
+
+        assert!(
+            result.is_ok(),
+            "device detection failed instead of reporting an unknown device: {:?}",
+            result.err()
+        );
+    }
+
+    /// The same holds for a destination that does not exist yet, which is the
+    /// combination the CLI actually hits: it analyses both devices before the
+    /// copy creates the destination.
+    #[tokio::test]
+    async fn detection_completes_for_a_missing_path() {
+        let dir = TempDir::new().unwrap();
+        let missing = dir.path().join("not-created-yet.txt");
+
+        let detector = DeviceDetector::new();
+        let result = detector.detect_storage_type_unix(&missing).await;
+
+        assert!(
+            result.is_ok(),
+            "device detection failed for a missing destination: {:?}",
+            result.err()
+        );
     }
 }
