@@ -47,7 +47,7 @@ def copy_directory(source: Path, destination: Path, options: object = None):
 
 
 def build_tree(root: Path) -> None:
-    """A small tree with enough structure to prove a copy reproduced it."""
+    """Build a small tree with enough structure to prove a copy reproduced it."""
     root.mkdir(parents=True, exist_ok=True)
     (root / "top.txt").write_text("top")
     (root / "nested").mkdir()
@@ -63,6 +63,7 @@ def build_tree(root: Path) -> None:
 
 
 def test_copy_a_single_file(workspace: Path) -> None:
+    """Copy one file and verify the contents and the reported stats."""
     source = workspace / "source.txt"
     destination = workspace / "destination.txt"
     source.write_text("python payload")
@@ -76,6 +77,7 @@ def test_copy_a_single_file(workspace: Path) -> None:
 
 
 def test_copy_a_directory_tree(workspace: Path) -> None:
+    """Copy a tree and verify every level was reproduced."""
     source = workspace / "source"
     destination = workspace / "destination"
     build_tree(source)
@@ -90,6 +92,7 @@ def test_copy_a_directory_tree(workspace: Path) -> None:
 
 
 def test_copy_a_large_file(workspace: Path) -> None:
+    """Copy an 8 MiB file and verify it byte for byte."""
     source = workspace / "large.bin"
     destination = workspace / "large-copy.bin"
     payload = bytes(range(256)) * (32 * 1024)  # 8 MiB
@@ -103,6 +106,7 @@ def test_copy_a_large_file(workspace: Path) -> None:
 
 
 def test_copy_an_empty_file(workspace: Path) -> None:
+    """Copy a zero-byte file and verify a destination is produced."""
     source = workspace / "empty.bin"
     destination = workspace / "empty-copy.bin"
     source.write_bytes(b"")
@@ -115,6 +119,7 @@ def test_copy_an_empty_file(workspace: Path) -> None:
 
 
 def test_a_deeply_nested_tree_is_reproduced(workspace: Path) -> None:
+    """Reproduce a 32 level deep branch, not just the top of the tree."""
     source = workspace / "source"
     destination = workspace / "destination"
     # Two-character components keep the absolute path inside the 260 character
@@ -133,6 +138,7 @@ def test_a_deeply_nested_tree_is_reproduced(workspace: Path) -> None:
 
 
 def test_paths_with_spaces_and_non_ascii(workspace: Path) -> None:
+    """Copy paths containing spaces, CJK and Cyrillic."""
     import ferrocp
 
     source_dir = workspace / "源 directory"
@@ -150,6 +156,7 @@ def test_paths_with_spaces_and_non_ascii(workspace: Path) -> None:
 
 
 def test_timestamps_are_preserved_by_default(workspace: Path) -> None:
+    """Preserve mtime by default."""
     source = workspace / "source.txt"
     destination = workspace / "destination.txt"
     source.write_text("payload")
@@ -209,9 +216,7 @@ def test_timestamps_can_be_disabled_independently_of_permissions(
     result = copy_file(source, destination, options)
 
     assert result.success
-    assert int(destination.stat().st_mtime) != 1_234_567, (
-        "timestamps were preserved despite preserve_timestamps=False"
-    )
+    assert int(destination.stat().st_mtime) != 1_234_567, "timestamps were preserved despite preserve_timestamps=False"
 
 
 # --------------------------------------------------------------------------- #
@@ -220,6 +225,7 @@ def test_timestamps_can_be_disabled_independently_of_permissions(
 
 
 def test_never_policy_leaves_the_destination_alone(workspace: Path) -> None:
+    """Keep an existing destination when overwrite is never."""
     import ferrocp
 
     source = workspace / "source.txt"
@@ -235,6 +241,7 @@ def test_never_policy_leaves_the_destination_alone(workspace: Path) -> None:
 
 
 def test_always_policy_replaces_the_destination(workspace: Path) -> None:
+    """Replace an existing destination when overwrite is always."""
     import ferrocp
 
     source = workspace / "source.txt"
@@ -249,6 +256,7 @@ def test_always_policy_replaces_the_destination(workspace: Path) -> None:
 
 
 def test_fail_policy_refuses_an_existing_destination(workspace: Path) -> None:
+    """Refuse to overwrite when the policy is fail, leaving the file intact."""
     import ferrocp
 
     source = workspace / "source.txt"
@@ -259,12 +267,11 @@ def test_fail_policy_refuses_an_existing_destination(workspace: Path) -> None:
     with pytest.raises(Exception):
         copy_file(source, destination, ferrocp.CopyOptions(overwrite="fail"))
 
-    assert destination.read_text() == "original content", (
-        "the fail policy must not modify the destination"
-    )
+    assert destination.read_text() == "original content", "the fail policy must not modify the destination"
 
 
 def test_if_newer_skips_when_the_destination_is_newer(workspace: Path) -> None:
+    """Skip the copy when the destination mtime is already newer."""
     import ferrocp
 
     source = workspace / "source.txt"
@@ -281,6 +288,7 @@ def test_if_newer_skips_when_the_destination_is_newer(workspace: Path) -> None:
 
 
 def test_if_newer_copies_when_the_source_is_newer(workspace: Path) -> None:
+    """Copy when the source mtime is strictly newer."""
     import ferrocp
 
     source = workspace / "source.txt"
@@ -302,6 +310,7 @@ def test_if_newer_copies_when_the_source_is_newer(workspace: Path) -> None:
 
 
 def test_a_missing_source_raises_and_creates_nothing(workspace: Path) -> None:
+    """Raise on a missing source without leaving a destination behind."""
     destination = workspace / "out.txt"
 
     with pytest.raises(Exception):
@@ -311,6 +320,7 @@ def test_a_missing_source_raises_and_creates_nothing(workspace: Path) -> None:
 
 
 def test_a_rejected_option_writes_nothing(workspace: Path) -> None:
+    """Reject an unusable option before touching the disk."""
     import ferrocp
 
     source = workspace / "source.txt"
@@ -347,9 +357,8 @@ def test_symlinks_are_recreated_by_default(workspace: Path, symlink_supported: b
     assert link.read_text() == "target payload"
 
 
-def test_follow_symlinks_copies_the_content(
-    workspace: Path, symlink_supported: bool
-) -> None:
+def test_follow_symlinks_copies_the_content(workspace: Path, symlink_supported: bool) -> None:
+    """Write a regular file in follow mode instead of recreating the link."""
     skip_if_no_symlink(symlink_supported)
 
     import ferrocp
@@ -371,7 +380,5 @@ def test_follow_symlinks_copies_the_content(
     destination2 = workspace / "destination-follow"
     result = copy_directory(source, destination2, options)
     assert result.success, result.error_message
-    assert not (destination2 / "link.txt").is_symlink(), (
-        "follow mode must write a regular file"
-    )
+    assert not (destination2 / "link.txt").is_symlink(), "follow mode must write a regular file"
     assert (destination2 / "link.txt").read_text() == "target payload"

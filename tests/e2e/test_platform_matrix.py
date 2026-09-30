@@ -25,11 +25,13 @@ IS_UNIX = os.name == "posix"
 
 
 def copy_with_cli(run_cli, source: Path, destination: Path) -> None:
+    """Copy one file through the CLI and assert it succeeded."""
     result = run_cli("copy", str(source), str(destination))
     assert result.returncode == 0, result.output
 
 
 def copy_with_python(source: Path, destination: Path, options: object = None) -> None:
+    """Copy one file through the Python API."""
     import ferrocp
 
     async def _copy():
@@ -133,9 +135,7 @@ def test_windows_clears_a_stale_read_only_destination(run_cli, workspace: Path) 
 
 
 @pytest.mark.skipif(not IS_WINDOWS, reason="Windows-only row of the platform matrix")
-def test_windows_marks_a_read_only_destination_read_only(
-    run_cli, workspace: Path
-) -> None:
+def test_windows_marks_a_read_only_destination_read_only(run_cli, workspace: Path) -> None:
     """The other half of the same row: a read-only source stays read-only."""
     source = workspace / "source.txt"
     destination = workspace / "destination.txt"
@@ -145,9 +145,7 @@ def test_windows_marks_a_read_only_destination_read_only(
     result = run_cli("copy", str(source), str(destination))
 
     assert result.returncode == 0, result.output
-    assert not os.access(destination, os.W_OK), (
-        "the source's read-only attribute was not carried across"
-    )
+    assert not os.access(destination, os.W_OK), "the source's read-only attribute was not carried across"
 
 
 # --------------------------------------------------------------------------- #
@@ -156,9 +154,7 @@ def test_windows_marks_a_read_only_destination_read_only(
 
 
 @pytest.mark.skipif(not IS_WINDOWS, reason="Windows-only row of the platform matrix")
-def test_windows_reports_a_read_only_destination_instead_of_failing_obscurely(
-    run_cli, workspace: Path
-) -> None:
+def test_windows_reports_a_read_only_destination_instead_of_failing_obscurely(run_cli, workspace: Path) -> None:
     """Whatever happens, a read-only destination must not be a silent no-op.
 
     Either the documented clearing happens (and the test above asserts it) or
@@ -175,14 +171,10 @@ def test_windows_reports_a_read_only_destination_instead_of_failing_obscurely(
 
     failed = result.returncode != 0
     copied = destination.read_text() == "new content"
-    assert failed or copied, (
-        "the copy reported success but left the old destination in place"
-    )
+    assert failed or copied, "the copy reported success but left the old destination in place"
 
 
-def test_ownership_and_acls_are_not_preserved_but_the_copy_still_succeeds(
-    run_cli, workspace: Path
-) -> None:
+def test_ownership_and_acls_are_not_preserved_but_the_copy_still_succeeds(run_cli, workspace: Path) -> None:
     """Matrix row: ACLs and ownership are not copied on any platform.
 
     The assertion is that the copy still works and the content still arrives -
@@ -203,9 +195,7 @@ def test_ownership_and_acls_are_not_preserved_but_the_copy_still_succeeds(
 
 
 @pytest.mark.parametrize("driver", ["cli", "python"])
-def test_overwrite_never_is_identical_everywhere(
-    run_cli, workspace: Path, driver: str
-) -> None:
+def test_overwrite_never_is_identical_everywhere(run_cli, workspace: Path, driver: str) -> None:
     """Matrix row: overwrite policies behave identically on all platforms."""
     import ferrocp
 
