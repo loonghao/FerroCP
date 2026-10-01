@@ -657,7 +657,7 @@ checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
 name = "ferrocp-cli"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -687,7 +687,7 @@ dependencies = [
 
 [[package]]
 name = "ferrocp-compression"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "arbitrary",
  "async-trait",
@@ -706,7 +706,7 @@ dependencies = [
 
 [[package]]
 name = "ferrocp-config"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "anyhow",
  "config",
@@ -723,7 +723,7 @@ dependencies = [
 
 [[package]]
 name = "ferrocp-device"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "async-trait",
  "criterion",
@@ -742,7 +742,7 @@ dependencies = [
 
 [[package]]
 name = "ferrocp-engine"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -768,7 +768,7 @@ dependencies = [
 
 [[package]]
 name = "ferrocp-ffi"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "anyhow",
  "ferrocp-config",
@@ -785,7 +785,7 @@ dependencies = [
 
 [[package]]
 name = "ferrocp-io"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "anyhow",
  "arbitrary",
@@ -809,7 +809,7 @@ dependencies = [
 
 [[package]]
 name = "ferrocp-network"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "async-trait",
  "bincode",
@@ -835,7 +835,7 @@ dependencies = [
 
 [[package]]
 name = "ferrocp-python"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "ferrocp-config",
  "ferrocp-engine",
@@ -859,7 +859,7 @@ dependencies = [
 
 [[package]]
 name = "ferrocp-sync"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "async-trait",
  "bincode",
@@ -903,7 +903,7 @@ dependencies = [
 
 [[package]]
 name = "ferrocp-types"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -919,7 +919,7 @@ dependencies = [
 
 [[package]]
 name = "ferrocp-zerocopy"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "async-trait",
  "ferrocp-types",
