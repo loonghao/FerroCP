@@ -106,7 +106,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.24'
+          go-version: '1.27'
 
       # Installed here as well as in the GoReleaser `before` hooks below,
       # because the binaries are built before GoReleaser runs.
