@@ -16,6 +16,15 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    # A release PR raised with the default GITHUB_TOKEN is attributed to
+    # app/github-actions, and this repository requires first-time-contributor
+    # workflow runs to be approved. Every run sat at conclusion=action_required
+    # with zero jobs, so no check ever reported and the PR looked permanently
+    # unmergeable (release PR #121 stalled for over six days this way).
+    #
+    # Set RELEASE_PLEASE_TOKEN to a PAT with `repo` and `workflow` scope to
+    # attribute the release PR to a real user, which clears the gate. Without
+    # the secret the workflow keeps its previous behaviour rather than failing.
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
@@ -26,7 +35,7 @@ jobs:
         id: release
         uses: googleapis/release-please-action@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
@@ -48,7 +57,7 @@ jobs:
         id: branch
         env:
           PR_JSON: ${{ needs.release-please.outputs.pr }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -74,6 +83,7 @@ jobs:
         with:
           ref: ${{ steps.branch.outputs.branch }}
           fetch-depth: 0
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Set up Rust
         if: steps.branch.outputs.skip != 'true'
@@ -91,6 +101,7 @@ jobs:
         if: steps.branch.outputs.skip != 'true'
         env:
           BRANCH: ${{ steps.branch.outputs.branch }}
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           if git diff --quiet -- Cargo.lock; then
@@ -101,7 +112,10 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Cargo.lock
           git commit -m "chore: sync Cargo.lock with the release version bump"
-          git push origin "HEAD:${BRANCH}"
+          # Push with the same token that opened the release PR. A push made with
+          # the default GITHUB_TOKEN would leave the follow-up run queued behind
+          # the manual-approval gate, which is what stalled release PR #121.
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:${BRANCH}"
 
   # release-please cuts the tag with the default GITHUB_TOKEN. GitHub does not
   # start a new workflow run for events raised by that token, so a plain
