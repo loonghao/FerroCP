@@ -83,7 +83,7 @@ tracing-appender = "0.2"
 # CLI interface
 clap = { version = "4.4", features = ["derive", "color", "suggestions"] }
 console = "0.16"
-dialoguer = "0.11"
+dialoguer = "0.12"
 
 # Progress reporting
 indicatif = "0.18"
