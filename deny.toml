@@ -19,7 +19,19 @@ version = 2
 # Accepted risk, deferred: migrating off bincode is a wire and on-disk
 # format change, so it needs an explicit owner decision plus a protocol version
 # bump before it can be replaced.
-ignore = ["RUSTSEC-2025-0141"]
+#
+# RUSTSEC-2024-0449: `unsafe-libyaml` 0.2.11 is unmaintained (the upstream
+# repository was archived on 2024-03-25). It reaches this workspace only through
+# `serde_yaml` 0.9.34+deprecated, which is itself deprecated upstream. The
+# advisory is informational: it reports no vulnerability and states "No safe
+# upgrade is available!", so no version bump or `Cargo.lock` change can silence
+# it.
+#
+# Accepted risk, deferred: every suggested replacement (`saphyr` /
+# `serde-saphyr`) changes YAML parsing behaviour, and `serde_yaml` is used to
+# emit `ferrocp` config files. That needs an explicit owner decision, so the
+# migration is tracked separately instead of being folded into this gate.
+ignore = ["RUSTSEC-2025-0141", "RUSTSEC-2024-0449"]
 
 [licenses]
 version = 2
