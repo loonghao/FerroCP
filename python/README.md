@@ -2,245 +2,284 @@
 
 [![PyPI version](https://badge.fury.io/py/ferrocp.svg)](https://badge.fury.io/py/ferrocp)
 [![Python versions](https://img.shields.io/pypi/pyversions/ferrocp.svg)](https://pypi.org/project/ferrocp/)
-[![License](https://img.shields.io/pypi/l/ferrocp.svg)](https://github.com/loonghao/py-eacopy/blob/main/LICENSE)
-[![Build Status](https://github.com/loonghao/py-eacopy/workflows/CI/badge.svg)](https://github.com/loonghao/py-eacopy/actions)
+[![License](https://img.shields.io/pypi/l/ferrocp.svg)](https://github.com/loonghao/FerroCP/blob/main/LICENSE)
+[![Build Status](https://github.com/loonghao/FerroCP/actions/workflows/ci.yml/badge.svg)](https://github.com/loonghao/FerroCP/actions/workflows/ci.yml)
 
-FerroCP is a high-performance file copying library written in Rust with Python bindings. It provides fast, efficient file operations with zero-copy optimization, asynchronous support, and advanced features like network transfers and directory synchronization.
+FerroCP is a high-performance file copying library. The copy engine is written in Rust and
+exposed to Python through PyO3 bindings, with a `shutil`-compatible API for easy migration.
 
-## 🚀 Features
+This is the README for the Python package (`python/`). For the CLI, the Rust crates, and the
+VFX platform matrix, see the [repository README](../README.md).
 
-- **Zero-Copy Optimization** - Maximum performance with minimal memory overhead
-- **Asynchronous Operations** - Non-blocking file operations with cancellation support
-- **Progress Monitoring** - Real-time progress reporting with speed and ETA
-- **Network Transfers** - Remote file copying with resume capability
-- **Directory Synchronization** - Bidirectional sync with conflict resolution
-- **Cross-Platform** - Works on Windows, macOS, and Linux
-- **Type Safety** - Full type hints for better IDE support
-- **Memory Efficient** - Adaptive buffering based on device characteristics
+## Features
 
-## 📦 Installation
+- **Shutil-compatible API** - `ferrocp.copy`, `ferrocp.copy2` and `ferrocp.copytree` are drop-in shaped aliases
+- **Async copy engine** - every copy helper is a coroutine and must be awaited
+- **Progress reporting** - a callback receives the final counters when an operation completes
+- **Copy options** - `verify`, `preserve_timestamps`, `preserve_permissions`, `buffer_size` and more
+- **Cross-platform** - Windows, macOS and Linux
+- **Type hints** - the extension module ships a `.pyi` stub and a `py.typed` marker
+
+### Not implemented yet
+
+Read this before designing against the API:
+
+- **`ferrocp.move()` raises `NotImplementedError`.** A move must copy before removing the
+  source, and the copy path offers no atomicity or rollback guarantee, so deleting the source
+  after a partial copy would lose data. Use `shutil.move()` until a verified move primitive
+  exists.
+- **Compression is not applied.** `enable_compression` is accepted and forwarded to the I/O
+  layer, which has no compressor yet. `compression_level` must stay `0`; any other value is
+  rejected.
+- **`num_threads` must stay `0`.** The engine sizes its own thread pool, so any other value
+  is rejected rather than ignored.
+- **Directory sync is not wired up.** `SyncEngine` and `SyncOptions` exist but expose no
+  working sync operations; the CLI `sync` subcommand also exits with an error.
+
+Behaviour that *is* guaranteed is written down in
+[docs/COPY_SEMANTICS.md](../docs/COPY_SEMANTICS.md); anything not listed there is undefined.
+Error classification and the Python exception mapping live in
+[docs/ERROR_MODEL.md](../docs/ERROR_MODEL.md).
+
+## Installation
+
+**No `ferrocp` distribution is published to PyPI yet.** Install from source:
 
 ```bash
-pip install ferrocp
+# Clone the repository
+git clone https://github.com/loonghao/FerroCP.git
+cd FerroCP
+
+# Install development dependencies
+uv sync --group all
+
+# Build the Python extension module into the current environment
+uv run maturin develop --release
+
+# Or build a wheel
+uv run maturin build --release
 ```
 
 ### Requirements
 
-- Python 3.8 or higher
-- Windows, macOS, or Linux
+- **Python 3.9 or newer** (the extension is built with `abi3-py39`)
+- **Rust toolchain** (install from [rustup.rs](https://rustup.rs/))
+- **64-bit system** (Windows, macOS or Linux)
 
-## 🔧 Quick Start
+## Quick Start
 
-### Basic File Copying
-
-```python
-import ferrocp
-
-# Simple file copy
-ferrocp.copy_file("source.txt", "destination.txt")
-
-# Copy with options
-options = ferrocp.CopyOptions(
-    verify=True,
-    preserve_timestamps=True,
-    enable_compression=True
-)
-ferrocp.copy_file("source.txt", "dest.txt", options=options)
-```
-
-### Progress Monitoring
-
-```python
-def progress_callback(progress):
-    print(f"Progress: {progress.percentage:.1f}% "
-          f"Speed: {progress.speed_mbps:.2f} MB/s")
-
-ferrocp.copy_file(
-    "large_file.bin", 
-    "backup.bin",
-    progress_callback=progress_callback
-)
-```
-
-### Asynchronous Operations
+**All copy helpers are async and must be awaited** - including the `shutil`-style aliases
+`copy`, `copy2` and `copytree`. Calling them without `await` only returns a coroutine.
 
 ```python
 import asyncio
+import ferrocp
 
-async def async_copy():
-    # Start async copy
+async def main():
+    # shutil-style aliases
+    await ferrocp.copy("source.txt", "destination.txt")
+    await ferrocp.copy2("source.txt", "destination.txt")
+    await ferrocp.copytree("source_dir", "destination_dir")
+
+    # Or the explicit helpers
+    result = await ferrocp.copy_file("source.txt", "destination.txt")
+    print(result.success, result.bytes_copied, result.duration_seconds)
+
+asyncio.run(main())
+```
+
+### Copy options
+
+`CopyOptions` accepts exactly these keyword arguments (defaults in parentheses):
+`mode` (`"auto"`), `overwrite` (`"always"`), `overwrite_callback` (`None`),
+`preserve_timestamps` (`True`), `preserve_permissions` (`True`), `follow_symlinks` (`False`),
+`enable_compression` (`False`), `compression_level` (`0`), `buffer_size` (`65536`),
+`num_threads` (`0`) and `verify` (`False`).
+
+`buffer_size` is honoured by the copy path and must be a power of two between 4 KiB and
+64 MiB. `num_threads` and `compression_level` must stay `0` - see *Not implemented yet*.
+
+```python
+import asyncio
+import ferrocp
+
+async def main():
+    options = ferrocp.CopyOptions(
+        verify=True,
+        preserve_timestamps=True,
+        preserve_permissions=True,
+    )
+    result = await ferrocp.copy_file("large_dataset.zip", "backup/dataset.zip", options=options)
+    print(f"Copied {result.bytes_copied} bytes in {result.duration_seconds:.2f}s")
+
+asyncio.run(main())
+```
+
+### Results
+
+`CopyResult` carries `success`, `bytes_copied`, `files_copied`, `duration_seconds`,
+`transfer_rate` and `error_message`.
+
+```python
+result = await ferrocp.copy_file("src.txt", "dst.txt")
+print(f"Success: {result.success}")
+print(f"Bytes copied: {result.bytes_copied}")
+print(f"Duration: {result.duration_seconds:.2f}s")
+print(f"Transfer rate: {result.transfer_rate:.2f} B/s")
+```
+
+### Progress reporting
+
+`copy_file` and `copy_directory` accept a `progress_callback`. The callback is invoked after
+the operation finishes with the final counters; `total_bytes`, `total_files` and `percentage`
+are not populated by the current implementation.
+
+```python
+import asyncio
+import ferrocp
+
+async def main():
+    def on_progress(progress):
+        print(f"Copied {progress.bytes_copied} bytes in {progress.files_copied} files")
+
+    await ferrocp.copy_file("large.bin", "backup.bin", progress_callback=on_progress)
+
+asyncio.run(main())
+```
+
+### Asynchronous operations
+
+For an operation handle you can poll or cancel, use `copy_file_async`:
+
+```python
+import asyncio
+import ferrocp
+
+async def main():
     operation = await ferrocp.copy_file_async("source.txt", "dest.txt")
-    
-    # Monitor progress
-    while await operation.is_running():
-        progress = await operation.get_progress()
-        if progress:
-            print(f"Progress: {progress * 100:.1f}%")
-        await asyncio.sleep(0.1)
-    
-    # Wait for completion
     success = await operation.wait()
     print(f"Copy completed: {success}")
 
-asyncio.run(async_copy())
+asyncio.run(main())
 ```
 
-### Directory Operations
+`AsyncOperation` exposes `id`, `is_running()`, `get_progress()`, `cancel()` and `wait()`.
+`create_async_manager()` returns an `AsyncManager` for tracking several operations at once
+(`get_active_operations()`, `get_operation()`, `cancel_all()`).
 
-```python
-# Copy entire directory
-options = ferrocp.CopyOptions(recursive=True)
-ferrocp.copy_directory("source_dir", "dest_dir", options)
+## API Reference
 
-# Directory synchronization
-sync_options = ferrocp.SyncOptions(
-    bidirectional=True,
-    delete_orphaned=True
-)
-ferrocp.sync_directories("dir1", "dir2", sync_options)
-```
+### Functions
 
-### Network Transfers
+| Function | Description |
+|----------|-------------|
+| `copy_file(source, destination, options=None, progress_callback=None)` | Copy a single file |
+| `copy_directory(source, destination, options=None, progress_callback=None)` | Copy a directory tree |
+| `copy(src, dst)` | Shutil-style alias of `copy_file` |
+| `copy2(src, dst)` | Shutil-style alias of `copy_file` |
+| `copytree(src, dst)` | Shutil-style alias of `copy_directory` |
+| `quick_copy(source, destination)` | Copy with default options |
+| `copy_with_verification(source, destination, progress_callback=None)` | Copy then verify |
+| `copy_with_compression(source, destination, progress_callback=None)` | Copy with `enable_compression=True` |
+| `copy_file_async(source, destination, options=None)` | Copy and return an `AsyncOperation` |
+| `create_async_manager()` | Return an `AsyncManager` |
+| `move(src, dst)` | Raises `NotImplementedError` - see *Not implemented yet* |
 
-```python
-# Setup network client
-config = ferrocp.NetworkConfig(
-    host="192.168.1.100",
-    port=8080,
-    timeout=30.0
-)
-client = ferrocp.NetworkClient(config)
+### Classes
 
-# Transfer file
-client.transfer_file("local.txt", "remote.txt")
-```
+- `CopyEngine` - the engine behind the module-level helpers (`copy_file`,
+  `copy_directory`, `copy_file_async`, `get_statistics`, `get_features`, `is_busy`,
+  `get_async_manager`)
+- `CopyOptions` - per-operation configuration
+- `CopyResult` - outcome of a copy
+- `Progress` - counters handed to the progress callback
+- `AsyncOperation` / `AsyncManager` - async operation handles
+- `SyncOptions` / `SyncEngine` - present but not yet wired to a working sync
+- `NetworkConfig` / `NetworkClient` - present but not yet wired to a working transfer
 
-## 📚 API Reference
+### Exceptions
 
-### Core Classes
+All errors derive from `FerrocpError`: `IoError`, `CopyError`, `NetworkError`, `SyncError`
+and `ConfigError`. See [docs/ERROR_MODEL.md](../docs/ERROR_MODEL.md) for how failures are
+classified.
 
-#### `CopyEngine`
-Main engine for file operations.
+### Utilities
 
-```python
-engine = ferrocp.CopyEngine()
-result = engine.copy_file("src.txt", "dst.txt")
-```
+- `get_version()` - the package version
+- `configure_logging(level="INFO")` - attach a stream handler to the `ferrocp` logger
+- `get_features()` / `get_statistics()` - feature flags and global counters from the engine
 
-#### `CopyOptions`
-Configuration for copy operations.
+## Performance
 
-```python
-options = ferrocp.CopyOptions(
-    verify=True,                    # Verify copied data
-    preserve_timestamps=True,       # Keep original timestamps
-    preserve_permissions=True,      # Keep file permissions
-    enable_compression=False,       # Use compression
-    buffer_size=65536,             # Buffer size in bytes
-    max_retries=3,                 # Retry attempts
-    retry_delay=1.0,               # Delay between retries
-    overwrite=True,                # Overwrite existing files
-    recursive=False                # Recursive directory copy
-)
-```
-
-#### `CopyResult`
-Result information from copy operations.
-
-```python
-result = ferrocp.copy_file("src.txt", "dst.txt")
-print(f"Success: {result.success}")
-print(f"Bytes copied: {result.bytes_copied}")
-print(f"Duration: {result.duration_ms}ms")
-print(f"Throughput: {result.throughput_mbps:.2f} MB/s")
-```
-
-### Convenience Functions
-
-- `copy_file(source, destination, options=None, progress_callback=None)` - Copy a single file
-- `copy_directory(source, destination, options=None, progress_callback=None)` - Copy a directory
-- `quick_copy(source, destination)` - Fast copy with default settings
-- `copy_with_verification(source, destination, progress_callback=None)` - Copy with verification
-- `copy_with_compression(source, destination, progress_callback=None)` - Copy with compression
-
-### Asynchronous API
-
-- `copy_file_async(source, destination, options=None)` - Async file copy
-- `AsyncOperation` - Handle for async operations
-- `AsyncManager` - Manager for multiple async operations
-
-## 🎯 Performance
-
-FerroCP is designed for maximum performance:
-
-- **Zero-copy I/O** where supported by the operating system
-- **Adaptive buffering** based on storage device characteristics
-- **Parallel processing** for directory operations
-- **Memory-mapped files** for large file operations
-- **SIMD optimizations** for data verification
-
-### Benchmarks
-
-| Operation | FerroCP | shutil | Speedup |
-|-----------|---------|--------|---------|
-| Large file (1GB) | 2.1s | 8.7s | 4.1x |
-| Many small files (10k) | 3.2s | 12.1s | 3.8x |
-| Network transfer | 1.8s | 6.2s | 3.4x |
-
-*Benchmarks run on Windows 10, NVMe SSD, 16GB RAM*
-
-## 🛠️ Development
-
-### Building from Source
+No measured numbers are published yet. The figures in the repository README are **targets**,
+not measurements. To produce your own numbers, use the benchmark suite documented in
+[benchmarks/README.md](../benchmarks/README.md):
 
 ```bash
-# Clone the repository
-git clone https://github.com/loonghao/py-eacopy.git
-cd py-eacopy
-
-# Install Rust (if not already installed)
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# Build the Python package
-cd python
-pip install maturin
-maturin develop
+uv sync --group testing
+uv run nox -s benchmark          # run all benchmarks
+uv run nox -s benchmark_compare  # compare against other tools
+uv run nox -s codspeed           # CodSpeed benchmarks
 ```
 
-### Running Tests
+The implementation leans on zero-copy I/O where the OS supports it, adaptive buffering based
+on device characteristics, and a thread pool the engine sizes itself.
+
+## Development
+
+### Building from source
 
 ```bash
-# Install test dependencies
-pip install -e ".[test]"
+git clone https://github.com/loonghao/FerroCP.git
+cd FerroCP
+uv sync --group all
 
-# Run tests
-pytest tests/
+# Development build (fast, unoptimised)
+uv run maturin develop
 
-# Run benchmarks
-pytest tests/test_benchmarks.py -m benchmark
+# Release build
+uv run maturin develop --release
 ```
 
-## 📄 License
+### Running tests
 
-This project is licensed under either of:
+```bash
+uv run nox -s test          # run the test suite
+uv run nox -s test-3.11     # run against a specific Python version
+uv run nox -s lint          # lint
+uv run nox -s lint_fix      # lint with autofixes
+```
 
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
-- MIT License ([LICENSE-MIT](LICENSE-MIT))
+### Documentation
 
-at your option.
+```bash
+uv run nox -s docs_only     # fast build, no Rust compilation
+uv run nox -s docs          # full build with API docs
+uv run nox -s docs_serve    # live-reloading dev server
+```
 
-## 🤝 Contributing
+Built documentation is published at [ferrocp.readthedocs.io](https://ferrocp.readthedocs.io/).
 
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+## License
 
-## 📞 Support
+FerroCP is distributed under the terms of the [Apache License 2.0](../LICENSE).
 
-- 📖 [Documentation](https://ferrocp.readthedocs.io)
-- 🐛 [Issue Tracker](https://github.com/loonghao/py-eacopy/issues)
-- 💬 [Discussions](https://github.com/loonghao/py-eacopy/discussions)
+## Contributing
 
-## 🙏 Acknowledgments
+Contributions are welcome. Please read [CONTRIBUTING.md](../CONTRIBUTING.md) for the
+development setup, code style, testing and pull-request process. In short: fork the
+repository, branch from `main`, keep the test suite and linters green, and use
+[Conventional Commits](https://www.conventionalcommits.org/) for your commit messages.
+
+## Support
+
+- [Documentation](https://ferrocp.readthedocs.io/)
+- [Issue tracker](https://github.com/loonghao/FerroCP/issues)
+- [Discussions](https://github.com/loonghao/FerroCP/discussions)
+
+## Acknowledgments
 
 - Built with [PyO3](https://pyo3.rs/) for Python-Rust interoperability
+- Built with [maturin](https://github.com/PyO3/maturin) for packaging
+- Async runtime by [Tokio](https://tokio.rs/)
 - Inspired by [robocopy](https://docs.microsoft.com/en-us/windows-server/administration/windows-commands/robocopy) and [rsync](https://rsync.samba.org/)
-- Uses [Tokio](https://tokio.rs/) for async runtime
