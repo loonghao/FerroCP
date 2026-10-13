@@ -116,8 +116,10 @@ jobs:
         run: cargo test --workspace
 
   # Dependency gate. `deny.toml` and `.cargo/audit.toml` hold the accepted-risk
-  # list (currently RUSTSEC-2025-0141, the unmaintained `bincode`); both are
-  # wired in here so new advisories and license/ban violations block the PR.
+  # list (currently RUSTSEC-2025-0141, the unmaintained `bincode`, and
+  # RUSTSEC-2024-0449, the unmaintained `unsafe-libyaml` reached via the
+  # deprecated `serde_yaml`); both are wired in here so new advisories and
+  # license/ban violations block the PR.
   cargo-deny:
     name: cargo deny
     runs-on: ubuntu-latest
