@@ -326,8 +326,8 @@ impl PyNetworkCopyEngine {
         server: String,
         port: u16,
     ) -> PyResult<PyCopyResult> {
-        let server_addr = resolve_server_addr(&server, port)
-            .map_err(pyo3::exceptions::PyValueError::new_err)?;
+        let server_addr =
+            resolve_server_addr(&server, port).map_err(pyo3::exceptions::PyValueError::new_err)?;
         let request = TransferRequest::new(&source, &destination);
 
         let result = py.detach(|| {
@@ -504,7 +504,10 @@ mod tests {
 
     #[test]
     fn test_split_host_port() {
-        assert_eq!(split_host_port("example.com:80"), Some(("example.com", "80")));
+        assert_eq!(
+            split_host_port("example.com:80"),
+            Some(("example.com", "80"))
+        );
         assert_eq!(split_host_port("127.0.0.1:80"), Some(("127.0.0.1", "80")));
         assert_eq!(split_host_port("[::1]:80"), Some(("::1", "80")));
         assert_eq!(split_host_port("example.com"), None);
