@@ -7,6 +7,7 @@ source must survive** whatever `move()` does.
 """
 
 # Import built-in modules
+import inspect
 from pathlib import Path
 
 # Import third-party modules
@@ -82,15 +83,22 @@ def test_move_into_existing_directory_keeps_source(tmp_path: Path) -> None:
     assert not (target_dir / "source.txt").exists()
 
 
-def test_move_honours_custom_copy_function_signature(tmp_path: Path) -> None:
-    """A caller-supplied copy_function still cannot make move() proceed."""
+def test_move_has_no_copy_function_parameter(tmp_path: Path) -> None:
+    """move() no longer advertises a copy_function it could never call."""
+    params = inspect.signature(ferrocp.move).parameters
+    assert "copy_function" not in params
+    assert list(params) == ["src", "dst"]
+
+
+def test_move_rejects_third_positional_argument(tmp_path: Path) -> None:
+    """A caller passing the old copy_function gets a TypeError, not a silent ignore."""
     src = tmp_path / "source.txt"
     src.write_text("payload")
 
     async def failing_copy(source: str, destination: str) -> None:
         raise RuntimeError("copy_function must not be reached")
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(TypeError):
         ferrocp.move(str(src), str(tmp_path / "dest.txt"), failing_copy)
 
     assert src.exists()
