@@ -7,6 +7,7 @@ use crate::progress::{ProgressCallback, PyProgress};
 use ferrocp_network::{ClientConfig, NetworkClient, TransferRequest, TransferResult};
 use pyo3::prelude::*;
 use pyo3_async_runtimes::tokio::future_into_py;
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::PathBuf;
 
 /// Python wrapper for network transfer results
@@ -220,6 +221,77 @@ impl PyNetworkClient {
     }
 }
 
+/// Default port used when `server` carries no explicit port.
+const DEFAULT_SERVER_PORT: u16 = 8080;
+
+/// Resolve a `server` value into a concrete `SocketAddr`.
+///
+/// `ferrocp_network::NetworkClient::transfer_file` parses its address with
+/// `SocketAddr::from_str`, which accepts only an IP literal plus a port and does
+/// no name resolution. `server` is documented as a host name or IP address and
+/// the `ferrocp copy-with-server --server HOST` CLI asks users for a host name,
+/// so resolve the name here before handing the address down.
+///
+/// A `server` value that already carries a port (including an IPv6 literal in
+/// brackets) keeps that port; `port` applies only when `server` has none.
+fn resolve_server_addr(server: &str, port: u16) -> Result<SocketAddr, String> {
+    let server = server.trim();
+    if server.is_empty() {
+        return Err(
+            "invalid server address: the value is empty; expected a host name, an IPv4 \
+             literal or a bracketed IPv6 literal, each optionally followed by :port"
+                .to_string(),
+        );
+    }
+
+    // `[::1]:8080` / `127.0.0.1:9000` — the caller was explicit, use it as-is.
+    if let Ok(addr) = server.parse::<SocketAddr>() {
+        return Ok(addr);
+    }
+
+    // Otherwise resolve the name. A bare IPv6 literal such as `::1` parses as
+    // neither `SocketAddr` nor a host:port pair, but `ToSocketAddrs` handles it,
+    // so only the "no explicit port" case gets the port appended.
+    let candidate = match split_host_port(server) {
+        Some(_) => server.to_string(),
+        None => format!("{server}:{port}"),
+    };
+
+    let mut addr = candidate.to_socket_addrs().map_err(|e| {
+        format!(
+            "invalid server address '{server}': {e}; expected a host name, an IPv4 literal or a \
+             bracketed IPv6 literal, each optionally followed by :port"
+        )
+    })?;
+
+    addr.next().ok_or_else(|| {
+        format!("invalid server address '{server}': it does not resolve to any socket address")
+    })
+}
+
+/// Split `value` into host and port when it already carries a port.
+///
+/// `None` means "no explicit port": the value is a bare host name, an IPv4
+/// literal, a bracketed IPv6 literal, or a bare IPv6 literal such as `::1`. Appending
+/// `:<port>` to any of those yields input `ToSocketAddrs` accepts, which is why a
+/// bare IPv6 literal correctly reports `None` here.
+fn split_host_port(value: &str) -> Option<(&str, &str)> {
+    if let Some(rest) = value.strip_prefix('[') {
+        // Bracketed IPv6: the port, if any, follows the closing bracket.
+        let (host, tail) = rest.split_once(']')?;
+        let port = tail.strip_prefix(':')?;
+        return Some((host, port));
+    }
+
+    let (host, port) = value.rsplit_once(':')?;
+    // A trailing colon (`example.com:`) is an empty port, and a value with two
+    // colons is a bare IPv6 literal rather than a host:port pair.
+    if host.is_empty() || port.is_empty() || host.contains(':') {
+        return None;
+    }
+    Some((host, port))
+}
+
 /// Python wrapper for the network backed copy engine
 ///
 /// `EACopy.copy_with_server` historically reached for a `NetworkCopyEngine` that
@@ -239,27 +311,33 @@ impl PyNetworkCopyEngine {
 
     /// Copy `source` to `destination` through a FerroCP server
     ///
-    /// `server` is the host name or IP address of the ferrocp-network server and
-    /// `port` is the port it listens on. The transfer runs to completion on the
-    /// shared Tokio runtime, so the call blocks the calling Python thread until
-    /// the transfer finishes or fails.
-    #[pyo3(signature = (source, destination, server, port = 8080))]
+    /// `server` is the host name or IP address of the ferrocp-network server,
+    /// optionally followed by `:port`; `port` is used when `server` carries no
+    /// port of its own. The transfer runs to completion on the shared Tokio
+    /// runtime, so the call blocks the calling Python thread until the transfer
+    /// finishes or fails. The GIL is released for the duration of the transfer,
+    /// so other Python threads keep running while it is in flight.
+    #[pyo3(signature = (source, destination, server, port = DEFAULT_SERVER_PORT))]
     pub fn copy_with_server(
         &self,
+        py: Python<'_>,
         source: String,
         destination: String,
         server: String,
         port: u16,
     ) -> PyResult<PyCopyResult> {
-        let server_addr = format!("{}:{}", server, port);
+        let server_addr = resolve_server_addr(&server, port)
+            .map_err(pyo3::exceptions::PyValueError::new_err)?;
         let request = TransferRequest::new(&source, &destination);
 
-        let result = pyo3_async_runtimes::tokio::get_runtime().block_on(async {
-            let mut client = NetworkClient::new().await.into_py_result()?;
-            client
-                .transfer_file(&server_addr, request)
-                .await
-                .into_py_result()
+        let result = py.detach(|| {
+            pyo3_async_runtimes::tokio::get_runtime().block_on(async {
+                let mut client = NetworkClient::new().await.into_py_result()?;
+                client
+                    .transfer_file(&server_addr.to_string(), request)
+                    .await
+                    .into_py_result()
+            })
         })?;
 
         Ok(PyCopyResult {
@@ -340,5 +418,105 @@ mod tests {
         assert_eq!(format_bytes(1024), "1.0 KB");
         assert_eq!(format_bytes_per_second(1024.0), "1.0 KB/s");
         assert_eq!(format_duration_seconds(65.0), "1m 5s");
+    }
+
+    #[test]
+    fn test_resolve_server_addr_ipv4_literal_uses_port() {
+        let addr = resolve_server_addr("127.0.0.1", 9000).unwrap();
+        assert_eq!(addr, "127.0.0.1:9000".parse::<SocketAddr>().unwrap());
+    }
+
+    #[test]
+    fn test_resolve_server_addr_ipv4_literal_with_explicit_port_keeps_it() {
+        let addr = resolve_server_addr("127.0.0.1:1234", 9000).unwrap();
+        assert_eq!(addr, "127.0.0.1:1234".parse::<SocketAddr>().unwrap());
+    }
+
+    #[test]
+    fn test_resolve_server_addr_localhost_hostname_resolves() {
+        // The contract under test: a host name, not just an IP literal, has to
+        // produce a SocketAddr. `localhost` resolves on every supported target.
+        let addr = resolve_server_addr("localhost", 8080).unwrap();
+        assert_eq!(addr.port(), 8080);
+        assert!(addr.ip().is_loopback());
+    }
+
+    #[test]
+    fn test_resolve_server_addr_localhost_with_explicit_port() {
+        let addr = resolve_server_addr("localhost:4321", 8080).unwrap();
+        assert_eq!(addr.port(), 4321);
+        assert!(addr.ip().is_loopback());
+    }
+
+    #[test]
+    fn test_resolve_server_addr_bracketed_ipv6() {
+        let addr = resolve_server_addr("[::1]", 9000).unwrap();
+        assert_eq!(addr, "[::1]:9000".parse::<SocketAddr>().unwrap());
+
+        let addr = resolve_server_addr("[::1]:7000", 9000).unwrap();
+        assert_eq!(addr, "[::1]:7000".parse::<SocketAddr>().unwrap());
+    }
+
+    #[test]
+    fn test_resolve_server_addr_bare_ipv6_literal() {
+        let addr = resolve_server_addr("::1", 9000).unwrap();
+        assert_eq!(addr, "[::1]:9000".parse::<SocketAddr>().unwrap());
+    }
+
+    #[test]
+    fn test_resolve_server_addr_trims_whitespace() {
+        let addr = resolve_server_addr("  127.0.0.1  ", 9100).unwrap();
+        assert_eq!(addr, "127.0.0.1:9100".parse::<SocketAddr>().unwrap());
+    }
+
+    #[test]
+    fn test_resolve_server_addr_empty_is_diagnosable() {
+        let err = resolve_server_addr("   ", 8080).unwrap_err();
+        assert!(
+            err.contains("empty"),
+            "expected an 'empty' diagnosis, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_resolve_server_addr_unresolvable_host_names_the_host() {
+        // An unresolvable name must report which name failed, not a generic
+        // "Invalid server address" with no context.
+        let err = resolve_server_addr("no-such-host.invalid", 8080).unwrap_err();
+        assert!(
+            err.contains("no-such-host.invalid"),
+            "expected the failing host in the message, got: {err}"
+        );
+        assert!(
+            err.contains("host name"),
+            "expected the message to state the accepted forms, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_resolve_server_addr_rejects_out_of_range_port() {
+        let err = resolve_server_addr("127.0.0.1:99999", 8080).unwrap_err();
+        assert!(
+            err.contains("127.0.0.1:99999"),
+            "expected the offending address in the message, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_split_host_port() {
+        assert_eq!(split_host_port("example.com:80"), Some(("example.com", "80")));
+        assert_eq!(split_host_port("127.0.0.1:80"), Some(("127.0.0.1", "80")));
+        assert_eq!(split_host_port("[::1]:80"), Some(("::1", "80")));
+        assert_eq!(split_host_port("example.com"), None);
+        assert_eq!(split_host_port("[::1]"), None);
+        assert_eq!(split_host_port("::1"), None);
+        assert_eq!(split_host_port("example.com:"), None);
+    }
+
+    #[test]
+    fn test_default_server_port_matches_signature_default() {
+        // `copy_with_server`'s `port` default is 8080; keep the constant in step
+        // so a change to one is caught here rather than at the call site.
+        assert_eq!(DEFAULT_SERVER_PORT, 8080);
     }
 }

@@ -209,9 +209,6 @@ def copy_with_server(
     if verbose:
         click.echo(f"Copying {source} to {destination} via server {server}:{port}")
 
-    CopyEngine()
-    CopyOptions()
-
     try:
         # Use EACopy for server-based copying
         from . import EACopy

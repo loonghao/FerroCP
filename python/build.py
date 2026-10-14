@@ -192,7 +192,6 @@ def clean():
     print("Cleaning build artifacts...")
 
     python_dir = get_python_dir()
-    get_project_root()
 
     # Clean Python build artifacts
     for pattern in ["build", "dist", "*.egg-info", "__pycache__"]:

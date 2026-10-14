@@ -61,7 +61,7 @@ Advanced Usage:
 
 # Import built-in modules
 from pathlib import Path
-from typing import Awaitable, Callable, Optional, Union
+from typing import Awaitable, Optional, Union
 
 from ._ferrocp import (
     AsyncManager,
@@ -234,7 +234,6 @@ def get_statistics() -> dict:
 def move(
     src: Union[str, Path],
     dst: Union[str, Path],
-    copy_function: Callable[..., Awaitable[CopyResult]] = copy_file,
 ) -> str:
     """
     Move a file or directory tree to another location.
@@ -251,12 +250,12 @@ def move(
 
     The previous implementation skipped the await, deleted the source and lost
     data that way. Failing fast stays the behaviour until a verified move
-    primitive exists.
+    primitive exists. A `copy_function` parameter used to sit here, but this
+    function never copies, so there was nothing for it to be called with.
 
     Args:
         src: Source path
         dst: Destination path
-        copy_function: Function to use for copying (default: copy_file)
 
     Returns:
         The destination path
