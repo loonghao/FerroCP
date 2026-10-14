@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial project structure
 - Basic repository setup
 
+## [1.0.3](https://github.com/loonghao/FerroCP/compare/v1.0.2...v1.0.3) (2026-10-14)
+
+
+### Bug Fixes
+
+* **deps:** update rust crate rcgen to 0.14 ([#48](https://github.com/loonghao/FerroCP/issues/48)) ([f7b1264](https://github.com/loonghao/FerroCP/commit/f7b1264ec1a98c65419a149f8fc1adbacdd91b2a))
+
 ## [1.0.2](https://github.com/loonghao/FerroCP/compare/v1.0.1...v1.0.2) (2026-10-01)
 
 
