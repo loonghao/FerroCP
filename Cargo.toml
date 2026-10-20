@@ -44,7 +44,7 @@ memmap2 = "0.9"
 # Compression
 zstd = "0.13"
 async-compression = { version = "0.4", features = ["tokio", "zstd"] }
-lz4_flex = "0.13"
+lz4_flex = "0.14"
 brotli = "8.0"
 
 # Hashing for file deduplication
